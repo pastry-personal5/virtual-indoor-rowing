@@ -2,7 +2,7 @@
 
 Status: Initial reference  
 Owner: Client engineering  
-Last reviewed: 2026-09-12
+Last reviewed: 2026-09-13
 
 ## Baseline
 
@@ -86,7 +86,7 @@ Unreal's `UGameInstanceSubsystem` and `UWorldSubsystem` names are implementation
 
 ```mermaid
 flowchart LR
-    BLE[CoreBluetooth queue] -->|RawDeviceEvent| Q1[SPSC priority queue]
+    BLE[CoreBluetooth queue] -->|RawDeviceEvent| Q1[Bounded SPSC event queue]
     Q1 --> TW[Telemetry worker]
     TW -->|Journal batch| Q2[Durable writer queue]
     Q2 --> DB[(SQLite WAL)]
@@ -101,6 +101,7 @@ flowchart LR
 
 - Connection, workout-state, stroke-boundary, interval-boundary, and completion events are non-coalescable.
 - Periodic status samples are coalescable for rendering but not for the active journal or ranked network stream.
+- The acquisition queue preserves producer order. It does not use priority reordering; capacity is reserved for critical events or split into ordered critical/sample lanes with an explicit deterministic merge rule.
 - Each event has an adapter sequence, arrival monotonic timestamp, PM elapsed time when present, and quality flags.
 - Queue capacity is fixed and instrumented. At 10 Hz a 512-event raw queue gives ample short-stall headroom.
 - If a non-coalescable queue would overflow, the session is marked degraded and the failure is surfaced. The client never silently presents the session as verified.
@@ -140,17 +141,17 @@ stateDiagram-v2
     Preparing --> Aborted
     Ready --> Aborted
     Countdown --> Aborted
-    Active --> Interrupted: app suspend/quit/fatal error
+    Active --> Interrupted: app suspend/quit
     Completed --> [*]
     Interrupted --> [*]
     Aborted --> [*]
 ```
 
-Every transition appends a journal event before it is exposed as complete to UI. `Completed`, `Interrupted`, and `Aborted` are distinct final dispositions.
+Every transition appends a journal event before it is exposed to UI. A terminal disposition is not shown as finalized until the database writer acknowledges its commit. A process crash cannot reliably append a fatal-error transition; on the next boot, recovery detects the open journal, appends a recovery event, and derives an explicit `Interrupted` disposition. `Completed`, `Interrupted`, and `Aborted` remain distinct.
 
 ## Local persistence
 
-The database lives under the application's Application Support container and uses WAL plus `synchronous=NORMAL` for ordinary samples. Completion and final summary use an explicit transaction followed by a durability barrier. The write path is benchmarked before changing to `FULL` during active sessions.
+The database lives under the application's Application Support container and uses WAL plus `synchronous=NORMAL` for ordinary samples. Completion and final summary use an explicit transaction followed by a durability barrier, and the UI waits for its acknowledgement before claiming finalization. QA-003's one-second bound applies to process termination after the last acknowledged checkpoint. Sudden power loss, storage-controller failure, and filesystem damage are separate fault classes with measured recovery behavior; the product does not promise they are equivalent to a process crash. The write path is benchmarked before changing to `FULL` during active sessions.
 
 Minimum local tables:
 

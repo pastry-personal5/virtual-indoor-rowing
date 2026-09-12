@@ -2,13 +2,15 @@
 
 Status: Initial reference  
 Owner: CTO / product  
-Last reviewed: 2026-09-12
+Last reviewed: 2026-09-13
 
 ## Strategy
 
 Build a trustworthy local rowing instrument first, then a polished solo game, then cloud synchronization, and only then ranked competition. Multiplayer assumptions are present in domain/contracts from the start, but public racing is not allowed to become the path by which basic device/session reliability is discovered.
 
 Planning range for a focused startup team is roughly 8–12 months to a defensible public release. This is not a commitment until Phase 0 spikes measure toolchain, PM5, content, and staffing risk.
+
+The range assumes the recommended team is staffed, external approvals do not block, and phases do not overlap beyond demonstrated capacity. At every exit gate, founders make a separate investment decision using product evidence, staffing, cost, runway, and remaining risk. Passing an engineering gate does not automatically fund the next phase. See the [executive review](00-executive-review.md) and proposed [ADR-0007](../adr/0007-evidence-gated-product-delivery.md).
 
 ## Recommended team
 
@@ -50,6 +52,8 @@ With fewer people, preserve the phase order and reduce content/social scope rath
 
 ### Business/external actions
 
+- Recruit named design partners who own or regularly use the supported Mac/PM5 setup; observe their current setup and rowing workflow before prescribing UI.
+- Define the product thesis, metric catalog, experiment log, target segment, alternatives, acquisition path, and a testable price/package proposition.
 - Contact Concept2 developer relations: production use, protocol questions, qualification/authentication boundaries, Logbook write approval process, trademark/marketing review.
 - Have counsel/finance review the current Unreal EULA and royalty plan. “Free-to-use” is not the same as royalty-free after commercial thresholds.
 - Enroll and establish organizational Apple Developer ID ownership; no signing identity tied only to a founder's personal account.
@@ -62,6 +66,7 @@ With fewer people, preserve the phase order and reduce content/social scope rath
 - Exact engine/Xcode/macOS/PM tuples are recorded.
 - No unresolved blocker to BLE telemetry, notarization, or local session durability.
 - Top risks have owners, triggers, and contingency.
+- A compatible design-partner cohort is named, observed first-use evidence exists, and the founders have defined what customer evidence would fund Phase 1 and Phase 2.
 
 ## Phase 1 — walking skeleton (4–6 weeks)
 
@@ -85,6 +90,7 @@ A signed internal macOS app connects to the PM5, rows a gray-box route, shows li
 - 60-minute hardware run meets preliminary latency/durability; process-kill recovery evidence exists.
 - Fresh install/permission denial/repair and signed package pass.
 - No account, subscription, external integration, or multiplayer required to complete the row.
+- Design partners can attempt the supported setup without an engineer driving the UI; failures are categorized and feed the Phase 2 estimate.
 
 ## Phase 2 — solo alpha and content pipeline (6–10 weeks)
 
@@ -99,11 +105,12 @@ A signed internal macOS app connects to the PM5, rows a gray-box route, shows li
 
 ### Exit gate
 
-- Internal alpha users can install, pair, row for four weeks without engineering assistance for normal flows.
+- Invited alpha users can install, pair, row for four weeks without engineering assistance for normal flows.
 - QA-001/002/003/004/009/010/011/012 pass on the reference setup.
 - At least 100 varied test workouts produce no unexplained loss/duplication and agree with PM display within resolution.
 - Content validator and last-known-good/safe route are release-blocking.
 - Training/safety copy has rowing-domain and product review.
+- A repeated-use external cohort has measured activation, return rows, support burden, and willingness to pay. Founders explicitly approve or replan connected-product investment from that evidence.
 
 ## Phase 3 — accounts, sync, and private beta (6–10 weeks)
 

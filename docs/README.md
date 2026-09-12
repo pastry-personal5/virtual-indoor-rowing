@@ -6,16 +6,17 @@ The supported desktop baseline is macOS Tahoe 26.6.2 or later on Apple silicon; 
 
 ## Reading order
 
-1. [Product scope and quality bar](architecture/01-product-scope.md)
-2. [System architecture](architecture/02-system-architecture.md)
-3. [macOS and Unreal client](architecture/03-macos-unreal-client.md)
-4. [Concept2 PM5 integration](architecture/04-concept2-pm5-integration.md)
-5. [Online platform and real-time racing](architecture/05-online-platform.md)
-6. [Data model and protocols](architecture/06-data-and-protocols.md)
-7. [Security, privacy, safety, and fair play](architecture/07-security-privacy-safety.md)
-8. [Delivery and operations](architecture/08-delivery-and-operations.md)
-9. [Verification strategy](architecture/09-verification-strategy.md)
-10. [Phased delivery plan](architecture/10-delivery-plan.md)
+1. [Executive product and architecture review](architecture/00-executive-review.md)
+2. [Product scope and quality bar](architecture/01-product-scope.md)
+3. [System architecture](architecture/02-system-architecture.md)
+4. [macOS and Unreal client](architecture/03-macos-unreal-client.md)
+5. [Concept2 PM5 integration](architecture/04-concept2-pm5-integration.md)
+6. [Online platform and real-time racing](architecture/05-online-platform.md)
+7. [Data model and protocols](architecture/06-data-and-protocols.md)
+8. [Security, privacy, safety, and fair play](architecture/07-security-privacy-safety.md)
+9. [Delivery and operations](architecture/08-delivery-and-operations.md)
+10. [Verification strategy](architecture/09-verification-strategy.md)
+11. [Phased delivery plan](architecture/10-delivery-plan.md)
 
 ## Accepted architecture decisions
 
@@ -25,6 +26,10 @@ The supported desktop baseline is macOS Tahoe 26.6.2 or later on Apple silicon; 
 - [ADR-0004: offline-first session journal and idempotent synchronization](adr/0004-offline-first-session-journal.md)
 - [ADR-0005: AWS single-region, multi-AZ launch topology](adr/0005-cloud-topology.md)
 - [ADR-0006: Developer ID distribution with a signed update channel](adr/0006-macos-distribution.md)
+
+## Proposed architecture decisions
+
+- [ADR-0007: Evidence-gated product delivery](adr/0007-evidence-gated-product-delivery.md)
 
 ## Research archive
 

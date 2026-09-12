@@ -2,7 +2,7 @@
 
 Status: Initial reference  
 Owner: Architecture  
-Last reviewed: 2026-09-12
+Last reviewed: 2026-09-13
 
 ## Executive design
 
@@ -50,7 +50,6 @@ flowchart TB
         Net --> Core
         Core --> Net
         Net --> Keychain
-        Update --> Keychain
     end
 
     subgraph Edge[Public edge]

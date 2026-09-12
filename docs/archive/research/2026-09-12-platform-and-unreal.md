@@ -1,6 +1,8 @@
 # Research: macOS, Unreal Engine, and build platform
 
 Research date: 2026-09-12  
+Correction reviewed: 2026-09-13
+
 Purpose: Validate the platform baseline and identify current Unreal/macOS constraints.  
 Authority: Point-in-time evidence only; accepted decisions live in ADRs.
 
@@ -10,7 +12,7 @@ Authority: Point-in-time evidence only; accepted decisions live in ADRs.
 2. Epic's current Unreal Engine 5.8 macOS requirements identify Sonoma 14.5 as minimum, latest Sequoia 15 as recommended, Xcode 26.0 as minimum, and Xcode 26.1.1 as recommended. The same table explicitly says Xcode 26.4 is incompatible with UE 5.8.
 3. Apple's Xcode compatibility table says Xcode 26.1.1 supports macOS Sequoia 15.6 through Tahoe 26.x. This makes UE 5.8 + Xcode 26.1.1 + Tahoe 26.6.2 a documented intersection, though only a real build/package test can approve it.
 4. Epic lists Apple silicon M3 and 32 GB or more as recommended macOS hardware. The requested M5 Max/128 GB exceeds those broad recommendations, but actual renderer/thermal budgets still need measurement.
-5. Epic describes Nanite/Virtual Shadow Maps on Apple silicon M2+ as beta and says hardware ray tracing/MegaLights are not currently supported in the macOS requirements. Lumen software ray tracing and TSR are supported on Apple silicon. Therefore experimental features should not be required for launch content.
+5. Epic describes Nanite/Virtual Shadow Maps on Apple silicon M2+ as beta and hardware ray tracing/MegaLights on Apple silicon M2+ as experimental. Lumen software ray tracing and TSR are supported on Apple silicon. Therefore beta/experimental features should not be required for launch content.
 6. Epic has supported native Apple-silicon editor/game binaries for several versions. Since only the supplied Apple-silicon target is promised, an arm64-only launch reduces native dependency/package testing.
 7. Unreal BuildGraph is Epic's supported graph system around UnrealBuildTool/AutomationTool and supports macOS shell execution/build-farm decomposition. It is suitable for the repeatable Shipping pipeline.
 8. Unreal is downloadable/free to begin, but the current standard game terms are not necessarily royalty-free: Epic's release page states 5% on worldwide gross revenue over the first USD 1 million, with a possible 3.5% program rate under its stated conditions. Finance/legal must use the actual EULA and product facts.
@@ -40,7 +42,7 @@ Research implication: pin Xcode 26.1.1 and the exact UE 5.8 patch/fingerprint. M
 Epic's macOS requirements say:
 
 - Lumen GI/reflections with software ray tracing supports Apple silicon M1+.
-- Hardware ray tracing and MegaLights are not currently supported on Mac.
+- Hardware ray tracing and MegaLights are experimental on Apple silicon M2+ and are not a production baseline.
 - Nanite and Virtual Shadow Maps have beta support on Apple silicon M2+.
 - TSR supports Apple silicon M1+ with runtime cost.
 

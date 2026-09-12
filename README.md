@@ -2,7 +2,7 @@
 
 Greenfield architecture baseline for a macOS virtual indoor-rowing product powered by Unreal Engine and a Concept2 Model D fitted with a PM5 Performance Monitor.
 
-The repository currently contains design documentation rather than an implementation. Start with [the documentation index](docs/README.md), then read the [product scope](docs/architecture/01-product-scope.md) and [system architecture](docs/architecture/02-system-architecture.md).
+The repository currently contains design documentation rather than an implementation. Start with [the documentation index](docs/README.md) and [executive product and architecture review](docs/architecture/00-executive-review.md), then read the [product scope](docs/architecture/01-product-scope.md) and [system architecture](docs/architecture/02-system-architecture.md).
 
 ## Target baseline
 

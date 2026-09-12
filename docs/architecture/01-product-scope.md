@@ -2,13 +2,13 @@
 
 Status: Initial reference  
 Owner: Product and architecture  
-Last reviewed: 2026-09-12
+Last reviewed: 2026-09-13
 
 ## Product statement
 
-Virtual Indoor Rowing (working name, abbreviated **VIR**) turns verified output from a Concept2 rower into a responsive boat in a persistent 3D world. It combines credible rowing data, structured training, solo routes, ghosts, and fair online races. The product must still record a trustworthy workout when the internet fails or the 3D renderer is under load.
+Virtual Indoor Rowing (working name, abbreviated **VIR**) turns live output from a supported Concept2 rower into a responsive boat in a persistent 3D world. It combines credible rowing data, structured training, solo routes, ghosts, and fair online races. The product must still record a trustworthy workout when the internet fails or the 3D renderer is under load.
 
-The launch configuration is deliberately narrow: a MacBook Pro with M5 Max/128 GB running macOS Tahoe 26.6.2 or later, and a Concept2 Model D fitted with a current-firmware PM5. Narrow hardware scope lets the team earn reliability before widening compatibility.
+The launch configuration is deliberately narrow: a MacBook Pro with M5 Max/128 GB running macOS Tahoe 26.6.2 or later, and a Concept2 Model D fitted with a supported-firmware PM5. Narrow hardware scope lets the team earn reliability before widening compatibility.
 
 ## Product principles
 
@@ -36,28 +36,30 @@ The launch configuration is deliberately narrow: a MacBook Pro with M5 Max/128 G
 
 Each identifier is stable and should be referenced by epics, tests, and release evidence.
 
-### Launch scope
+### First-generation capability envelope
 
-| ID | Capability | Notes |
-|---|---|---|
-| FR-001 | First-run onboarding and accessibility setup | Large type, high contrast, audio levels, units, privacy choices |
-| FR-002 | PM5 discovery, explicit pairing, reconnect, and diagnostics | BLE launch transport; latest supported firmware matrix |
-| FR-003 | Live rowing HUD | Distance, time, pace/500 m, watts, stroke rate, heart rate when supplied, connection quality |
-| FR-004 | Just Row | Select a downloaded route and row without an account or network |
-| FR-005 | Structured workouts | Fixed time, fixed distance, intervals, rests, targets, warm-up/cool-down |
-| FR-006 | Responsive virtual boat and avatar | Presentation driven only by normalized PM data |
-| FR-007 | Durable local history | Session summary, intervals, samples, crash recovery, export |
-| FR-008 | Account and cloud synchronization | Passwordless/OIDC account; guest-to-account migration |
-| FR-009 | Personal best and ghost replay | Versioned, privacy-aware ghosts derived from completed sessions |
-| FR-010 | Friends/private group row | Join code, presence, predefined emotes; no free-text or voice at launch |
-| FR-011 | Ranked race | Lobby, warm-up, synchronized countdown, false-start rule, provisional and finalized result |
-| FR-012 | Training history and trends | Volume, pace, power, stroke rate, intervals, configurable zones |
-| FR-013 | Content catalog and secure updates | Versioned worlds/routes, compatibility checks, resumable download |
-| FR-014 | Concept2 Online Logbook export | Explicit link and per-session opt-out; server-side delivery with retries |
-| FR-015 | FIT activity export | User-owned file suitable for compatible fitness services |
-| FR-016 | Subscription entitlement | Provider adapter; offline grace period; never interrupt an active workout |
-| FR-017 | Support and operator tooling | Health dashboards, race audit, redacted diagnostic bundle, account actions |
-| FR-018 | Account data export and deletion | Includes clear integration-token revocation and retention status |
+This table describes the intended first commercial product generation, not one MVP backlog. The target phase is the earliest phase that may commit the capability; later work remains contingent on the preceding technical and product investment gates. See the [delivery plan](10-delivery-plan.md), [executive review](00-executive-review.md), and proposed [ADR-0007](../adr/0007-evidence-gated-product-delivery.md).
+
+| ID | Capability | Earliest target | Notes |
+|---|---|---|---|
+| FR-001 | First-run onboarding and accessibility setup | Phase 2 | Large type, high contrast, audio levels, units, privacy choices; minimal setup begins in Phase 1 |
+| FR-002 | PM5 discovery, explicit pairing, reconnect, and diagnostics | Phase 1 | BLE launch transport; latest supported firmware matrix |
+| FR-003 | Live rowing HUD | Phase 1 | Distance, time, pace/500 m, watts, stroke rate, heart rate when supplied, connection quality |
+| FR-004 | Just Row | Phase 1 | Select a downloaded route and row without an account or network |
+| FR-005 | Structured workouts | Phase 2 | Fixed time, fixed distance, intervals, rests, targets, warm-up/cool-down |
+| FR-006 | Responsive virtual boat and avatar | Phase 1 | Gray-box response in Phase 1; production presentation in Phase 2; normalized PM data only |
+| FR-007 | Durable local history | Phase 1 | Session summary, intervals, samples, crash recovery, export |
+| FR-008 | Account and cloud synchronization | Phase 3 | Passwordless/OIDC account; guest-to-account migration |
+| FR-009 | Personal best and ghost replay | Phase 2 | Versioned, privacy-aware ghosts derived from completed sessions |
+| FR-010 | Friends/private group row | Phase 4 | Join code, presence, predefined emotes; no free-text or voice at launch |
+| FR-011 | Ranked race | Phase 4 | Lobby, warm-up, synchronized countdown, false-start rule, provisional and finalized result |
+| FR-012 | Training history and trends | Phase 2 | Volume, pace, power, stroke rate, intervals, configurable zones |
+| FR-013 | Content catalog and secure updates | Phase 2 | Versioned worlds/routes, compatibility checks, resumable download |
+| FR-014 | Concept2 Online Logbook export | Phase 3 | Explicit link and per-session opt-out; server-side delivery with retries |
+| FR-015 | FIT activity export | Phase 2 | User-owned file suitable for compatible fitness services |
+| FR-016 | Subscription entitlement | Phase 3 | Provider adapter; implementation contingent on pricing evidence; never interrupt an active workout |
+| FR-017 | Support and operator tooling | Phase 1–4 | Redacted local diagnostics first; account/race operations arrive with their supported workflows |
+| FR-018 | Account data export and deletion | Phase 3 | Ships with account storage; includes integration-token revocation and retention status |
 
 ### Deferred scope
 
@@ -78,7 +80,7 @@ The reference Mac and PM5 hardware-in-loop rig are the acceptance environment. U
 |---|---|---|
 | QA-001 | Render responsiveness | Sustained 60 fps at 2560×1600 High preset; p95 frame time ≤16.7 ms; no sustained thermal throttling |
 | QA-002 | Telemetry-to-HUD latency | p95 ≤50 ms from parsed BLE notification to visible HUD update; physical stroke-to-display p95 ≤200 ms at PM 100 ms sampling |
-| QA-003 | Local durability | Checkpoint within 1 s; an unclean exit loses at most the uncheckpointed second and marks recovery explicitly |
+| QA-003 | Local durability | Checkpoint within 1 s; a process crash loses at most the uncommitted second and marks recovery explicitly; sudden power-loss behavior is measured and reported separately |
 | QA-004 | Device recovery | In-range transient disconnect reconnects p95 ≤5 s; all gaps are visible in data quality flags |
 | QA-005 | Online latency | Choose a region with pre-race median RTT ≤100 ms and p95 ≤150 ms; otherwise warn and permit unranked play |
 | QA-006 | Race simulation | 20 Hz authoritative tick; p99 tick work ≤25 ms; 10 Hz state snapshots |
