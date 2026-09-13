@@ -1,0 +1,56 @@
+# Virtual Indoor Rowing App - Codex multi-agent configuration
+# Current role files use developer_instructions + model_reasoning_effort.
+
+[features]
+multi_agent = true
+
+[agents]
+enabled = true
+max_concurrent_threads_per_session = 6
+default_subagent_model = "gpt-5.6-luna"
+default_subagent_reasoning_effort = "medium"
+
+[agents.a0_cto]
+description = "Principal architect and CTO for system boundaries, ADRs, interfaces, risk, and task decomposition."
+config_file = "agents/a0-cto-architect.toml"
+nickname_candidates = ["Architect", "CTO"]
+
+[agents.a1_concept2]
+description = "Concept2 PM5 hardware integration specialist for BLE/USB transport, parsing, connection state, and normalized telemetry."
+config_file = "agents/a1-concept2-hardware.toml"
+nickname_candidates = ["PM5", "Hardware"]
+
+[agents.a2_simulation]
+description = "Deterministic rowing simulation engineer converting normalized telemetry into smooth virtual motion and workout state."
+config_file = "agents/a2-rowing-simulation.toml"
+nickname_candidates = ["Simulation", "Physics"]
+
+[agents.a3_unreal]
+description = "Unreal gameplay and virtual-world engineer for boat presentation, camera, course, rendering, and performance."
+config_file = "agents/a3-unreal-gameplay.toml"
+nickname_candidates = ["Unreal", "Gameplay"]
+
+[agents.a4_ui]
+description = "Product UI/UX engineer for device connection, menus, workout HUD, and workout completion flows."
+config_file = "agents/a4-product-ui.toml"
+nickname_candidates = ["UI", "HUD"]
+
+[agents.a5_data]
+description = "Offline-first workout data and backend engineer for repositories, schema, migrations, telemetry retention, and future sync."
+config_file = "agents/a5-backend-data.toml"
+nickname_candidates = ["Data", "Backend"]
+
+[agents.a6_qa]
+description = "QA automation and hardware-simulation engineer for mocks, replay, golden telemetry, adversarial scenarios, and regression testing."
+config_file = "agents/a6-qa-simulator.toml"
+nickname_candidates = ["QA", "Simulator"]
+
+[agents.a7_devops]
+description = "Developer experience, CI, build, packaging, and release engineer for reproducible Apple Silicon development."
+config_file = "agents/a7-devops-release.toml"
+nickname_candidates = ["DevOps", "Release"]
+
+[agents.a8_review]
+description = "Principal integration and code-review agent enforcing architecture, tests, API discipline, and merge readiness."
+config_file = "agents/a8-integration-review.toml"
+nickname_candidates = ["Reviewer", "Integrator"]

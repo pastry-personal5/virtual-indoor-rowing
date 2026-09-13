@@ -1,0 +1,67 @@
+# Development guide
+
+## Current state
+
+The repository has a native M1 diagnostic build and test system, plus an empty Unreal smoke host. It is not yet a complete rowing product. The active bounded work is [Milestone 1](docs/m1/README.md); its real-hardware and Unreal smoke gates remain separate from native test success.
+
+## Supported baseline
+
+- Apple-silicon Mac running macOS Tahoe 26.6.2 or later.
+- Xcode 26.1.1 and an approved Unreal Engine 5.8 patch.
+- Concept2 Model D with PM5 over BLE for hardware validation.
+
+These are pinned architecture decisions, not suggestions. A replacement needs compatibility evidence and, where the decision changes, an ADR.
+
+## Setup and verification workflow
+
+1. Read [ARCHITECTURE.md](ARCHITECTURE.md), [CONTRIBUTING.md](CONTRIBUTING.md), and the relevant milestone/specification.
+2. Set `UE_ROOT` to the approved stock Unreal 5.8.2 installation if it is not in a recognized default location.
+3. Inspect the working tree before editing; preserve unrelated changes.
+4. Run the pinned native checks:
+
+   ```sh
+   make doctor
+   make configure
+   make build
+   make test
+   make format-check
+   ```
+
+5. Run `make unreal-smoke` only after `make doctor` passes. Run `make hil-pm5` for a user-driven hardware session; simulator success is not hardware evidence.
+6. Before handoff, run `git diff --check` and `git status --short`, then state exactly what was verified and what remains unverified.
+
+Generated native build output is under `Build/native/`. The checked-in `make clean` command removes only that directory.
+
+## Implementation workflow
+
+1. Keep reproducible commands in `Scripts/dev.py` and the root `Makefile`; do not rely on personal shell setup.
+2. Build and test domain code without Unreal where possible. Keep CoreBluetooth and other Apple APIs in Objective-C++ adapter code.
+3. Add deterministic fixtures and simulator/replay scenarios to `Tools/pm5-sim/`. Sanitize fixtures and never include athlete data or serial numbers.
+4. Use UnrealBuildTool for Unreal modules. Package with `RunUAT.sh`/BuildGraph as specified in the delivery architecture.
+5. Validate protocol/schema compatibility, journal recovery, and idempotency before dependent UI or cloud work.
+6. Run the physical PM5 acceptance procedure in the M1 plan; simulator or short diagnostic output alone is insufficient.
+
+## Source line length
+
+There is no maximum characters-per-line limit for source files. The checked-in `.clang-format` sets `ColumnLimit: 0`, which disables clang-format's column limit. Keep line breaks where they help readability, but do not wrap code solely to satisfy a character count. Other formatters or linters added later must also be configured without a maximum line length.
+
+## PM5 TUI logs
+
+The PoC TUI creates `Logs/pm5-tui/` on launch and writes `pm5-tui.log` there. The default threshold is `DEBUG`; files rotate at 1 MiB, retaining three numbered backups. The directory and log files are owner-only, and generated log files are ignored by Git. Diagnostic logging records commands, lifecycle events, and redacted faults, but excludes peripheral IDs, PM serials, raw BLE payloads, and metric values such as heart rate.
+
+## Change-specific checklist
+
+| Change | Minimum additional work |
+|---|---|
+| PM5 codec or connection lifecycle | Unit/property tests, simulator/replay scenario, redacted hardware evidence when required |
+| Domain contract or Protobuf schema | Versioning and compatibility check; update all consumers |
+| Journal or cloud persistence | Migration and crash/idempotency coverage; rollback notes |
+| Unreal presentation | Automation/content validation and screenshot or performance evidence as relevant |
+| Release/build tooling | Pinned version update, reproducible CI command, packaging/security verification |
+
+## Useful references
+
+- [Milestone 1 implementation plan](docs/m1/03-phase-1-implementation-plan.md)
+- [Verification strategy](docs/architecture/09-verification-strategy.md)
+- [Delivery and operations](docs/architecture/08-delivery-and-operations.md)
+- [Accepted ADRs](docs/adr/)

@@ -55,6 +55,7 @@ Concept2 uses base UUID `CE06XXXX-43E5-11E4-916C-0800200C9A66`. UUIDs and byte l
 
 | Short ID | Role | Launch use |
 |---|---|---|
+| `0x0000` | Concept2 device-discovery UUID | BLE advertisement/scan-response filter only; not a GATT service to discover after connection |
 | `0x0010` | Concept2 device-information service | discover PM identity/capabilities |
 | `0x0011`–`0x0018` | model, serial, hardware, firmware, manufacturer, machine type, MTU/DLE | capability handshake; raw serial remains local |
 | `0x0020` | PM control service | managed-workout CSAFE command/response |
@@ -88,6 +89,8 @@ stateDiagram-v2
     Discovering --> ReadingIdentity
     ReadingIdentity --> Subscribing
     Subscribing --> Ready: required notifications observed
+    Subscribing --> DiagnosticOnly: exact local Warn profile; passive packets observed
+    DiagnosticOnly --> Idle: deliberate disconnect
     Ready --> Stale: no required status by deadline
     Stale --> Reconnecting
     Reconnecting --> ReadingIdentity: same PM returns
@@ -103,7 +106,7 @@ stateDiagram-v2
 
 ### Discovery and selection
 
-- Scan for the Concept2 service UUID, not every nearby BLE advertisement indefinitely.
+- Filter CoreBluetooth scans on the advertised Concept2 discovery UUID `CE060000-43E5-11E4-916C-0800200C9A66` (`0x0000`). Do not filter on the rowing GATT service `0x0030`: CoreBluetooth returns only peripherals advertising the requested UUID, while `0x0030` is used after connection for telemetry GATT discovery.
 - Never auto-connect to a new machine just because its RSSI is strongest.
 - Show a stable friendly suffix and signal strength; do not display/store raw serial in analytics.
 - Remember a selected peripheral identifier locally. Auto-reconnect only that explicit selection within a user-started session.
@@ -123,6 +126,8 @@ stateDiagram-v2
 8. PM workout/operational state is compatible with the requested action.
 
 Advertising, connecting, or discovering a service alone never means the device is workout-ready.
+
+The diagnostic TUI may carry a separate, exact local `Warn` profile for passive investigation. It can subscribe only to the profile's required notify/indicate characteristics and emit a distinct diagnostic sample event/state; this path never enters `Ready`, sends PM5 writes, or authorizes workout, durable-session, or ranked-result use. Such a local tuple is not an approved capability profile and must not be added to the shipped allow-list based on diagnostic output alone.
 
 ## Capability matrix
 

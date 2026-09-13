@@ -1,0 +1,87 @@
+# Milestone 1 Phase 1: toolchain and PM5 diagnostic foundation
+
+Status: Planned  
+Owner: A0 — CTO / Principal Architect  
+Last reviewed: 2026-09-13
+
+## Purpose
+
+Milestone 1 Phase 1 establishes the first executable repository foundation and proves the smallest trustworthy path from a Concept2 Model D fitted with a PM5 to normalized rowing telemetry on the reference Apple-silicon Mac.
+
+The proof of concept is a standalone native terminal UI. It shares the engine-independent C++ and Objective-C++ boundaries intended for the later Unreal plug-in, but it is not a product UI and does not begin gameplay implementation.
+
+## Relationship to the product delivery plan
+
+This milestone is a bounded foundation spike within the evidence work described as Phase 0 in [the phased delivery plan](../architecture/10-delivery-plan.md). It is not the complete Phase 1 walking skeleton described there.
+
+Completing this milestone proves only:
+
+- reproducible local and CI foundations for the native diagnostic path;
+- basic PM5 discovery, selection, connection, identity, subscription, and reconnection;
+- validated conversion of published PM5 fields into a hardware-neutral telemetry contract;
+- live, ephemeral presentation in a diagnostic terminal UI;
+- simulator and real-hardware evidence for the implemented path.
+
+It does not satisfy the product Phase 0 or Phase 1 exit gates by itself.
+
+## Supported reference setup
+
+- Computer: MacBook Pro with Apple M5 Max and 128 GB unified memory.
+- Operating system: macOS Tahoe 26.6.2 or later.
+- Rower: Concept2 Model D with a PM5 configured as an indoor rower.
+- Connection: Bluetooth Low Energy through CoreBluetooth.
+- Product engine baseline: stock Unreal Engine 5.8 at an evidence-approved patch.
+- Build baseline: Xcode 26.1.1 as required by ADR-0001.
+
+The diagnostic executable may gather identity evidence from a PM5, but a device does not become supported merely because it advertises the expected service or accepts a connection. Readiness requires an exact evidence-approved hardware, firmware, machine-type, characteristic, and packet-layout profile.
+
+## Readiness and decisions
+
+| Item | Status | Rule |
+|---|---|---|
+| Product platform and engine | Resolved | Apple-silicon macOS, stock Unreal 5.8, and the ADR-0001 toolchain baseline apply. |
+| Launch device boundary | Resolved | Model D with PM5 over BLE; the public contract remains hardware-neutral. |
+| Capability profile | Pending hardware evidence | An exact observed PM5 tuple must be reviewed before it can reach `Ready`. |
+| Toolchain baseline | Blocked by local setup | Xcode 26.1.1, Git LFS, and an approved Unreal build must pass the documented smoke lanes. |
+| Product features | Explicitly deferred | The TUI is a diagnostic tool, not a substitute for the Phase 1 walking skeleton. |
+
+No implementation begins until the contract checkpoint and toolchain preflight both pass. A blocked item is recorded in the evidence report; it is not worked around by widening support or weakening a gate.
+
+## In scope
+
+- Repository and ownership boundaries.
+- Public device and telemetry interfaces.
+- Pinned toolchain manifest and diagnostic commands.
+- Empty Unreal toolchain smoke host, without product behavior.
+- Engine-independent C++ types and tests.
+- Concept2 published-protocol codecs required for basic telemetry.
+- CoreBluetooth discovery and session lifecycle.
+- Deterministic mock/replay behavior at the public device boundary.
+- Standalone TUI showing live normalized telemetry.
+- Redacted, aggregate toolchain and hardware evidence.
+
+## Out of scope
+
+- Unreal gameplay, maps, rendering, UMG/CommonUI, animation, and route movement.
+- Workout plans, PM programming, or CSAFE control commands.
+- Session creation, SQLite journaling, history, export, or recovery.
+- Cloud services, accounts, networking, Protobuf cloud contracts, or integrations.
+- Race logic, smoothing, prediction, virtual distance, or scoring.
+- USB support, PM3/PM4 support, and non-Concept2 machines.
+- Developer ID release signing, notarization, Sparkle, and distribution packaging.
+- Persisted raw BLE captures, normalized telemetry files, JSONL, or analytics upload.
+
+## Deliverables and reading order
+
+1. [Architecture and ownership](01-architecture-and-ownership.md)
+2. [Public interfaces](02-public-interfaces.md)
+3. [Implementation plan](03-phase-1-implementation-plan.md)
+4. [Evidence report](04-evidence-report.md)
+5. [Phase 2 TUI relaunch reconnect plan](05-phase-2-tui-relaunch-reconnect.md)
+6. [Milestone changelog](CHANGELOG.md)
+
+## Completion rule
+
+The milestone is complete only when all required automated checks pass and the real Model D/PM5 hardware run meets the exit criteria in the implementation plan. Documentation, simulator success, or a successful BLE connection alone is not sufficient.
+
+Any public-interface change, dependency reversal, or relaxation of the accepted toolchain/PM5 decisions requires A0 review. Merge readiness is reviewed by A8.

@@ -1,0 +1,18 @@
+{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "0.1.0",
+  "FriendlyName": "Concept2 PM",
+  "Description": "Capability-gated Concept2 PM5 BLE diagnostic adapter.",
+  "Category": "Virtual Indoor Rowing",
+  "EnabledByDefault": true,
+  "CanContainContent": false,
+  "Modules": [
+    {
+      "Name": "Concept2PMUnreal",
+      "Type": "Runtime",
+      "LoadingPhase": "Default",
+      "PlatformAllowList": ["Mac"]
+    }
+  ]
+}

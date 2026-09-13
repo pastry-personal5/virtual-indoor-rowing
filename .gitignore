@@ -1,0 +1,27 @@
+# Unreal generated data
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+*.sln
+*.xcodeproj/
+*.xcworkspace/
+
+# Native build and IDE state
+/Build/native/
+/cmake-build-*/
+/Logs/pm5-tui/*.log
+/Logs/pm5-tui/*.log.*
+/Metrics/pm5-tui/*.jsonl
+.DS_Store
+__pycache__/
+*.py[cod]
+.idea/
+.vscode/
+
+# Local-only development evidence and secrets
+*.local.json
+*.private.*
+*.mobileprovision
+*.p12
+*.key

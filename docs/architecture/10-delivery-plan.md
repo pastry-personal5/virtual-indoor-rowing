@@ -1,7 +1,7 @@
 # Phased delivery plan
 
-Status: Initial reference  
-Owner: CTO / product  
+Status: Initial reference
+Owner: CTO / product
 Last reviewed: 2026-09-13
 
 ## Strategy

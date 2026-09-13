@@ -1,0 +1,190 @@
+#include "pm5_sim/TelemetryFixtures.h"
+
+#include <cstdint>
+#include <iostream>
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace
+{
+	int Failures = 0;
+	constexpr std::uint64_t FnvOffsetBasis = 14695981039346656037ULL;
+	constexpr std::uint64_t FnvPrime = 1099511628211ULL;
+
+	void Check(bool Condition, const std::string &Message)
+	{
+		if (!Condition)
+		{
+			++Failures;
+			std::cerr << "FAIL: " << Message << '\n';
+		}
+	}
+
+	struct FReplayResult
+	{
+		std::uint64_t Hash = FnvOffsetBasis;
+		std::uint64_t MetricCount = 0;
+		std::uint64_t FinalElapsedMs = 0;
+		std::uint64_t FinalDistanceMm = 0;
+		bool SawRest = false;
+		bool SawActive = false;
+		bool SawStale = false;
+		bool SawSourceGap = false;
+		bool AllDistancesZero = true;
+	};
+
+	void HashU64(std::uint64_t Value, std::uint64_t &Hash)
+	{
+		for (unsigned Shift = 0; Shift < 64; Shift += 8)
+		{
+			Hash ^= (Value >> Shift) & 0xffU;
+			Hash *= FnvPrime;
+		}
+	}
+
+	void HashOptional(const std::optional<std::uint32_t> &Value,
+					  std::uint64_t &Hash)
+	{
+		HashU64(Value.has_value() ? 1 : 0, Hash);
+		HashU64(Value.value_or(0), Hash);
+	}
+
+	void HashSample(const FRowingMetricSample &Sample, std::uint64_t &Hash)
+	{
+		HashU64(Sample.Sequence, Hash);
+		HashU64(Sample.SourceElapsedMs, Hash);
+		HashU64(Sample.ReceivedMonotonicNs, Hash);
+		HashU64(Sample.DistanceMm, Hash);
+		HashOptional(Sample.SpeedMmPerS, Hash);
+		HashOptional(Sample.PaceMsPer500M, Hash);
+		HashOptional(Sample.StrokeRateDeciSpm, Hash);
+		HashOptional(Sample.StrokePowerW, Hash);
+		HashOptional(Sample.AveragePowerW, Hash);
+		HashOptional(Sample.Calories, Hash);
+		HashOptional(Sample.HeartRateBpm, Hash);
+		HashOptional(Sample.DragFactor, Hash);
+		HashU64(Sample.StrokeCount.has_value() ? 1 : 0, Hash);
+		HashU64(Sample.StrokeCount.value_or(0), Hash);
+		HashU64(static_cast<std::uint8_t>(Sample.WorkoutState), Hash);
+		HashU64(static_cast<std::uint8_t>(Sample.RowingState), Hash);
+		HashU64(static_cast<std::uint8_t>(Sample.StrokeState), Hash);
+		HashU64(Sample.QualityFlags, Hash);
+	}
+
+	FReplayResult RunFixture(const pm5_sim::FGoldenTelemetryFixture &Fixture)
+	{
+		FReplayResult Result;
+		pm5_sim::FReplayRowingMachine Replay(
+			pm5_sim::MakeSyntheticIndoorRowerScenario(), Fixture.Frames);
+		Check(Replay.Connect().IsAccepted(), Fixture.Name + " connects");
+		FRowingMachineEvent Event;
+		while (Replay.TryPollEvent(Event))
+		{
+		}
+
+		for (const auto &Frame : Fixture.Frames)
+		{
+			Check(Replay.AdvanceTo(Frame.AtNs),
+				  Fixture.Name + " advances deterministically");
+			while (Replay.TryPollEvent(Event))
+			{
+				if (const auto *Sample =
+						std::get_if<FRowingMetricSample>(&Event.Payload))
+				{
+					HashSample(*Sample, Result.Hash);
+					++Result.MetricCount;
+					Result.FinalElapsedMs = Sample->SourceElapsedMs;
+					Result.FinalDistanceMm = Sample->DistanceMm;
+					Result.SawRest |=
+						Sample->WorkoutState == ERowingWorkoutState::Resting;
+					Result.SawActive |=
+						Sample->RowingState == ERowingState::Active;
+					Result.AllDistancesZero &= Sample->DistanceMm == 0;
+					Result.SawSourceGap |= HasRowingQualityFlag(
+						Sample->QualityFlags, ERowingQualityFlag::SourceGap);
+				}
+				if (const auto *State =
+						std::get_if<FRowingConnectionStateChanged>(
+							&Event.Payload))
+				{
+					Result.SawStale |=
+						State->NewState == ERowingConnectionState::Stale;
+				}
+			}
+		}
+		Check(Replay.GetNextFrameIndex() == Fixture.Frames.size(),
+			  Fixture.Name + " consumes every frame once");
+		if (Fixture.DurationMs > Fixture.Frames.back().Sample.SourceElapsedMs)
+		{
+			Replay.AdvanceTo(Fixture.DurationMs * 1000000ULL);
+			while (Replay.TryPollEvent(Event))
+			{
+				if (const auto *State =
+						std::get_if<FRowingConnectionStateChanged>(
+							&Event.Payload))
+				{
+					Result.SawStale |=
+						State->NewState == ERowingConnectionState::Stale;
+				}
+			}
+		}
+		return Result;
+	}
+
+	void
+	CheckDeterministicGolden(const pm5_sim::FGoldenTelemetryFixture &Fixture)
+	{
+		const FReplayResult First = RunFixture(Fixture);
+		const FReplayResult Second = RunFixture(Fixture);
+		Check(First.MetricCount == Fixture.Frames.size(),
+			  Fixture.Name + " emits one metric for each frame");
+		Check(Second.MetricCount == First.MetricCount,
+			  Fixture.Name + " replay count is repeatable");
+		Check(Second.Hash == First.Hash,
+			  Fixture.Name + " canonical telemetry hash is repeatable");
+		Check(First.FinalElapsedMs ==
+				  Fixture.Frames.back().Sample.SourceElapsedMs,
+			  Fixture.Name + " final source time matches fixture");
+		Check(First.FinalDistanceMm == Fixture.FinalDistanceMm,
+			  Fixture.Name + " final distance matches fixture");
+	}
+
+	void golden_workouts_and_fault_replays()
+	{
+		CheckDeterministicGolden(pm5_sim::MakeEasy30SecondFixture());
+		CheckDeterministicGolden(pm5_sim::Make500mSprintFixture());
+		CheckDeterministicGolden(pm5_sim::Make2000mRaceFixture());
+		CheckDeterministicGolden(pm5_sim::Make30MinuteSteadyStateFixture());
+		CheckDeterministicGolden(pm5_sim::MakeNoRowingFixture());
+		CheckDeterministicGolden(pm5_sim::MakeIntervalFixture());
+		CheckDeterministicGolden(pm5_sim::MakeAbruptStopFixture());
+		CheckDeterministicGolden(pm5_sim::MakePacketLossFixture());
+
+		const auto NoRowing = RunFixture(pm5_sim::MakeNoRowingFixture());
+		Check(NoRowing.AllDistancesZero,
+			  "no-rowing replay never invents distance");
+		const auto Intervals = RunFixture(pm5_sim::MakeIntervalFixture());
+		Check(Intervals.SawRest && Intervals.SawActive,
+			  "interval replay covers both work and rest");
+		const auto AbruptStop = RunFixture(pm5_sim::MakeAbruptStopFixture());
+		Check(AbruptStop.SawStale,
+			  "abrupt stop enters stale state after the final status");
+		const auto PacketLoss = RunFixture(pm5_sim::MakePacketLossFixture());
+		Check(PacketLoss.SawStale, "packet-loss gap crosses stale threshold");
+		Check(PacketLoss.SawSourceGap,
+			  "resumed packet-loss fixture preserves source-gap quality");
+	}
+} // namespace
+
+int main()
+{
+	golden_workouts_and_fault_replays();
+	if (Failures != 0)
+	{
+		std::cerr << Failures << " integration assertion(s) failed\n";
+		return 1;
+	}
+	std::cout << "pm5-sim deterministic integration scenarios passed\n";
+	return 0;
+}
