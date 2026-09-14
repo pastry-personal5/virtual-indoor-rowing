@@ -7,6 +7,7 @@
 #include <ftxui/component/loop.hpp>
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/screen/color.hpp>
+#include <ftxui/screen/terminal.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -840,6 +841,7 @@ namespace
 		std::vector<std::string> History{"Ready. Press Scan to discover a PM5."};
 		FDisplaySnapshot Snapshot;
 		std::string Identity = "No device selected";
+		std::optional<FRowingMachineId> SelectedMachineId;
 		int SelectedCandidate = 0;
 
 		void AddHistory(std::string Entry)
@@ -849,12 +851,35 @@ namespace
 			History.push_back(std::move(Entry));
 		}
 
+		std::string FormatCandidateLabel(
+			const FRowingMachineDescriptor &Candidate) const
+		{
+			std::ostringstream Label;
+			if (SelectedMachineId && Candidate.Id == *SelectedMachineId)
+				Label << "[SELECTED] ";
+			Label << Candidate.DisplayLabel;
+			if (Candidate.SignalStrengthDbm)
+				Label << " | " << *Candidate.SignalStrengthDbm << " dBm";
+			Label << " | " << ToString(Candidate.KindHint);
+			return Label.str();
+		}
+
+		void RefreshCandidateLabels()
+		{
+			CandidateLabels.clear();
+			if (Candidates.empty())
+			{
+				CandidateLabels.emplace_back("No candidates. Press Scan.");
+				return;
+			}
+			for (const FRowingMachineDescriptor &Candidate : Candidates)
+				CandidateLabels.push_back(FormatCandidateLabel(Candidate));
+		}
+
 		void AddCandidate(const FRowingMachineDescriptor &Candidate)
 		{
-			if (Candidates.empty())
-				CandidateLabels.clear();
 			Candidates.push_back(Candidate);
-			CandidateLabels.push_back(Candidate.DisplayLabel);
+			RefreshCandidateLabels();
 			AddHistory("Candidate " + std::to_string(Candidates.size()) + " discovered");
 		}
 
@@ -1170,7 +1195,10 @@ namespace
 			Metrics.RecordAction(PM5Tui::EPM5TuiRunAction::CandidateSelected,
 								 static_cast<std::uint64_t>(SelectedCandidate + 1));
 			Discovery->StopScan();
-			Machine = Discovery->CreateMachine(Candidates[SelectedCandidate].Id);
+			const FRowingMachineDescriptor &Candidate = Candidates[SelectedCandidate];
+			Machine = Discovery->CreateMachine(Candidate.Id);
+			SelectedMachineId = Candidate.Id;
+			RefreshCandidateLabels();
 			AddHistory("Candidate " + std::to_string(SelectedCandidate + 1) + " selected");
 		}
 
@@ -1187,6 +1215,23 @@ namespace
 			AddHistory("Connection requested");
 		}
 
+		void ForgetRememberedMachine()
+		{
+			if (Machine)
+			{
+				Machine->Disconnect();
+				if (auto *PM5Diagnostics =
+						dynamic_cast<IConcept2PMRunDiagnostics *>(Machine.get()))
+					PM5Diagnostics->FinalizePM5ProbeCapture();
+				Machine.reset();
+			}
+			Discovery->ForgetRememberedMachine();
+			SelectedMachineId.reset();
+			RefreshCandidateLabels();
+			Identity = "No device selected";
+			AddHistory("Remembered PM5 forgotten; disconnected");
+		}
+
 		ftxui::Component BuildComponent(ftxui::App &Screen)
 		{
 			const auto Scan = ftxui::Button("Scan", [this]
@@ -1199,41 +1244,58 @@ namespace
 													 { Connect(); });
 			const auto Disconnect = ftxui::Button("Disconnect", [this]
 												  { if (Machine) { Metrics.RecordAction(PM5Tui::EPM5TuiRunAction::DisconnectRequested); Machine->Disconnect(); } });
+			const auto Forget = ftxui::Button("Forget PM5", [this]
+											  { ForgetRememberedMachine(); });
 			const auto Quit = ftxui::Button("Quit", [&Screen]
 											{ Screen.Exit(); });
 			const auto Menu = ftxui::Menu(&CandidateLabels, &SelectedCandidate);
+			const auto Actions = ftxui::Container::Vertical({
+				ftxui::Container::Horizontal({Scan, Stop, Select, ConnectButton, Disconnect}),
+				ftxui::Container::Horizontal({Forget, Quit}),
+			});
 			const auto Controls = ftxui::Container::Vertical({
-				ftxui::Container::Horizontal({Scan, Stop, Select, ConnectButton, Disconnect, Quit}),
+				Actions,
 				Menu,
 			});
-			auto Root = ftxui::Renderer(Controls, [this, Controls]
+			auto Root = ftxui::Renderer(Controls, [this, Actions, Menu]
 										{
 				ftxui::Elements HistoryElements;
 				for (const std::string &Entry : History)
 					HistoryElements.push_back(ftxui::text(Entry));
-				return ftxui::vbox({
-					ftxui::vbox({
+				auto MainPane = ftxui::vbox({
 					ftxui::text(HardwareProbeEnabled
 								? "PM5 Hardware Probe — RAW TELEMETRY CAPTURE ACTIVE"
 								: "PM5 Diagnostic") |
 						ftxui::bold,
-						ftxui::text("Controls: Tab/Shift-Tab to focus, Enter to activate, q to quit."),
+						ftxui::text("Controls: Tab/Shift-Tab to focus, arrows to choose a PM5, Enter to activate, q to quit."),
+						Actions->Render(),
 						ftxui::separator(),
 						ftxui::text("Telemetry") | ftxui::bold,
 						ftxui::separator(),
 						ftxui::text("Identity: " + Identity),
-						ftxui::text("Candidates") | ftxui::bold,
-						Controls->Render() | ftxui::size(ftxui::HEIGHT, ftxui::LESS_THAN, 4),
-						ftxui::separator(),
 						TelemetryContent(),
 						ftxui::separator(),
 						ftxui::text("Recent events") | ftxui::bold,
 						ftxui::vbox(std::move(HistoryElements)) |
 							ftxui::size(ftxui::HEIGHT, ftxui::LESS_THAN, 4),
 						ftxui::filler(),
-					}) | ftxui::border | ftxui::flex,
-					StatusLine(),
-				}) | ftxui::border | ftxui::flex; });
+				}) | ftxui::border | ftxui::flex;
+				auto CandidatePane = ftxui::vbox({
+					ftxui::text("PM5 devices") | ftxui::bold,
+					ftxui::separator(),
+					Menu->Render() | ftxui::flex,
+				}) | ftxui::border | ftxui::flex;
+				const bool WideLayout = ftxui::Terminal::Size().dimx >= 100;
+				auto Content = WideLayout
+					? ftxui::hbox({
+						  MainPane | ftxui::flex,
+						  CandidatePane | ftxui::size(ftxui::WIDTH, ftxui::EQUAL,
+															std::max(24, ftxui::Terminal::Size().dimx / 4)),
+					  })
+					: ftxui::vbox({CandidatePane | ftxui::size(ftxui::HEIGHT, ftxui::LESS_THAN, 8),
+										MainPane | ftxui::flex});
+				return ftxui::vbox({Content | ftxui::flex, StatusLine()}) |
+					ftxui::border | ftxui::flex; });
 			return Root | ftxui::CatchEvent([&Screen](ftxui::Event Event)
 											{
 				if (Event == ftxui::Event::Character('q'))
@@ -1263,7 +1325,7 @@ int main(int argc, char **argv)
 		std::cout << "PM5 Diagnostic\n"
 				  << "Interactive: run without arguments.\n"
 				  << "Hardware probe: --hardware-probe (owner-only bounded raw telemetry capture).\n"
-				  << "Script: --script <status|scan|stop|select N|connect|disconnect|quit>...\n";
+				  << "Script: --script <status|scan|stop|select N|connect|disconnect|forget|quit>...\n";
 		return 0;
 	}
 	if (std::string_view(argv[ArgumentIndex]) != "--script")
@@ -1329,6 +1391,19 @@ int main(int argc, char **argv)
 		{
 			Metrics.RecordAction(PM5Tui::EPM5TuiRunAction::DisconnectRequested);
 			Machine->Disconnect();
+		}
+		else if (Command == "forget")
+		{
+			if (Machine)
+			{
+				Machine->Disconnect();
+				if (auto *PM5Diagnostics =
+						dynamic_cast<IConcept2PMRunDiagnostics *>(Machine.get()))
+					PM5Diagnostics->FinalizePM5ProbeCapture();
+				Machine.reset();
+			}
+			Discovery->ForgetRememberedMachine();
+			std::cout << "remembered PM5 forgotten; disconnected\n";
 		}
 		else if (Command == "__test_identity")
 		{

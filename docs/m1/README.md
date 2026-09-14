@@ -83,8 +83,18 @@ weakening requirements.
 2. [Public interfaces](02-public-interfaces.md)
 3. [Implementation plan](03-phase-1-implementation-plan.md)
 4. [Evidence report](04-evidence-report.md)
-5. [Phase 2 TUI relaunch reconnect plan](05-phase-2-tui-relaunch-reconnect.md)
+5. [Phase 2 remembered-PM5 and TUI implementation](05-phase-2-tui-relaunch-reconnect.md)
 6. [Milestone changelog](CHANGELOG.md)
+
+## Phase 2 follow-on
+
+Phase 2 hardens remembered-PM5 relaunch reconnect, adds a user-driven forget
+flow, and places the selectable PM5 list in a tall right-side TUI pane. It was
+completed on 2026-09-14 as a bounded diagnostic milestone after the owner
+accepted the six user-reported Phase 2 HIL passes and the available local
+artifacts. This does not represent the product roadmap's solo-alpha phase or
+product/release acceptance. Evidence limitations and the separately skipped
+physical multiple-candidate test remain follow-on items before support expansion.
 
 ## Completion rule
 

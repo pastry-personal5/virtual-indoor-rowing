@@ -12,6 +12,9 @@ class IConcept2PMDiscovery : public IRowingMachineDiscovery
 {
   public:
 	virtual std::unique_ptr<IRowingMachine> TryTakeRelaunchMachine() = 0;
+	// Clears only the adapter-private remembered PM5 preference. The caller owns
+	// and must disconnect any machine already transferred from discovery.
+	virtual void ForgetRememberedMachine() = 0;
 };
 
 // Factories for callers that must not construct PM protocol profiles. The

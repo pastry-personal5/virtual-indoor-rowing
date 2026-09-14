@@ -20,7 +20,11 @@ def main() -> int:
         capture_output=True,
         text=True,
     )
-    if help_result.returncode != 0 or "Interactive: run without arguments." not in help_result.stdout:
+    if (
+        help_result.returncode != 0
+        or "Interactive: run without arguments." not in help_result.stdout
+        or "forget" not in help_result.stdout
+    ):
         print(help_result.stdout + help_result.stderr, file=sys.stderr)
         return 1
 
@@ -68,6 +72,21 @@ def main() -> int:
             if len(metrics_paths) == 1
             else []
         )
+
+    with tempfile.TemporaryDirectory(prefix="pm5-tui-forget-smoke-") as temp_dir:
+        forget_result = subprocess.run(
+            [sys.argv[1], "--script", "forget", "quit"],
+            check=False,
+            capture_output=True,
+            text=True,
+            cwd=temp_dir,
+        )
+    if (
+        forget_result.returncode != 0
+        or "remembered PM5 forgotten; disconnected" not in forget_result.stdout
+    ):
+        print(forget_result.stdout + forget_result.stderr, file=sys.stderr)
+        return 1
     output = result.stdout + result.stderr
     if result.returncode != 0:
         print(output, file=sys.stderr)

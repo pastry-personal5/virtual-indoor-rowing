@@ -4,6 +4,44 @@ This file records accepted delivery-history changes for Milestone 1. Follow the 
 
 ## Unreleased
 
+### Added
+
+- Began M1 Phase 2: remember a PM5 only after approved readiness, persist a
+  versioned local identity tuple, revalidate it at relaunch, and provide a
+  Forget PM5 action that disconnects the active diagnostic session.
+- Moved the selectable PM5 list to a tall right-side TUI pane (about 25% width)
+  with a stacked layout below 100 terminal columns. Entries show label, RSSI,
+  and machine kind; the explicitly selected device carries a `[SELECTED]` tag.
+- Added the Phase 2 implementation and HIL acceptance record in
+  `docs/m1/05-phase-2-tui-relaunch-reconnect.md`.
+- Updated `make format-check` to skip generated Unreal directories, so local
+  Editor output cannot introduce unrelated formatting failures.
+
+### Changed
+
+- Recorded the user-reported successful human `make unreal-smoke` retry
+  (UnrealBuildTool result succeeded; 2.23 seconds). The trace remains in the
+  user's Application Support directory; Bluetooth HIL acceptance is still
+  pending.
+- Recorded user-reported passes for fresh Bluetooth permission approval,
+  denial, and Settings repair in `make hil-pm5`; the later Phase 2 close below
+  records all required scenarios as user-reported passes.
+- Updated Phase 2 and M1 evidence with user-reported passes for Bluetooth
+  denial/settings repair, wrong-device rejection, remembered-device relaunch
+  and forget persistence, clean disconnect/shutdown, PM-display comparison and
+  live-row aggregates, and stale telemetry with deliberate same-device
+  reconnect. The reports do not include source revision, PM5 tuple, timings, or
+  per-scenario metrics artifacts; product/release evidence review remains
+  outstanding.
+- Recorded the physical multiple-candidate selection scenario as skipped by
+  user decision. Simulator selection coverage passes, but two-device hardware
+  selection remains unverified.
+- Marked M1 Phase 2 complete for its bounded diagnostic scope by user/A0
+  decision, based on the six operator-reported HIL passes, newly found local
+  profile-v6 metrics/relaunch evidence, and passing local build/test/format
+  checks. Product/release qualification and broader hardware evidence remain
+  follow-on work.
+
 ### Changed
 
 - Revised the bounded M1 Phase 1 exit gate by recorded A0/A8 decision: local

@@ -275,20 +275,20 @@ first notifications before `Ready`.
 
 | Scenario | Result | Aggregate evidence/notes |
 |---|---|---|
-| Fresh permission approval | Pending | |
-| Permission denial | Pending | |
-| Settings repair and retry | Pending | |
+| Fresh permission approval | Pass (user-reported) | Recorded in Phase 2; source revision and PM5 tuple were not included. |
+| Permission denial | Pass (user-reported, 2026-09-14) | No source revision, PM5 tuple, or run evidence was included in the report. |
+| Settings repair and retry | Pass (user-reported, 2026-09-14) | No source revision, PM5 tuple, or run evidence was included in the report. |
 | Explicit scan and target selection | Pending | |
-| Multiple-candidate selection | Pending | |
+| Multiple-candidate selection | Skipped (user decision) | No physical multi-PM5 selection run. Deterministic simulator selection coverage passes, but real-device behavior remains unverified. |
 | Identity/capability handshake | Observed; formal profile review pending | Redacted tuple PM5/634/8200-000372-178.067/IndoorRower; application logged `Allowed` and entered `Ready`. Direct characteristic-property evidence and reviewer sign-off remain pending. |
 | Required notification readiness | Observed | Application entered `Ready` after subscribing; full notification counts remain unavailable. |
 | Optional/sentinel rendering | Pending | |
-| 500 ms stale transition | Pending | |
-| 1.5 s blocking warning | Pending | |
-| Deliberate disconnect | Pending | |
-| Same-device reconnect and identity recheck | Incidental observation only | Link loss while waiting to begin at 14:49:31.050Z; same redacted identity returned to `Ready` at 14:49:35.440Z. Deliberate HIL case remains pending. |
-| Wrong-device appearance during reconnect | Pending | |
-| Clean disconnect and application shutdown | Pending | |
+| 500 ms stale transition | Pass (user-reported, 2026-09-14) | Reported as part of the stale telemetry HIL case; no source revision, PM5 tuple, transition time, or metrics artifact was included. |
+| 1.5 s blocking warning | Pass (user-reported, 2026-09-14) | Reported as part of the stale telemetry HIL case; no source revision, PM5 tuple, transition time, or metrics artifact was included. |
+| Deliberate disconnect | Pass (user-reported, 2026-09-14) | Reported as part of the stale/reconnect HIL case; no source revision, PM5 tuple, or metrics artifact was included. |
+| Same-device reconnect and identity recheck | Pass (user-reported, 2026-09-14) | Reported as part of the deliberate link-loss HIL case; no source revision, PM5 tuple, reconnect gap, or metrics artifact was included. |
+| Wrong-device appearance during reconnect | Pass (user-reported, 2026-09-14) | No source revision, PM5 tuple, or run evidence was included in the report. |
+| Clean disconnect and application shutdown | Pass (user-reported, 2026-09-14) | No source revision, PM5 tuple, or run evidence was included in the report. |
 
 ## Six-minute run template
 
@@ -331,8 +331,7 @@ The report contains aggregate counters only. A failure requiring packet-level di
 | Item | Owner | Resolution required |
 |---|---|---|
 | Published Apple-silicon CI | A7 | The local native suite passes; publish and retain a redacted self-hosted runner result before the next product milestone. |
-| PM-display comparison and expanded HIL aggregates | A1/A0 | The `.069` probe proves rate configuration and accepted stroke layouts. Compare values with the PM5 display and retain per-characteristic HIL aggregates before widening support. |
-| Manual TCC and adverse connection scenarios | A1/A7 | Complete fresh approval, denial, repair, stale, deliberate disconnect/reconnect, wrong-device, and clean-shutdown cases before release qualification. |
+| HIL evidence review | A1/A0/A7 | Phase 2 was closed for bounded diagnostic scope by owner decision; all six required scenarios are user-reported passes. The 2026-09-14 profile-v6 metrics add a source revision, exact tuple, live-row aggregates, and zero-overflow evidence; a separate artifact records remembered-device relaunch reconnect. Per-scenario comparison readings and stale/link-loss events are not present in these artifacts. Before product release qualification or support expansion, review complete redacted run metadata and resolve the physical multiple-candidate case skipped by user decision; other pending cases in the hardware scenario table remain open. |
 
 ## Exit decision
 

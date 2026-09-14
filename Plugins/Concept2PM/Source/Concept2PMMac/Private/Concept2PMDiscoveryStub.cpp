@@ -57,6 +57,9 @@ namespace
 		{
 			return nullptr;
 		}
+		void ForgetRememberedMachine() override
+		{
+		}
 		std::unique_ptr<IRowingMachine>
 		CreateMachine(const FRowingMachineId &) override
 		{

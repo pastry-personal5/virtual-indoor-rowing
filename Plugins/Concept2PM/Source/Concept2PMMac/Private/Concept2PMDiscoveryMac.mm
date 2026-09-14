@@ -9,12 +9,15 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <deque>
 #include <memory>
 #include <map>
 #include <mutex>
+#include <optional>
 #include <set>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -187,22 +190,80 @@ namespace
 	constexpr std::uint64_t ReconnectTelemetryNs = 1'500'000'000ULL;
 	constexpr std::uint32_t MaxReconnectAttempts = 3;
 	NSString *const RememberedPeripheralDefaultsKey =
+		@"dev.virtualrowing.pm5-diagnostic.remembered-peripheral.v2";
+	NSString *const LegacyRememberedPeripheralDefaultsKey =
 		@"dev.virtualrowing.pm5-diagnostic.remembered-peripheral.v1";
+	constexpr NSInteger RememberedPeripheralSchemaVersion = 2;
 
-	void SaveRememberedPeripheral(CBPeripheral *Peripheral)
+	struct FRememberedPeripheral
+	{
+		NSUUID *Identifier = nil;
+		Concept2PM::FPM5Identity Identity;
+	};
+
+	void SaveRememberedPeripheral(CBPeripheral *Peripheral,
+								  const Concept2PM::FPM5Identity &Identity)
 	{
 		if (Peripheral == nil || Peripheral.identifier.UUIDString == nil)
 			return;
-		[[NSUserDefaults standardUserDefaults]
-			setObject:Peripheral.identifier.UUIDString
-			   forKey:RememberedPeripheralDefaultsKey];
+		NSString *const Model = [NSString stringWithUTF8String:Identity.MonitorModel.c_str()];
+		NSString *const Hardware = [NSString stringWithUTF8String:Identity.HardwareRevision.c_str()];
+		NSString *const Firmware = [NSString stringWithUTF8String:Identity.FirmwareRevision.c_str()];
+		if (Model == nil || Hardware == nil || Firmware == nil ||
+			Model.length == 0 || Hardware.length == 0 || Firmware.length == 0 ||
+			Identity.MachineKind != ERowingMachineKind::IndoorRower)
+			return;
+		NSDictionary *const Record = @{
+			@"schema_version" : @(RememberedPeripheralSchemaVersion),
+			@"peripheral_uuid" : Peripheral.identifier.UUIDString,
+			@"model" : Model,
+			@"hardware_revision" : Hardware,
+			@"firmware_revision" : Firmware,
+			@"machine_kind" : @(static_cast<std::uint8_t>(Identity.MachineKind))
+		};
+		NSUserDefaults *const Defaults = [NSUserDefaults standardUserDefaults];
+		[Defaults setObject:Record forKey:RememberedPeripheralDefaultsKey];
+		[Defaults removeObjectForKey:LegacyRememberedPeripheralDefaultsKey];
 	}
 
-	NSUUID *LoadRememberedPeripheralIdentifier()
+	std::optional<FRememberedPeripheral> LoadRememberedPeripheral()
 	{
-		NSString *const Stored = [[NSUserDefaults standardUserDefaults]
-			stringForKey:RememberedPeripheralDefaultsKey];
-		return Stored == nil ? nil : [[NSUUID alloc] initWithUUIDString:Stored];
+		NSUserDefaults *const Defaults = [NSUserDefaults standardUserDefaults];
+		id const Stored = [Defaults objectForKey:RememberedPeripheralDefaultsKey];
+		if (![Stored isKindOfClass:[NSDictionary class]])
+		{
+			[Defaults removeObjectForKey:RememberedPeripheralDefaultsKey];
+			[Defaults removeObjectForKey:LegacyRememberedPeripheralDefaultsKey];
+			return std::nullopt;
+		}
+		NSDictionary *const Record = (NSDictionary *)Stored;
+		NSNumber *const Version = Record[@"schema_version"];
+		NSString *const IdentifierString = Record[@"peripheral_uuid"];
+		NSString *const Model = Record[@"model"];
+		NSString *const Hardware = Record[@"hardware_revision"];
+		NSString *const Firmware = Record[@"firmware_revision"];
+		NSNumber *const Kind = Record[@"machine_kind"];
+		NSUUID *const Identifier = [IdentifierString isKindOfClass:[NSString class]]
+									   ? [[NSUUID alloc] initWithUUIDString:IdentifierString]
+									   : nil;
+		const bool Valid = [Version isKindOfClass:[NSNumber class]] &&
+						   Version.integerValue == RememberedPeripheralSchemaVersion &&
+						   Identifier != nil && [Model isKindOfClass:[NSString class]] && Model.length > 0 &&
+						   [Hardware isKindOfClass:[NSString class]] && Hardware.length > 0 &&
+						   [Firmware isKindOfClass:[NSString class]] && Firmware.length > 0 &&
+						   [Kind isKindOfClass:[NSNumber class]] &&
+						   Kind.unsignedCharValue == static_cast<std::uint8_t>(ERowingMachineKind::IndoorRower);
+		if (!Valid)
+		{
+			[Defaults removeObjectForKey:RememberedPeripheralDefaultsKey];
+			[Defaults removeObjectForKey:LegacyRememberedPeripheralDefaultsKey];
+			return std::nullopt;
+		}
+		FRememberedPeripheral Result;
+		Result.Identifier = Identifier;
+		Result.Identity = {Model.UTF8String, Hardware.UTF8String, Firmware.UTF8String, static_cast<ERowingMachineKind>(Kind.unsignedCharValue)};
+		[Defaults removeObjectForKey:LegacyRememberedPeripheralDefaultsKey];
+		return Result;
 	}
 
 	void EnqueueEvent(std::deque<FRowingMachineEvent> &Events,
@@ -230,6 +291,7 @@ class FMacDiscovery final : public IConcept2PMDiscovery
 	FRowingCommandResult StopScan() override;
 	bool TryPollDiscoveryEvent(FRowingMachineEvent &OutEvent) override;
 	std::unique_ptr<IRowingMachine> TryTakeRelaunchMachine() override;
+	void ForgetRememberedMachine() override;
 	std::unique_ptr<IRowingMachine>
 	CreateMachine(const FRowingMachineId &MachineId) override;
 
@@ -239,6 +301,8 @@ class FMacDiscovery final : public IConcept2PMDiscovery
 	void OnConnectionFailed(CBPeripheral *Peripheral, NSError *Error);
 	void OnDisconnected(CBPeripheral *Peripheral, NSError *Error);
 	void ClearActive(FMacMachine *Machine);
+	void RememberWhenReady(CBPeripheral *Peripheral,
+						   const Concept2PM::FPM5Identity &Identity);
 
   private:
 	struct FDiscoveredPeripheral
@@ -293,6 +357,7 @@ class FMacMachine final : public IRowingMachine,
 	FRowingCommandResult Connect() override;
 	FRowingCommandResult Disconnect() override;
 	void StartRelaunchReconnect();
+	void ExpectRelaunchIdentity(Concept2PM::FPM5Identity Identity);
 	ERowingConnectionState GetConnectionState() const override;
 	FRowingMachineDiagnostics GetDiagnostics() const override;
 	FPM5RunDiagnostics GetPM5RunDiagnostics() const override;
@@ -640,6 +705,12 @@ void FMacMachine::StartRelaunchReconnect()
 	dispatch_async(Queue, ^{
 	  [Central connectPeripheral:Delegate.Peripheral options:nil];
 	});
+}
+
+void FMacMachine::ExpectRelaunchIdentity(Concept2PM::FPM5Identity Identity)
+{
+	std::lock_guard<std::mutex> Lock(Mutex);
+	ExpectedReconnectIdentity = std::move(Identity);
 }
 
 ERowingConnectionState FMacMachine::GetConnectionState() const
@@ -1155,6 +1226,10 @@ void FMacMachine::FinishTelemetryIfReady()
 	{
 		Transition(ERowingConnectionState::Ready,
 				   ERowingConnectionReason::ReadinessConfirmed);
+		VIRPM5PeripheralDelegate *Delegate =
+			static_cast<VIRPM5PeripheralDelegate *>(PeripheralDelegate);
+		Discovery.RememberWhenReady(Delegate.Peripheral,
+									{Model, Hardware, Firmware, *MachineKind});
 		if (ReconnectInProgress && LastMachineInfo)
 		{
 			const std::uint64_t GapNs = MonotonicNowNs() - ReconnectStartedNs;
@@ -1929,11 +2004,11 @@ void FMacDiscovery::TryReconnectRememberedPeripheral(CBCentralManager *Central)
 	if (RelaunchAttempted || ActiveMachine != nullptr || Central == nil)
 		return;
 	RelaunchAttempted = true;
-	NSUUID *const Identifier = LoadRememberedPeripheralIdentifier();
-	if (Identifier == nil)
+	const std::optional<FRememberedPeripheral> Remembered = LoadRememberedPeripheral();
+	if (!Remembered)
 		return;
 	NSArray<CBPeripheral *> *const Peripherals =
-		[Central retrievePeripheralsWithIdentifiers:@[ Identifier ]];
+		[Central retrievePeripheralsWithIdentifiers:@[ Remembered->Identifier ]];
 	if (Peripherals.count != 1)
 	{
 		EmitScanFault(ERowingFaultCode::ConnectionTimeout,
@@ -1947,8 +2022,16 @@ void FMacDiscovery::TryReconnectRememberedPeripheral(CBCentralManager *Central)
 		Peripherals.firstObject,
 		Profiles,
 		ProbeConfiguration);
+	RelaunchMachine->ExpectRelaunchIdentity(Remembered->Identity);
 	ActiveMachine = RelaunchMachine.get();
 	RelaunchMachine->StartRelaunchReconnect();
+}
+
+void FMacDiscovery::RememberWhenReady(
+	CBPeripheral *Peripheral,
+	const Concept2PM::FPM5Identity &Identity)
+{
+	SaveRememberedPeripheral(Peripheral, Identity);
 }
 
 FRowingCommandResult FMacDiscovery::StartScan()
@@ -2007,6 +2090,25 @@ std::unique_ptr<IRowingMachine> FMacDiscovery::TryTakeRelaunchMachine()
 	return std::unique_ptr<IRowingMachine>(TransferredMachine);
 }
 
+void FMacDiscovery::ForgetRememberedMachine()
+{
+	NSUserDefaults *const Defaults = [NSUserDefaults standardUserDefaults];
+	[Defaults removeObjectForKey:RememberedPeripheralDefaultsKey];
+	[Defaults removeObjectForKey:LegacyRememberedPeripheralDefaultsKey];
+	__block FMacMachine *CancelledRelaunch = nullptr;
+	dispatch_sync(Queue, ^{
+	  if (RelaunchMachine)
+	  {
+		  CancelledRelaunch = RelaunchMachine.release();
+		  if (ActiveMachine == CancelledRelaunch)
+			  ActiveMachine = nullptr;
+	  }
+	});
+	// Destruction waits for CoreBluetooth cancellation and clears ActiveMachine.
+	// Do it outside Queue because FMacMachine's destructor synchronizes on it.
+	delete CancelledRelaunch;
+}
+
 std::unique_ptr<IRowingMachine>
 FMacDiscovery::CreateMachine(const FRowingMachineId &MachineId)
 {
@@ -2042,7 +2144,6 @@ FMacDiscovery::CreateMachine(const FRowingMachineId &MachineId)
 		  Profiles,
 		  ProbeConfiguration);
 	  ActiveMachine = CreatedMachine;
-	  SaveRememberedPeripheral(Peripheral);
 	});
 	return std::unique_ptr<IRowingMachine>(CreatedMachine);
 }

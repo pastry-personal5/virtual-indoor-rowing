@@ -77,13 +77,15 @@ A1 implements the minimum production-shaped path:
 12. Decode exact allowed lengths, little-endian fields, sentinels, and enums; emit normalized samples and explicit faults.
 13. Detect stale telemetry, disconnect, and bounded same-device reconnection with identity revalidation.
 14. Implement automatic reconnection functionality:
-    - Store the last explicitly selected PM5 identifier locally in adapter-private preferences
-    - On TUI launch, attempt to reconnect to the stored PM5 without requiring a new scan
+    - Store the last explicitly selected PM5 only after it reaches `Ready`, with a versioned adapter-private identity tuple
+    - On TUI launch, make one bounded reconnect cycle to that PM5 and revalidate identity before accepting telemetry
     - If the stored PM5 is unavailable, fall back to normal scanning behavior
     - Show clear status messages about the reconnection attempt
     - Transfer the remembered-PM5 machine to the TUI's single `IRowingMachine`
       owner so normal event polling, explicit shutdown, and final diagnostics use
       the same path as a manually selected machine
+    - Let the user forget the remembered PM5; disconnect and release an active
+      remembered connection and do not reconnect automatically on the next launch
 
 The implementation uses only the published Concept2 specification and observed hardware evidence. It does not send CSAFE commands, attempt authentication, mutate PM state, or infer undocumented fields.
 

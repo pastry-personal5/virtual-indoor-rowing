@@ -355,7 +355,13 @@ def format_check() -> int:
 		base = ROOT / directory
 		if base.is_dir():
 			for suffix in ("*.h", "*.hpp", "*.cpp", "*.cc", "*.cxx", "*.mm", "*.m"):
-				sources.extend(str(path) for path in base.rglob(suffix))
+				for path in base.rglob(suffix):
+					if any(
+						part in {"Binaries", "DerivedDataCache", "Intermediate", "Saved"}
+						for part in path.parts
+					):
+						continue
+					sources.append(str(path))
 	if not sources:
 		print("ERROR: no C++ sources found for format check", file=sys.stderr)
 		return 1
