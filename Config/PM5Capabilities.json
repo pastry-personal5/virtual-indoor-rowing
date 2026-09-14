@@ -1,0 +1,86 @@
+{
+  "$schema": "./PM5Capabilities.schema.json",
+  "schema_version": 1,
+  "profile_version": 4,
+  "profiles": [
+    {
+      "monitor_model": "PM5",
+      "hardware_revision": "634",
+      "firmware_revision": "8200-000372-178.067",
+      "machine_kind": "IndoorRower",
+      "support_state": "Allowed",
+      "required_characteristics": [
+        {
+          "short_id": "0x0031",
+          "required_properties": ["notify"],
+          "allowed_packet_lengths": [19],
+          "implemented_fields": [
+            "source_elapsed",
+            "distance",
+            "workout_state",
+            "rowing_state",
+            "stroke_state",
+            "drag_factor"
+          ]
+        },
+        {
+          "short_id": "0x0032",
+          "required_properties": ["notify"],
+          "allowed_packet_lengths": [17],
+          "implemented_fields": [
+            "source_elapsed",
+            "speed",
+            "pace",
+            "stroke_rate",
+            "heart_rate"
+          ]
+        }
+      ],
+      "optional_characteristics": [
+        {
+          "short_id": "0x0034",
+          "required_properties": ["read", "write"],
+          "allowed_packet_lengths": [],
+          "implemented_fields": []
+        },
+        {
+          "short_id": "0x0035",
+          "required_properties": ["notify"],
+          "allowed_packet_lengths": [20],
+          "implemented_fields": [
+            "source_elapsed",
+            "distance",
+            "drive_length",
+            "drive_time",
+            "recovery_time",
+            "stroke_distance",
+            "peak_drive_force",
+            "average_drive_force",
+            "work_per_stroke",
+            "stroke_count"
+          ]
+        },
+        {
+          "short_id": "0x0036",
+          "required_properties": ["notify"],
+          "allowed_packet_lengths": [18],
+          "implemented_fields": [
+            "source_elapsed",
+            "stroke_power",
+            "calories_per_hour",
+            "stroke_count",
+            "projected_work_time",
+            "projected_work_distance",
+            "projected_work_other"
+          ]
+        }
+      ],
+      "requested_status_period_ms": 100,
+      "stale_after_ms": 500,
+      "blocking_warning_after_ms": 1500,
+      "source_spec_sha256": "7ee2513c1084082092f3cfb8c9437682912535c549a7b948e5aba5321d562e48",
+      "evidence_reference": "M1 PM5/634/178.067 profile v4; Concept2 PM CSAFE Communication Definition rev 0.34 BLE GATT table, printed pp. 17-18 and 21-22",
+      "approved_on": "2026-09-14"
+    }
+  ]
+}

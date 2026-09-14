@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "PM5Capabilities.schema.json",
+  "title": "PM5 development capability allow-list",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "profile_version", "profiles"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schema_version": { "const": 1 },
+    "profile_version": { "type": "integer", "minimum": 1 },
+    "profiles": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/profile" }
+    }
+  },
+  "$defs": {
+    "characteristic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["short_id", "required_properties", "allowed_packet_lengths", "implemented_fields"],
+      "properties": {
+        "short_id": { "type": "string", "pattern": "^0x[0-9A-Fa-f]{4}$" },
+        "required_properties": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "enum": ["read", "write", "write_without_response", "notify", "indicate"] }
+        },
+        "allowed_packet_lengths": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "integer", "minimum": 1, "maximum": 512 }
+        },
+        "implemented_fields": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 64 }
+        }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "monitor_model",
+        "hardware_revision",
+        "firmware_revision",
+        "machine_kind",
+        "support_state",
+        "required_characteristics",
+        "optional_characteristics",
+        "requested_status_period_ms",
+        "stale_after_ms",
+        "blocking_warning_after_ms",
+        "source_spec_sha256",
+        "evidence_reference",
+        "approved_on"
+      ],
+      "properties": {
+        "monitor_model": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "hardware_revision": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "firmware_revision": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "machine_kind": { "const": "IndoorRower" },
+        "support_state": { "enum": ["Allowed", "Warn", "Blocked"] },
+        "required_characteristics": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/characteristic" }
+        },
+        "optional_characteristics": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/characteristic" }
+        },
+        "requested_status_period_ms": { "const": 100 },
+        "stale_after_ms": { "const": 500 },
+        "blocking_warning_after_ms": { "const": 1500 },
+        "source_spec_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "evidence_reference": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "approved_on": { "type": "string", "format": "date" }
+      }
+    }
+  }
+}

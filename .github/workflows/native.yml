@@ -1,0 +1,35 @@
+name: M1 native quality gates
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    # This label identifies the provisioned golden Apple-silicon runner with
+    # Xcode 26.1.1 and CMake/Ninja versions pinned by Config/BuildVersions.json.
+    runs-on: [self-hosted, macOS, ARM64, vir-m1]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - name: Verify pinned toolchain
+        run: make doctor
+      - name: Configure native targets
+        run: make configure
+      - name: Compile native targets
+        run: make build
+      - name: Run unit, protocol, contract, and integration tests
+        run: make test
+      - name: Check C++ formatting
+        run: make format-check
+      - name: Check patch whitespace
+        run: git diff --check
+
+# PM5 hardware-in-loop and Unreal smoke jobs run only on explicitly provisioned
+# rigs; they are separate from ordinary pull-request CI and never simulated.

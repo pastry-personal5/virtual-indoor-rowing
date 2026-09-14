@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "application_version": "0.1.0",
+  "application_build": 1,
+  "platform": {
+    "os": "macOS Tahoe",
+    "minimum_version": "26.6.2",
+    "architecture": "arm64"
+  },
+  "xcode": {
+    "version": "26.1.1",
+    "developer_directory": "/Applications/Xcode-26.1.1.app/Contents/Developer",
+    "build": "17B100",
+    "sdk_version": "26.1",
+    "compiler_version": "Apple clang version 17.0.0 (clang-1700.4.4.1)"
+  },
+  "build_tools": {
+    "cmake": "4.3.2",
+    "ninja": "1.13.0",
+    "git_lfs": "3.8.0"
+  },
+  "unreal": {
+    "version": "5.8",
+    "approved_patch": 2,
+    "fingerprint_sha256": "ff99fc3dd98e7c7fd2f5700334bc792dfb7baced3828cdee32940bb69581a6a4",
+    "installation_root": null
+  },
+  "observed_baseline": {
+    "observed_on": "2026-09-13",
+    "architecture": "arm64",
+    "xcode_version": "26.6",
+    "cmake_version": "4.3.2",
+    "ninja_version": "1.13.0",
+    "git_lfs": "3.8.0",
+    "unreal": "5.8.2 changelist 56702186; Build.version digest ff99fc3dd98e7c7fd2f5700334bc792dfb7baced3828cdee32940bb69581a6a4"
+  }
+}
