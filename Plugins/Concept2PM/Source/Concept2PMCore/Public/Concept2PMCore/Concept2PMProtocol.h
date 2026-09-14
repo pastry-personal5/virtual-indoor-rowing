@@ -195,6 +195,13 @@ namespace Concept2PM
 		std::optional<std::uint32_t> ProjectedWorkOtherRaw;
 	};
 
+	// Reconnect may resume the same PM workout only when cumulative source facts
+	// remain monotonic and the workout state has not reset or resumed after a
+	// terminal outcome. No measurement is corrected or synthesized here.
+	bool IsReconnectContinuationCompatible(
+		const FGeneralStatusFact &Previous,
+		const FGeneralStatusFact &Candidate) noexcept;
+
 	struct FDecodedPacket
 	{
 		std::optional<FGeneralStatusFact> GeneralStatus;

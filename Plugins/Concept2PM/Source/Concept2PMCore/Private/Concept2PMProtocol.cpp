@@ -217,6 +217,26 @@ namespace Concept2PM
 		return Result;
 	}
 
+	bool IsReconnectContinuationCompatible(
+		const FGeneralStatusFact &Previous,
+		const FGeneralStatusFact &Candidate) noexcept
+	{
+		if (Previous.WorkoutState == ERowingWorkoutState::Unknown ||
+			Candidate.WorkoutState == ERowingWorkoutState::Unknown ||
+			Candidate.ElapsedMs < Previous.ElapsedMs ||
+			Candidate.DistanceMm < Previous.DistanceMm)
+		{
+			return false;
+		}
+
+		if (Previous.WorkoutState == ERowingWorkoutState::Complete)
+			return Candidate.WorkoutState == ERowingWorkoutState::Complete;
+		if (Previous.WorkoutState == ERowingWorkoutState::Terminated)
+			return Candidate.WorkoutState == ERowingWorkoutState::Terminated;
+		return Previous.WorkoutState == ERowingWorkoutState::WaitingToBegin ||
+			   Candidate.WorkoutState != ERowingWorkoutState::WaitingToBegin;
+	}
+
 	FCapabilityEvaluation EvaluateCapability(
 		const FPM5Identity &Identity,
 		const std::vector<FPM5CapabilityProfile> &Profiles) noexcept
@@ -432,12 +452,21 @@ namespace Concept2PM
 			else if (Sample.SourceElapsedMs - *LastElapsedMs > 500)
 				Sample.QualityFlags |=
 					ToRowingQualityFlags(ERowingQualityFlag::SourceGap);
+			if (Sample.SourceElapsedMs > *LastElapsedMs)
+				LastElapsedMs = Sample.SourceElapsedMs;
 		}
-		if (LastDistanceMm && Sample.DistanceMm < *LastDistanceMm)
-			Sample.QualityFlags |=
-				ToRowingQualityFlags(ERowingQualityFlag::DistanceRegression);
-		LastElapsedMs = Sample.SourceElapsedMs;
-		LastDistanceMm = Sample.DistanceMm;
+		else
+			LastElapsedMs = Sample.SourceElapsedMs;
+		if (LastDistanceMm)
+		{
+			if (Sample.DistanceMm < *LastDistanceMm)
+				Sample.QualityFlags |=
+					ToRowingQualityFlags(ERowingQualityFlag::DistanceRegression);
+			else if (Sample.DistanceMm > *LastDistanceMm)
+				LastDistanceMm = Sample.DistanceMm;
+		}
+		else
+			LastDistanceMm = Sample.DistanceMm;
 		LastPublishedSample = Sample;
 		return Sample;
 	}

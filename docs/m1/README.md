@@ -1,6 +1,6 @@
 # Milestone 1 Phase 1: toolchain and PM5 diagnostic foundation
 
-Status: In progress
+Status: Complete — bounded diagnostic foundation
 Owner: A0 — CTO / Principal Architect  
 Last reviewed: 2026-09-14
 
@@ -16,7 +16,7 @@ This milestone is a bounded foundation spike within the evidence work described 
 
 Completing this milestone proves only:
 
-- reproducible local and CI foundations for the native diagnostic path;
+- reproducible local foundations and CI-ready definitions for the native diagnostic path;
 - basic PM5 discovery, selection, connection, identity, subscription, and reconnection;
 - validated conversion of published PM5 fields into a hardware-neutral telemetry contract;
 - live, ephemeral presentation in a diagnostic terminal UI;
@@ -41,11 +41,14 @@ The diagnostic executable may gather identity evidence from a PM5, but a device 
 |---|---|---|
 | Product platform and engine | Resolved | Apple-silicon macOS, stock Unreal 5.8, and the ADR-0001 toolchain baseline apply. |
 | Launch device boundary | Resolved | Model D with PM5 over BLE; the public contract remains hardware-neutral. |
-| Capability profile | Approved for development use; HIL acceptance pending | The exact observed tuple reaches `Ready` under user-approved development profile version 4; stroke-detail channels are optional and remain pinned to published revision 0.34 layouts. Property/rate evidence, stroke-value HIL comparison, and role-based HIL acceptance remain open. |
-| Toolchain baseline | Native lanes pass; Unreal smoke blocked | `make doctor`, configure/build/test, and format check pass on the pinned host; UnrealBuildTool is blocked by sandbox-denied host paths. |
+| Capability profile | Complete for M1 Phase 1; follow-on HIL evidence deferred | The exact `.069` tuple reaches `Ready` under development profile version 6. The observed 15-byte optional `0x0036` layout and the published 18-byte layout are both admitted. PM-display comparison and expanded HIL cases remain follow-on work. |
+| Toolchain baseline | Native and Unreal smoke lanes pass | `make doctor`, configure/build/test, format check, and `make unreal-smoke` pass on the pinned host. Sandboxed invocations can still be denied access to UBT's user-state files and are not smoke evidence. |
 | Product features | Explicitly deferred | The TUI is a diagnostic tool, not a substitute for the Phase 1 walking skeleton. |
 
-The implementation is underway against the recorded contract and pinned toolchain. Formal milestone sign-off, the Unreal smoke lane, and required hardware acceptance remain gates; they are not worked around by widening support or weakening requirements.
+This bounded implementation is complete against the revised M1 Phase 1 exit
+gate. Formal product readiness, published CI, and the deferred hardware cases
+remain follow-on work; they are not worked around by widening support or
+weakening requirements.
 
 ## In scope
 

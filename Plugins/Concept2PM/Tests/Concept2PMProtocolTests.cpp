@@ -542,6 +542,91 @@ namespace
 		assert(HasFlag(*Repeated, ERowingQualityFlag::Duplicate));
 	}
 
+	void merger_keeps_monotonic_high_water_marks_after_regressions()
+	{
+		FTelemetryMerger Merger(100);
+		const auto HighWater = DecodeFixture(PacketFixtures[0]);
+		assert(!Merger.Push(HighWater, 1000));
+		assert(Merger.Flush(1100));
+
+		auto FirstRegressionBytes = GeneralStatusPacket();
+		// 100.00 s and 600.0 m, both below the published high-water marks.
+		FirstRegressionBytes[0] = 0x10;
+		FirstRegressionBytes[1] = 0x27;
+		FirstRegressionBytes[2] = 0x00;
+		FirstRegressionBytes[3] = 0x70;
+		FirstRegressionBytes[4] = 0x17;
+		FirstRegressionBytes[5] = 0x00;
+		const auto FirstRegression = DecodePacket(
+			GeneralStatus, FirstRegressionBytes, {GeneralStatusLength});
+		assert(FirstRegression.IsValid());
+		assert(!Merger.Push(FirstRegression, 1200));
+		const auto FirstRegressedSample = Merger.Flush(1300);
+		assert(FirstRegressedSample);
+		assert(HasFlag(*FirstRegressedSample,
+					   ERowingQualityFlag::TimeRegression));
+		assert(HasFlag(*FirstRegressedSample,
+					   ERowingQualityFlag::DistanceRegression));
+
+		auto SecondRegressionBytes = GeneralStatusPacket();
+		// 120.00 s and 650.0 m recover from the bad packet but remain below
+		// the original 123.45 s / 678.9 m high-water marks.
+		SecondRegressionBytes[0] = 0xE0;
+		SecondRegressionBytes[1] = 0x2E;
+		SecondRegressionBytes[2] = 0x00;
+		SecondRegressionBytes[3] = 0x64;
+		SecondRegressionBytes[4] = 0x19;
+		SecondRegressionBytes[5] = 0x00;
+		const auto SecondRegression = DecodePacket(
+			GeneralStatus, SecondRegressionBytes, {GeneralStatusLength});
+		assert(SecondRegression.IsValid());
+		assert(!Merger.Push(SecondRegression, 1400));
+		const auto SecondRegressedSample = Merger.Flush(1500);
+		assert(SecondRegressedSample);
+		assert(HasFlag(*SecondRegressedSample,
+					   ERowingQualityFlag::TimeRegression));
+		assert(HasFlag(*SecondRegressedSample,
+					   ERowingQualityFlag::DistanceRegression));
+	}
+
+	void reconnect_continuation_rejects_resets_and_terminal_state_resumption()
+	{
+		FGeneralStatusFact Previous;
+		Previous.ElapsedMs = 10'000;
+		Previous.DistanceMm = 50'000;
+		Previous.WorkoutState = ERowingWorkoutState::Active;
+
+		FGeneralStatusFact Continued = Previous;
+		Continued.ElapsedMs += 100;
+		Continued.DistanceMm += 250;
+		assert(IsReconnectContinuationCompatible(Previous, Continued));
+
+		FGeneralStatusFact TimeReset = Continued;
+		TimeReset.ElapsedMs = Previous.ElapsedMs - 1;
+		assert(!IsReconnectContinuationCompatible(Previous, TimeReset));
+
+		FGeneralStatusFact DistanceReset = Continued;
+		DistanceReset.DistanceMm = Previous.DistanceMm - 1;
+		assert(!IsReconnectContinuationCompatible(Previous, DistanceReset));
+
+		FGeneralStatusFact WorkoutReset = Continued;
+		WorkoutReset.WorkoutState = ERowingWorkoutState::WaitingToBegin;
+		assert(!IsReconnectContinuationCompatible(Previous, WorkoutReset));
+
+		FGeneralStatusFact Unknown = Continued;
+		Unknown.WorkoutState = ERowingWorkoutState::Unknown;
+		assert(!IsReconnectContinuationCompatible(Previous, Unknown));
+
+		FGeneralStatusFact Complete = Continued;
+		Complete.WorkoutState = ERowingWorkoutState::Complete;
+		assert(IsReconnectContinuationCompatible(Previous, Complete));
+		FGeneralStatusFact Restarted = Complete;
+		Restarted.ElapsedMs += 100;
+		Restarted.DistanceMm += 250;
+		Restarted.WorkoutState = ERowingWorkoutState::Active;
+		assert(!IsReconnectContinuationCompatible(Complete, Restarted));
+	}
+
 	void capability_profiles_and_event_kinds_remain_separate()
 	{
 		const FPM5Identity Identity{
@@ -646,6 +731,8 @@ int main()
 	merger_emits_full_sample_correction_for_late_status1();
 	merger_rejects_old_late_status_and_consumes_one_correction();
 	merger_marks_stopped_source_values_as_duplicates();
+	merger_keeps_monotonic_high_water_marks_after_regressions();
+	reconnect_continuation_rejects_resets_and_terminal_state_resumption();
 	capability_profiles_and_event_kinds_remain_separate();
 	return 0;
 }

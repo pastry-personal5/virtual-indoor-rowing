@@ -145,6 +145,43 @@ namespace
 			ERowingQualityFlag::SourceGap));
 	}
 
+	void regressions_do_not_lower_high_water_marks_or_create_false_gaps()
+	{
+		RowingCore::Private::FTelemetryValidationOptions Options;
+		Options.SourceGapThresholdMs = 500;
+		RowingCore::Private::FRowingTelemetryValidator Validator(Options);
+
+		FRowingMetricSample HighWater;
+		HighWater.SourceElapsedMs = 1000;
+		HighWater.DistanceMm = 5000;
+		Validator.ValidateAndAccumulate(HighWater);
+
+		FRowingMetricSample Regressed;
+		Regressed.SourceElapsedMs = 100;
+		Regressed.DistanceMm = 500;
+		const FRowingMetricSample FirstRegression =
+			Validator.ValidateAndAccumulate(Regressed);
+		EXPECT_TRUE(HasRowingQualityFlag(
+			FirstRegression.QualityFlags, ERowingQualityFlag::TimeRegression));
+		EXPECT_TRUE(HasRowingQualityFlag(
+			FirstRegression.QualityFlags, ERowingQualityFlag::DistanceRegression));
+		EXPECT_TRUE(!HasRowingQualityFlag(
+			FirstRegression.QualityFlags, ERowingQualityFlag::SourceGap));
+
+		FRowingMetricSample StillBelowHighWater;
+		StillBelowHighWater.SourceElapsedMs = 900;
+		StillBelowHighWater.DistanceMm = 4900;
+		const FRowingMetricSample SecondRegression =
+			Validator.ValidateAndAccumulate(StillBelowHighWater);
+		EXPECT_TRUE(HasRowingQualityFlag(
+			SecondRegression.QualityFlags, ERowingQualityFlag::TimeRegression));
+		EXPECT_TRUE(HasRowingQualityFlag(
+			SecondRegression.QualityFlags,
+			ERowingQualityFlag::DistanceRegression));
+		EXPECT_TRUE(!HasRowingQualityFlag(
+			SecondRegression.QualityFlags, ERowingQualityFlag::SourceGap));
+	}
+
 	void reset_allows_reconnect_to_start_a_new_monotonic_epoch()
 	{
 		RowingCore::Private::FRowingTelemetryValidator Validator;
@@ -186,6 +223,7 @@ int main()
 	quality_flags_accumulate_without_erasing_prior_evidence();
 	telemetry_regressions_accumulate_without_rewriting_measurements();
 	source_gap_threshold_is_explicit_and_boundary_is_not_a_gap();
+	regressions_do_not_lower_high_water_marks_or_create_false_gaps();
 	reset_allows_reconnect_to_start_a_new_monotonic_epoch();
 	formatting_preserves_absence_and_redacts_untrusted_text();
 

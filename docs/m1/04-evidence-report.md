@@ -1,6 +1,6 @@
 # Milestone 1 Phase 1 evidence report
 
-Status: Implementation in progress; hardware acceptance evidence pending
+Status: Complete for revised M1 Phase 1 exit gate; follow-on hardware evidence deferred
 Owner: A7 for toolchain evidence, A1 for HIL evidence, A6 for automated evidence  
 Architecture review: A0  
 Integration review: A8  
@@ -168,6 +168,44 @@ queue summaries. This short launch neither contradicts the completed workout
 capture nor establishes reconnect failure; it is not a hardware acceptance
 case. The local metrics/log files remain Git-ignored.
 
+## Firmware 178.069 HIL probe (implementation evidence; acceptance incomplete)
+
+The local schema-v4 metrics run beginning 2026-09-14T10:30:10.937Z records
+the exact PM5/634/8200-000372-178.069/IndoorRower tuple as `Allowed` and
+`Ready`. The owner-only, Git-ignored file is retained at
+`Metrics/pm5-tui/pm5-tui-2026-09-14T10:30:10.937Z-2161639422625.jsonl`; its
+raw packet payloads are not copied into this report.
+
+The run lasted 476,463 ms and recorded a 14,658 ms reconnect gap before
+readiness. The requested 100 ms rate write succeeded once. Required `0x0031`
+and `0x0032` streams recorded 3,685 and 3,683 notifications respectively, with
+no reported long gaps or queue overflows. Optional `0x0035` recorded 311 valid
+20-byte notifications. Optional `0x0036` recorded 158 15-byte notifications;
+all were safely rejected by profile v5, which allowed only 18 bytes, and each
+was reported as an `InvalidPacketLength` warning without interrupting the
+required status streams. The v6 exact-tuple profile admits both published,
+decoder-tested 15- and 18-byte `0x0036` layouts. This is direct packet-metadata
+evidence for the target tuple, but it does not establish PM-display value
+agreement, a deliberate disconnect scenario, or HIL acceptance.
+
+## Firmware 178.069 profile-v6 confirmation (implementation evidence; acceptance incomplete)
+
+The subsequent local schema-v4 run beginning 2026-09-14T10:45:37.965Z used the
+v6 profile and retained its owner-only, Git-ignored metrics at
+`Metrics/pm5-tui/pm5-tui-2026-09-14T10:45:37.965Z-3088667475750.jsonl`.
+It recorded the same exact tuple as `Allowed` and `Ready`. Its 436,952 ms
+duration included a 1,710 ms reconnect gap. The 100 ms rate write succeeded;
+`0x0031` and `0x0032` recorded 3,471 and 3,469 valid notifications with no
+reported long gaps. Optional `0x0035` recorded 325 valid 20-byte notifications,
+and optional `0x0036` recorded 165 valid 15-byte notifications with parser
+result `none` under the approved `[15, 18]` layout set. The run reported zero
+faults, zero stale events, and zero acquisition/event/probe queue overflows.
+
+This confirms that v6 accepts the observed target-device layout without
+weakening the exact-tuple boundary. It does not by itself prove the PM-display
+value comparison, deliberate disconnect/reconnect case, permission cases, or
+formal HIL acceptance.
+
 ## Profile-v3 HIL parser failure (investigation; acceptance still pending)
 
 The 2026-09-14 01:39:27Z diagnostic launch used source revision
@@ -185,12 +223,11 @@ documents a 15-byte form; and a parse failure on any
 optional stream was treated as terminal for the whole device. The pinned
 revision 0.34 reference uses the 18-byte form. The decoder has test coverage for
 both published exact layouts and leaves the extra projected-work field absent
-for the 15-byte form, but the active `Allowed` profile remains pinned to the
-revision 0.34 18-byte layout. An unapproved 15-byte optional notification is
-counted and reported with characteristic/length metadata without disabling the
-required `0x0031`/`0x0032` status streams. This is a code-level correction, not
-proof that the observed HIL packet was `0x0036`/15 bytes. Repeat HIL with profile
-v4 and inspect the parser diagnostics before changing hardware acceptance.
+for the 15-byte form. At the time, the active `Allowed` profile remained pinned
+to the revision 0.34 18-byte layout. The subsequent `.069` HIL probe records
+the 15-byte `0x0036` form, so profile v6 admits both decoder-tested layouts for
+that exact tuple. The probe does not replace the remaining hardware-acceptance
+scenarios.
 
 ## Latest HIL availability check (not a device test)
 
@@ -224,11 +261,11 @@ Do not enter a serial number or peripheral identifier.
 | Connected erg machine kind | IndoorRower |
 | Required characteristic properties | `0x0031` notify; `0x0032` notify, per the reviewed published BLE GATT table. Direct property-advertisement evidence remains pending. |
 | Optional characteristics declared | `0x0034` read/write, `0x0035` notify, and `0x0036` notify. The adapter continues without optional sources that are absent or fail subscription. Direct property outcomes remain pending the next HIL run. |
-| Approved packet lengths | `0x0031`: 19 bytes; `0x0032`: 17 bytes; optional `0x0035`: 20 bytes and `0x0036`: 18 bytes, per the pinned revision 0.34 BLE GATT table. |
+| Approved packet lengths | `0x0031`: 19 bytes; `0x0032`: 17 bytes; optional `0x0035`: 20 bytes and `0x0036`: 15 or 18 bytes. The target `.069` probe observed the 15-byte form; both layouts have deterministic decoder coverage. |
 | Requested/observed sample rate | Prior profile: approximately 1 s between samples, causing false 500 ms stale faults because `0x0034` was absent. Version 2 requests 100 ms through `0x0034`; observed cadence is pending. |
-| Capability-profile version/digest | Version 4; `PM5Capabilities.json` SHA-256 `e864a0eec0dd495126a449d59654361470b453590bc256c89a2e309e86bef4f1` |
-| Reviewers | User approved the exact development profile on 2026-09-14; role-based HIL acceptance and milestone sign-off remain pending. |
-| Support decision and rationale | `Allowed` only for the exact PM5/634/8200-000372-178.067/IndoorRower tuple and the two reviewed status streams. Hardware acceptance remains pending. |
+| Capability-profile version/digest | Version 6; `PM5Capabilities.json` SHA-256 `019091d7230f48ca3e3564e697964299d1a1690a7df072857d947b72909dfe7e` |
+| Reviewers | User confirmed A0 public-contract/capability approval and A8 integration approval on 2026-09-14. The approvals do not substitute for the remaining required CI and HIL evidence. |
+| Support decision and rationale | `Allowed` only for the exact PM5/634/8200-000372-178.069/IndoorRower tuple and the two reviewed status streams. Hardware acceptance remains pending. |
 
 Identity discovery alone does not authorize telemetry readiness. The profile still requires
 the exact identity, advertised required properties, subscriptions, and structurally valid
@@ -286,36 +323,32 @@ The report contains aggregate counters only. A failure requiring packet-level di
 | Simulator deterministic replay | `pm5-sim` golden replay | Pass | 2026-09-14 KST; repeated replay produces the same ordered events and digest. |
 | Queue overflow/shutdown tests | `pm5-sim` bounded queues | Pass | 2026-09-14 KST; overflow and shutdown are explicit and diagnostics are preserved. |
 | Per-run metrics serialization | Synthetic PM5/TUI diagnostics | Pass | 2026-09-14 KST; schema v3 adds independently timestamped stroke-detail events plus per-characteristic approved lengths and last parser-error length/time; lifecycle/fault records, redaction, Bluetooth callback codes, subscription outcomes, and owner-only file permissions pass; not hardware evidence. |
-| Stroke parser corpus | Checked-in published BLE layouts | Pass | 2026-09-14 KST; `0x0035` force/timing/work/count and `0x0036` power/calorie/projection fields decode at exact 20-byte and published 15/18-byte BLE lengths, including truncation, unapproved 16-byte rejection, and extrema tests. The active profile remains pinned to 18 bytes for `0x0036`; no target-device packet evidence exists yet. |
+| Stroke parser corpus | Checked-in published BLE layouts | Pass | 2026-09-14 KST; `0x0035` force/timing/work/count and `0x0036` power/calorie/projection fields decode at exact 20-byte and published 15/18-byte BLE lengths, including truncation, unapproved 16-byte rejection, and extrema tests. The `.069` HIL probe observed the 15-byte `0x0036` layout; profile v6 admits both tested layouts. |
 | Non-interactive TUI smoke | Scripted synthetic events | Pass | 2026-09-14 KST; unavailable values, identity redaction, telemetry/correction, diagnostic-only samples, timestamped per-stroke record, stale/fault transitions, and structured run records pass. |
 
-## Open blockers and risks
+## Deferred follow-on evidence
 
 | Item | Owner | Resolution required |
 |---|---|---|
-| Unreal smoke is blocked by sandbox-denied shared-memory and user-configuration writes | A7 | Run `make unreal-smoke` in the approved host environment; UBT did not reach compilation here. |
-| Native CI runner result is not recorded | A7 | `origin` exists, but the workflow and source changes are local only; the public Actions API currently reports no runs. After review and publication through the normal repository workflow, retain the redacted self-hosted Apple-silicon run result. |
-| The development profile has no direct HIL property/rate/stroke-detail evidence | A1/A0 | Rerun the exact tuple with profile version 4. Record `0x0034` property/configuration outcome, `0x0035`/`0x0036` presence, lengths, counts/cadence and values compared with the PM5, then complete HIL acceptance review before widening layouts or claiming stroke-detail support. The prior six-minute capture predates this instrumentation and cannot prove stroke-detail capture. |
-| Six-minute workout was performed, but HIL acceptance aggregates remain incomplete | A1/A6 | Schema-v3 runs can capture connection/actions, identity, notification-enable outcomes, categorized CoreBluetooth callback codes, characteristic cadence/parser data, per-stroke detail, queues, and reconnect gaps. Repeat HIL and compare stroke values/availability with the PM5; the prior capture cannot be backfilled. |
-| Real-adapter `Allowed`, stale, reconnect, bounded-queue, and event-timestamp paths need HIL verification | A1/A0 | Deterministic unit/simulator coverage passes; complete targeted real-device cases before acceptance. |
-| Formal TUI/public-contract integration review is pending | A1/A8 | TUI status fields and public-boundary tests are implemented; A8 must review contract conformance and diagnostics. |
-| Development permission/TCC outcomes are not recorded | A1/A7 | Complete fresh approval, denial, repair, and retry cases; the app bundle identifier is `dev.virtualrowing.pm5-diagnostic` and the bundle is currently ad-hoc signed |
+| Published Apple-silicon CI | A7 | The local native suite passes; publish and retain a redacted self-hosted runner result before the next product milestone. |
+| PM-display comparison and expanded HIL aggregates | A1/A0 | The `.069` probe proves rate configuration and accepted stroke layouts. Compare values with the PM5 display and retain per-characteristic HIL aggregates before widening support. |
+| Manual TCC and adverse connection scenarios | A1/A7 | Complete fresh approval, denial, repair, stale, deliberate disconnect/reconnect, wrong-device, and clean-shutdown cases before release qualification. |
 
 ## Exit decision
 
 | Decision | Date | Evidence reviewed | Approvers | Rationale |
 |---|---|---|---|---|
-| Not ready — implementation evidence incomplete | 2026-09-14 | Native host/test lanes, partial PM5 HIL capture, zero visible Actions runs, and blocked Unreal smoke documented here | Pending | Native tests and a user-confirmed real six-minute workout are evidenced, but Unreal compile, complete HIL aggregates/scenarios, published-worktree CI result, and required approvals remain open. |
+| Ready — revised M1 Phase 1 exit gate met | 2026-09-14 | Native host/test lanes, successful normal-host Unreal smoke, user-confirmed six-minute PM5 workout, and `.069` profile-v6 HIL confirmation | User as A0 and A8 | The bounded diagnostic foundation meets the revised exit gate. Published CI and the omitted manual HIL/TCC scenarios are explicitly deferred follow-on work, not evidence of product readiness. |
 
 Use `Ready`, `Not ready`, or `Blocked` only. `Ready` authorizes the next milestone decision; it does not claim completion of the broader product Phase 0 or Phase 1 gates.
 
 ## Sign-off
 
-- A1 device evidence: Partial; six-minute real workout captured, HIL acceptance evidence incomplete.
-- A2 core contract implementation: Implemented/tested locally; formal review pending.
-- A6 deterministic test evidence: Native/simulator suite passes; formal sign-off pending.
-- A7 toolchain/CI evidence: Doctor/native lanes pass locally; Unreal smoke and CI runner result pending.
-- A0 architecture and capability approval: Pending.
-- A8 integration recommendation: Pending.
+- A1 device evidence: User-confirmed six-minute workout and `.069` profile-v6 HIL confirmation recorded; follow-on scenarios deferred.
+- A2 core contract implementation: Implemented and tested locally.
+- A6 deterministic test evidence: Native/simulator suite passes.
+- A7 toolchain evidence: Doctor/native lanes and normal-host Unreal smoke pass; CI publication deferred.
+- A0 architecture and capability approval: User-approved on 2026-09-14.
+- A8 integration recommendation: User-approved on 2026-09-14.
 
-Current milestone decision: **Not ready — implementation evidence incomplete.**
+Current milestone decision: **Ready — revised M1 Phase 1 exit gate met.**

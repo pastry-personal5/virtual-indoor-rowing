@@ -6,6 +6,31 @@ This file records accepted delivery-history changes for Milestone 1. Follow the 
 
 ### Changed
 
+- Revised the bounded M1 Phase 1 exit gate by recorded A0/A8 decision: local
+  native verification, the normal-host Unreal smoke, the confirmed six-minute
+  PM5 run, and the exact `.069` profile-v6 HIL evidence close this diagnostic
+  foundation. Published CI and the omitted manual HIL/TCC scenarios are
+  explicitly deferred follow-on work and do not imply product readiness.
+- Updated the exact PM5 development and diagnostic identity tuple for hardware
+  revision 634 to firmware `8200-000372-178.069`. A metadata-only local HIL
+  probe observed 15-byte optional `0x0036` notifications, so profile v6 admits
+  the already-tested 15- and 18-byte layouts for this exact tuple. Existing
+  `.067` observations remain historical evidence; HIL acceptance is still
+  pending.
+- Made telemetry regression handling retain elapsed-time and distance high-water
+  marks in both `RowingCore` and the PM5 merger. Removed the duplicate stale core
+  implementation that could also turn unsigned time regression into a false
+  source-gap flag, and added deterministic regression coverage.
+- Completed the real adapter's reconnect-continuation guard: same-session
+  reconnect now rejects regressed PM time/distance, unknown or reset workout
+  state, and resumption after a terminal outcome before returning to `Ready`.
+- Made macOS discovery publish scan, idle, permission, failure, and terminal
+  queue-overflow transitions. BLE cancellation after machine queue overflow is
+  now dispatched on the CoreBluetooth queue.
+- Routed the legacy `test_build.sh` entry point through the pinned root test
+  workflow, removed the obsolete standalone TUI CMake definition, and narrowed
+  cleanup targets to generated PM5 TUI logs/metrics so they preserve tracked and
+  unrelated files.
 - Split ordinary TUI diagnostics from an explicit `make hil-pm5` hardware-probe
   mode. Metrics schema v4 records bounded raw rowing-service packets only in the
   visibly active, owner-only probe, with characteristic/global sequence,

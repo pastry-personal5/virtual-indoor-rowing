@@ -145,7 +145,7 @@ namespace
 		Profile.Version = 0;
 		Profile.MonitorModel = "PM5";
 		Profile.HardwareRevision = "634";
-		Profile.FirmwareRevision = "8200-000372-178.067";
+		Profile.FirmwareRevision = "8200-000372-178.069";
 		Profile.MachineKind = ERowingMachineKind::IndoorRower;
 		Profile.SupportState = ERowingMachineSupportState::Warn;
 		Profile.DiagnosticOnly = true;
@@ -1420,6 +1420,12 @@ void FMacMachine::ReceiveTelemetryPacket(
 	const auto NowNs = ReceivedMonotonicNs;
 	if (Packet.GeneralStatus)
 	{
+		if (!ConfirmReconnectContinuation(*Packet.GeneralStatus))
+			return;
+		ReconnectBaseline = FReconnectBaseline{
+			Packet.GeneralStatus->ElapsedMs,
+			Packet.GeneralStatus->DistanceMm,
+			Packet.GeneralStatus->WorkoutState};
 		LastGeneralStatusNs = NowNs;
 		ArmLivenessTimeout();
 		if (State == ERowingConnectionState::Stale &&
@@ -1514,6 +1520,41 @@ FMacMachine::FindProfileCharacteristic(std::uint16_t ShortId) const
 	return It == ActiveProfile->Characteristics.end() ? nullptr : &*It;
 }
 
+bool FMacMachine::ConfirmReconnectContinuation(
+	const Concept2PM::FGeneralStatusFact &General)
+{
+	if (!ReconnectInProgress)
+		return true;
+
+	// A relaunch reconnect has no in-memory source baseline. Identity and the
+	// complete readiness handshake still fail closed, but no gap measurement or
+	// source value is invented for the time before this process started.
+	if (!ReconnectBaseline)
+	{
+		ReconnectContinuationConfirmed = true;
+		return true;
+	}
+
+	Concept2PM::FGeneralStatusFact Previous;
+	Previous.ElapsedMs = ReconnectBaseline->ElapsedMs;
+	Previous.DistanceMm = ReconnectBaseline->DistanceMm;
+	Previous.WorkoutState = ReconnectBaseline->WorkoutState;
+	if (!Concept2PM::IsReconnectContinuationCompatible(Previous, General))
+	{
+		EmitFault(ERowingFaultCode::InvalidValue,
+				  ERowingFaultSeverity::Terminal,
+				  ERowingOperation::Reconnect,
+				  "reconnected PM5 source state is incompatible with continuation");
+		ReconnectInProgress = false;
+		Transition(ERowingConnectionState::Unsupported,
+				   ERowingConnectionReason::CapabilityRejected);
+		return false;
+	}
+
+	ReconnectContinuationConfirmed = true;
+	return true;
+}
+
 void FMacMachine::ResetHandshakeState()
 {
 	++HandshakeGeneration;
@@ -1531,6 +1572,7 @@ void FMacMachine::ResetHandshakeState()
 	StatusRateWriteRequired = false;
 	StatusRateConfigured = false;
 	LastGeneralStatusNs.reset();
+	ReconnectContinuationConfirmed = false;
 	std::lock_guard<std::mutex> AcquisitionLock(AcquisitionMutex);
 	AcquisitionQueue.clear();
 }
@@ -1676,6 +1718,8 @@ void FMacMachine::StartReconnectAttempt()
 void FMacMachine::Transition(ERowingConnectionState NewState,
 							 ERowingConnectionReason Reason)
 {
+	if (QueueOverflowed || State == NewState)
+		return;
 	const ERowingConnectionState Previous = State;
 	State = NewState;
 	Emit(FRowingConnectionStateChanged{Previous, NewState, Reason});
@@ -1705,7 +1749,9 @@ void FMacMachine::Emit(FRowingMachineEventPayload Payload)
 		EnqueueEvent(Events, EventSequence, LastEventTimestampNs, std::move(Fault));
 		VIRPM5PeripheralDelegate *Delegate =
 			static_cast<VIRPM5PeripheralDelegate *>(PeripheralDelegate);
-		[Central cancelPeripheralConnection:Delegate.Peripheral];
+		dispatch_async(Queue, ^{
+		  [Central cancelPeripheralConnection:Delegate.Peripheral];
+		});
 		EventQueueHighWaterMark = static_cast<std::uint32_t>(Events.size());
 		return;
 	}
@@ -1918,6 +1964,10 @@ FRowingCommandResult FMacDiscovery::StartScan()
 	  }
 	  SeenThisScan.clear();
 	  ReadinessTimeoutPending = false;
+	  if (State == ERowingConnectionState::PermissionDenied ||
+		  State == ERowingConnectionState::Failed)
+		  Transition(ERowingConnectionState::Idle,
+					 ERowingConnectionReason::UserRequested);
 	  OnCentralState(Delegate.Central.state);
 	});
 	return {ERowingCommandResultCode::Accepted};
@@ -1932,6 +1982,8 @@ FRowingCommandResult FMacDiscovery::StopScan()
 	  [Delegate.Central stopScan];
 	  Scanning = false;
 	  ReadinessTimeoutPending = false;
+	  Transition(ERowingConnectionState::Idle,
+				 ERowingConnectionReason::UserRequested);
 	});
 	return {ERowingCommandResultCode::Accepted};
 }
@@ -1971,6 +2023,16 @@ FMacDiscovery::CreateMachine(const FRowingMachineId &MachineId)
 		  return;
 	  VIRPM5CentralDelegate *Delegate =
 		  static_cast<VIRPM5CentralDelegate *>(CentralDelegate);
+	  ScanRequested.store(false);
+	  ++ScanGeneration;
+	  ReadinessTimeoutPending = false;
+	  if (Scanning)
+	  {
+		  [Delegate.Central stopScan];
+		  Scanning = false;
+	  }
+	  Transition(ERowingConnectionState::Idle,
+				 ERowingConnectionReason::UserRequested);
 	  CBPeripheral *Peripheral = Delegate.KnownPeripherals[It->RetainedIndex];
 	  CreatedMachine = new FMacMachine(
 		  *this,
@@ -2058,6 +2120,8 @@ void FMacDiscovery::OnCentralState(CBManagerState State)
 										   @NO
 								   }];
 		Scanning = true;
+		Transition(ERowingConnectionState::Scanning,
+				   ERowingConnectionReason::UserRequested);
 		ScheduleScanTimeout(
 			ERowingFaultCode::ScanTimeout,
 			"No Concept2 PM found; check that the PM5 is on its Connect screen, then scan again",
@@ -2074,15 +2138,27 @@ void FMacDiscovery::OnCentralState(CBManagerState State)
 		Scanning = false;
 	}
 	if (State == CBManagerStateUnauthorized)
+	{
+		Transition(ERowingConnectionState::PermissionDenied,
+				   ERowingConnectionReason::OperationFailed);
 		EmitScanFault(
 			ERowingFaultCode::Permission,
 			"Bluetooth permission is denied; allow access in System Settings");
+	}
 	else if (State == CBManagerStatePoweredOff)
+	{
+		Transition(ERowingConnectionState::Failed,
+				   ERowingConnectionReason::OperationFailed);
 		EmitScanFault(ERowingFaultCode::Permission,
 					  "Bluetooth is powered off; turn it on and scan again");
+	}
 	else
+	{
+		Transition(ERowingConnectionState::Failed,
+				   ERowingConnectionReason::OperationFailed);
 		EmitScanFault(ERowingFaultCode::Permission,
 					  "Bluetooth is unavailable on this Mac");
+	}
 }
 
 void FMacDiscovery::EmitScanFault(ERowingFaultCode Code,
@@ -2092,7 +2168,7 @@ void FMacDiscovery::EmitScanFault(ERowingFaultCode Code,
 	Fault.Code = Code;
 	Fault.Severity = ERowingFaultSeverity::Recoverable;
 	Fault.Operation = ERowingOperation::Scan;
-	Fault.ConnectionState = ERowingConnectionState::Idle;
+	Fault.ConnectionState = State;
 	Fault.DiagnosticText = Diagnostic;
 	Emit(std::move(Fault));
 }
@@ -2121,7 +2197,13 @@ void FMacDiscovery::ScheduleScanTimeout(ERowingFaultCode Code,
 		  }
 		  ReadinessTimeoutPending = false;
 		  if (OnlyIfNoCandidate && !SeenThisScan.empty())
+		  {
+			  Transition(ERowingConnectionState::Idle,
+						 ERowingConnectionReason::UserRequested);
 			  return;
+		  }
+		  Transition(ERowingConnectionState::Idle,
+					 ERowingConnectionReason::OperationFailed);
 		  EmitScanFault(Code, Diagnostic);
 		});
 }
@@ -2150,20 +2232,48 @@ void FMacDiscovery::ClearActive(FMacMachine *Machine)
 		ActiveMachine = nullptr;
 }
 
+void FMacDiscovery::Transition(ERowingConnectionState NewState,
+							   ERowingConnectionReason Reason)
+{
+	if (QueueOverflowed || State == NewState)
+		return;
+	const ERowingConnectionState Previous = State;
+	State = NewState;
+	Emit(FRowingConnectionStateChanged{Previous, NewState, Reason});
+}
+
 void FMacDiscovery::Emit(FRowingMachineEventPayload Payload)
 {
 	std::lock_guard<std::mutex> Lock(EventMutex);
-	if (QueueOverflowed || Events.size() >= MaxQueuedEvents - 1)
+	if (QueueOverflowed || Events.size() >= MaxQueuedEvents - 2)
 	{
 		if (QueueOverflowed)
 			return;
 		QueueOverflowed = true;
+		ScanRequested.store(false);
+		if (Scanning)
+		{
+			VIRPM5CentralDelegate *Delegate =
+				static_cast<VIRPM5CentralDelegate *>(CentralDelegate);
+			[Delegate.Central stopScan];
+			Scanning = false;
+		}
+		const ERowingConnectionState Previous = State;
+		State = ERowingConnectionState::Failed;
+		EnqueueEvent(
+			Events,
+			EventSequence,
+			LastEventTimestampNs,
+			FRowingConnectionStateChanged{
+				Previous,
+				ERowingConnectionState::Failed,
+				ERowingConnectionReason::OperationFailed});
 		FRowingFault Fault;
 		Fault.Code = ERowingFaultCode::QueueOverflow;
 		Fault.Severity = ERowingFaultSeverity::Terminal;
 		Fault.Operation = ERowingOperation::Scan;
-		Fault.ConnectionState = ERowingConnectionState::Idle;
-		Fault.DiagnosticText = "discovery event queue capacity reached; further discoveries dropped";
+		Fault.ConnectionState = ERowingConnectionState::Failed;
+		Fault.DiagnosticText = "discovery event queue capacity reached; scan stopped";
 		EnqueueEvent(Events, EventSequence, LastEventTimestampNs, std::move(Fault));
 		return;
 	}

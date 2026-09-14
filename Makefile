@@ -36,16 +36,13 @@ hil-pm5:
 clean:
 	python3 Scripts/dev.py clean
 
-# Purge all log files
+# Purge only generated PM5 TUI logs; preserve Logs/.gitkeep and unrelated files.
 clean-logs:
-	find . -type f \( -name "*.log" -o -name "LastTest.log" -o -name "LastTestsFailed.log" \) -delete
-	rm -rf Logs/
-	rm -rf Build/*/Logs/
+	rm -f Logs/pm5-tui/*.log Logs/pm5-tui/*.log.*
 
-# Purge all metrics files and directories
+# Purge only generated PM5 TUI metrics; never search/delete broad directories.
 clean-metrics:
-	find . -type f \( -name "*.metrics" \) -delete
-	find . -type d \( -name "*metric*" -o -name "pm5_tui_metrics_writer_tests.dir" \) -exec rm -rf {} +
+	rm -f Metrics/pm5-tui/*.jsonl
 
 # Clean both logs and metrics
 clean-all: clean-logs clean-metrics

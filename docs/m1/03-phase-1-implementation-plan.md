@@ -204,13 +204,19 @@ Hardware checks are manual/self-hosted and never required on ordinary pull-reque
 Milestone 1 Phase 1 is complete when:
 
 - the accepted Xcode and stock Unreal baseline are installed, fingerprinted, and pass their smoke lanes;
-- native CI passes on Apple silicon without hardware;
+- native automated checks pass on the reference Apple-silicon host; publication of a CI run is deferred follow-on work;
 - the simulator and real adapter use the identical public interfaces;
 - the real PM5 reaches `Ready` only through an exact reviewed capability profile;
 - live normalized telemetry is readable in the TUI with correct nullability and units;
-- permission, stale, disconnect, reconnect, unsupported, and clean-shutdown behavior are explicit;
-- the 6-minute hardware run passes and its redacted aggregate evidence is recorded;
+- permission, stale, disconnect, reconnect, unsupported, and clean-shutdown behavior are explicit in the adapter and deterministic test coverage;
+- a user-confirmed six-minute hardware run and redacted aggregate evidence are recorded; supplemental per-characteristic HIL aggregates are deferred follow-on evidence;
 - A0 approves public contracts/capability policy and A8 approves integration readiness.
+
+On 2026-09-14, the recorded A0/A8 decision explicitly deferred publication of
+Apple-silicon CI and the manual TCC, PM-display comparison, stale, deliberate
+disconnect/reconnect, wrong-device, and clean-shutdown HIL scenarios. Those
+items remain required before a product milestone or broader support claim, but
+are not M1 Phase 1 exit gates.
 
 The exit decision is recorded as `Ready`, `Not ready`, or `Blocked`. `Ready` means this diagnostic path is trustworthy enough to inform the next funded milestone; it does not mark the product Phase 0 or Phase 1 exit gate complete.
 
