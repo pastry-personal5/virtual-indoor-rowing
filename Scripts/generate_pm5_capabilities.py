@@ -69,21 +69,33 @@ _CHARACTERISTIC_FIELDS: dict[int, dict[str, str]] = {
 	},
 	0x0035: {
 		"source_elapsed": "SourceElapsed",
+		"distance": "Distance",
 		"stroke_count": "StrokeCount",
+		"drive_length": "DriveLength",
+		"drive_time": "DriveTime",
+		"recovery_time": "RecoveryTime",
+		"stroke_distance": "StrokeDistance",
+		"peak_drive_force": "PeakDriveForce",
+		"average_drive_force": "AverageDriveForce",
+		"work_per_stroke": "WorkPerStroke",
 	},
 	0x0036: {
 		"source_elapsed": "SourceElapsed",
 		"stroke_power": "StrokePower",
 		"stroke_count": "StrokeCount",
+		"calories_per_hour": "CaloriesPerHour",
+		"projected_work_time": "ProjectedWorkTime",
+		"projected_work_distance": "ProjectedWorkDistance",
+		"projected_work_other": "ProjectedWorkOther",
 	},
 	0x0034: {},
 }
-_MINIMUM_PACKET_LENGTHS = {
-	0x0031: 19,
-	0x0032: 17,
-	0x0033: 20,
-	0x0035: 20,
-	0x0036: 18,
+_EXACT_PACKET_LENGTHS = {
+	0x0031: {19},
+	0x0032: {17},
+	0x0033: {20},
+	0x0035: {20},
+	0x0036: {15, 18},
 }
 _PROPERTY_ORDER = ("read", "write", "write_without_response", "notify", "indicate")
 
@@ -169,12 +181,13 @@ def _validate_characteristic(value: Any, path: str, required: bool) -> dict[str,
 	else:
 		if not lengths:
 			_fail(f"{path}.allowed_packet_lengths", "must be non-empty for a decoded notification characteristic")
-		minimum = _MINIMUM_PACKET_LENGTHS[characteristic_id]
+		exact_lengths = _EXACT_PACKET_LENGTHS[characteristic_id]
 		for length in lengths:
-			if type(length) is not int or length < minimum or length > 512:
+			if length not in exact_lengths:
 				_fail(
 					f"{path}.allowed_packet_lengths",
-					f"each exact decoder length must be an integer from {minimum} through 512",
+					"contains a layout not implemented by the exact decoder; "
+					f"allowed values for 0x{characteristic_id:04X} are {sorted(exact_lengths)}",
 				)
 
 	fields = characteristic["implemented_fields"]

@@ -1,8 +1,8 @@
 # Milestone 1 Phase 1: toolchain and PM5 diagnostic foundation
 
-Status: Planned  
+Status: In progress
 Owner: A0 — CTO / Principal Architect  
-Last reviewed: 2026-09-13
+Last reviewed: 2026-09-14
 
 ## Purpose
 
@@ -41,11 +41,11 @@ The diagnostic executable may gather identity evidence from a PM5, but a device 
 |---|---|---|
 | Product platform and engine | Resolved | Apple-silicon macOS, stock Unreal 5.8, and the ADR-0001 toolchain baseline apply. |
 | Launch device boundary | Resolved | Model D with PM5 over BLE; the public contract remains hardware-neutral. |
-| Capability profile | Pending hardware evidence | An exact observed PM5 tuple must be reviewed before it can reach `Ready`. |
-| Toolchain baseline | Blocked by local setup | Xcode 26.1.1, Git LFS, and an approved Unreal build must pass the documented smoke lanes. |
+| Capability profile | Approved for development use; HIL acceptance pending | The exact observed tuple reaches `Ready` under user-approved development profile version 4; stroke-detail channels are optional and remain pinned to published revision 0.34 layouts. Property/rate evidence, stroke-value HIL comparison, and role-based HIL acceptance remain open. |
+| Toolchain baseline | Native lanes pass; Unreal smoke blocked | `make doctor`, configure/build/test, and format check pass on the pinned host; UnrealBuildTool is blocked by sandbox-denied host paths. |
 | Product features | Explicitly deferred | The TUI is a diagnostic tool, not a substitute for the Phase 1 walking skeleton. |
 
-No implementation begins until the contract checkpoint and toolchain preflight both pass. A blocked item is recorded in the evidence report; it is not worked around by widening support or weakening a gate.
+The implementation is underway against the recorded contract and pinned toolchain. Formal milestone sign-off, the Unreal smoke lane, and required hardware acceptance remain gates; they are not worked around by widening support or weakening requirements.
 
 ## In scope
 
@@ -58,7 +58,8 @@ No implementation begins until the contract checkpoint and toolchain preflight b
 - CoreBluetooth discovery and session lifecycle.
 - Deterministic mock/replay behavior at the public device boundary.
 - Standalone TUI showing live normalized telemetry.
-- Redacted, aggregate toolchain and hardware evidence.
+- Redacted aggregate toolchain and hardware evidence, plus explicit,
+  owner-only, bounded raw rowing-telemetry capture in the local HIL probe.
 
 ## Out of scope
 
@@ -69,7 +70,9 @@ No implementation begins until the contract checkpoint and toolchain preflight b
 - Race logic, smoothing, prediction, virtual distance, or scoring.
 - USB support, PM3/PM4 support, and non-Concept2 machines.
 - Developer ID release signing, notarization, Sparkle, and distribution packaging.
-- Persisted raw BLE captures, normalized telemetry files, JSONL, or analytics upload.
+- Product persistence or upload of raw BLE captures, normalized telemetry, or
+  diagnostic JSONL. The local, Git-ignored HIL probe evidence is a diagnostic
+  tooling exception governed by the PM5 diagnostics/privacy rules.
 
 ## Deliverables and reading order
 

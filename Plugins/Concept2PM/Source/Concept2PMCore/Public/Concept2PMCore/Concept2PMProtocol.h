@@ -3,6 +3,7 @@
 #include "RowingDevice/RowingMachineTypes.h"
 
 #include <cstdint>
+#include <array>
 #include <memory>
 #include <optional>
 #include <string>
@@ -38,6 +39,109 @@ namespace Concept2PM
 		std::size_t ActualLength = 0;
 	};
 
+	struct FPM5PacketLengthCount
+	{
+		std::size_t PacketLength = 0;
+		std::uint64_t Count = 0;
+	};
+
+	// Bounded, redacted run aggregates for HIL diagnosis. Inter-arrival values
+	// are bucketed in 10 ms bins through 990 ms, then one overflow bin.
+	struct FPM5CharacteristicDiagnostics
+	{
+		static constexpr std::size_t IntervalBinCount = 101;
+		static constexpr std::uint64_t LongGapThresholdNs = 500'000'000ULL;
+
+		std::uint16_t Characteristic = 0;
+		bool PropertiesObserved = false;
+		std::uint8_t ObservedProperties = 0;
+		std::uint64_t NotificationEnableAttemptCount = 0;
+		std::uint64_t NotificationEnableSuccessCount = 0;
+		std::uint64_t NotificationEnableFailureCount = 0;
+		std::uint64_t NotificationCount = 0;
+		std::uint64_t FirstReceivedMonotonicNs = 0;
+		std::uint64_t LastReceivedMonotonicNs = 0;
+		std::uint64_t IntervalCount = 0;
+		std::uint64_t IntervalTotalNs = 0;
+		std::uint64_t MinIntervalNs = 0;
+		std::uint64_t MaxIntervalNs = 0;
+		std::uint64_t LongGapCount = 0;
+		std::vector<std::size_t> ApprovedPacketLengths;
+		std::vector<FPM5PacketLengthCount> ObservedPacketLengths;
+		std::array<std::uint64_t, IntervalBinCount> IntervalHistogram{};
+		std::array<std::uint64_t, 4> ParserErrorCounts{};
+		EPacketError LastParserErrorCode = EPacketError::None;
+		std::size_t LastParserErrorActualLength = 0;
+		std::uint64_t LastParserErrorMonotonicNs = 0;
+
+		void RecordNotification(std::uint64_t ReceivedMonotonicNs,
+								std::size_t ActualPacketLength = 0)
+		{
+			if (ActualPacketLength != 0)
+			{
+				bool FoundLength = false;
+				for (FPM5PacketLengthCount &Length : ObservedPacketLengths)
+				{
+					if (Length.PacketLength != ActualPacketLength)
+						continue;
+					++Length.Count;
+					FoundLength = true;
+					break;
+				}
+				if (!FoundLength)
+					ObservedPacketLengths.push_back({ActualPacketLength, 1});
+			}
+			if (NotificationCount == 0)
+				FirstReceivedMonotonicNs = ReceivedMonotonicNs;
+			else if (ReceivedMonotonicNs < LastReceivedMonotonicNs)
+			{
+				++NotificationCount;
+				return;
+			}
+			else
+			{
+				const std::uint64_t IntervalNs =
+					ReceivedMonotonicNs - LastReceivedMonotonicNs;
+				++IntervalCount;
+				IntervalTotalNs += IntervalNs;
+				if (IntervalCount == 1 || IntervalNs < MinIntervalNs)
+					MinIntervalNs = IntervalNs;
+				MaxIntervalNs = IntervalNs > MaxIntervalNs ? IntervalNs : MaxIntervalNs;
+				if (TracksContinuousStatusCadence() &&
+					IntervalNs >= LongGapThresholdNs)
+					++LongGapCount;
+				const std::uint64_t Bin = IntervalNs / 10'000'000ULL;
+				const std::size_t Index = static_cast<std::size_t>(
+					Bin < IntervalBinCount ? Bin : IntervalBinCount - 1);
+				++IntervalHistogram[Index];
+			}
+			LastReceivedMonotonicNs = ReceivedMonotonicNs;
+			++NotificationCount;
+		}
+
+		bool TracksContinuousStatusCadence() const noexcept
+		{
+			return Characteristic == GeneralStatus ||
+				   Characteristic == AdditionalStatus1 ||
+				   Characteristic == AdditionalStatus2 ||
+				   Characteristic == AdditionalStatus3;
+		}
+
+		void RecordParserError(EPacketError Error,
+							   std::size_t ActualLength = 0,
+							   std::uint64_t ReceivedMonotonicNs = 0) noexcept
+		{
+			const auto Index = static_cast<std::size_t>(Error);
+			if (Index > 0 && Index < ParserErrorCounts.size())
+			{
+				++ParserErrorCounts[Index];
+				LastParserErrorCode = Error;
+				LastParserErrorActualLength = ActualLength;
+				LastParserErrorMonotonicNs = ReceivedMonotonicNs;
+			}
+		}
+	};
+
 	struct FGeneralStatusFact
 	{
 		std::uint64_t ElapsedMs = 0;
@@ -69,6 +173,14 @@ namespace Concept2PM
 	struct FStrokeDataFact
 	{
 		std::uint64_t ElapsedMs = 0;
+		std::optional<std::uint64_t> CumulativeDistanceMm;
+		std::optional<std::uint32_t> DriveLengthMm;
+		std::optional<std::uint32_t> DriveTimeMs;
+		std::optional<std::uint32_t> RecoveryTimeMs;
+		std::optional<std::uint32_t> StrokeDistanceMm;
+		std::optional<std::uint32_t> PeakDriveForceDeciLb;
+		std::optional<std::uint32_t> AverageDriveForceDeciLb;
+		std::optional<std::uint32_t> WorkPerStrokeDeciJoules;
 		std::optional<std::uint64_t> StrokeCount;
 	};
 
@@ -78,6 +190,9 @@ namespace Concept2PM
 		std::optional<std::uint32_t> StrokePowerW;
 		std::optional<std::uint32_t> CaloriesPerHour;
 		std::optional<std::uint64_t> StrokeCount;
+		std::optional<std::uint64_t> ProjectedWorkTimeMs;
+		std::optional<std::uint64_t> ProjectedWorkDistanceMm;
+		std::optional<std::uint32_t> ProjectedWorkOtherRaw;
 	};
 
 	struct FDecodedPacket
@@ -167,8 +282,6 @@ namespace Concept2PM
 		ERowingMachineSupportState SupportState =
 			ERowingMachineSupportState::Blocked;
 		std::uint32_t ProfileVersion = 0;
-		FRowingMetricSet SupportedMetrics =
-			ToRowingMetricSet(ERowingMetric::None);
 		const FPM5CapabilityProfile *Profile = nullptr;
 	};
 

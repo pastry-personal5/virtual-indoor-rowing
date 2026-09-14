@@ -20,8 +20,6 @@ if(NOT VIR_APP_BUILD MATCHES "^[1-9][0-9]*$")
 	message(FATAL_ERROR "VIR_APP_BUILD must be a positive integer for CFBundleVersion; got '${VIR_APP_BUILD}'.")
 endif()
 
-add_subdirectory(external/ftxui)
-
 set(PM5_CAPABILITY_MANIFEST "${CMAKE_CURRENT_SOURCE_DIR}/Config/PM5Capabilities.json")
 set(PM5_CAPABILITY_GENERATOR "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/generate_pm5_capabilities.py")
 set(PM5_CAPABILITY_HEADER "${CMAKE_CURRENT_BINARY_DIR}/generated/PM5CapabilityProfiles.generated.h")
@@ -59,12 +57,6 @@ if(BUILD_TESTING)
 	)
 endif()
 
-configure_file(
-	"${CMAKE_CURRENT_SOURCE_DIR}/Build/PM5Diagnostic-Info.plist.in"
-	"${CMAKE_CURRENT_BINARY_DIR}/PM5Diagnostic-Info.plist"
-	@ONLY
-)
-
 function(vir_collect_sources out_var directory)
 	if(EXISTS "${directory}")
 		file(GLOB_RECURSE sources CONFIGURE_DEPENDS
@@ -92,19 +84,16 @@ target_compile_features(RowingCore PUBLIC cxx_std_20)
 vir_collect_sources(ROWING_DEVICE_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Source/RowingDevice/Private")
 if(ROWING_DEVICE_SOURCES)
 	add_library(RowingDevice STATIC ${ROWING_DEVICE_SOURCES})
-	set(ROWING_DEVICE_SCOPE PUBLIC)
-	set(ROWING_DEVICE_LINK_SCOPE PUBLIC)
-	set(ROWING_DEVICE_FEATURE_SCOPE PUBLIC)
+	target_include_directories(RowingDevice PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/Source/RowingDevice/Public")
+	target_link_libraries(RowingDevice PUBLIC RowingCore)
+	target_compile_features(RowingDevice PUBLIC cxx_std_20)
 else()
 	add_library(RowingDevice INTERFACE)
-	set(ROWING_DEVICE_SCOPE INTERFACE)
-	set(ROWING_DEVICE_LINK_SCOPE INTERFACE)
-	set(ROWING_DEVICE_FEATURE_SCOPE INTERFACE)
+	target_include_directories(RowingDevice INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/Source/RowingDevice/Public")
+	target_link_libraries(RowingDevice INTERFACE RowingCore)
+	target_compile_features(RowingDevice INTERFACE cxx_std_20)
 endif()
 add_library(rowing_device ALIAS RowingDevice)
-target_include_directories(RowingDevice ${ROWING_DEVICE_SCOPE} "${CMAKE_CURRENT_SOURCE_DIR}/Source/RowingDevice/Public")
-target_link_libraries(RowingDevice ${ROWING_DEVICE_LINK_SCOPE} RowingCore)
-target_compile_features(RowingDevice ${ROWING_DEVICE_FEATURE_SCOPE} cxx_std_20)
 
 set(CONCEPT2_PLUGIN_DIR "${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Concept2PM")
 vir_collect_sources(CONCEPT2_CORE_SOURCES "${CONCEPT2_PLUGIN_DIR}/Source/Concept2PMCore")
@@ -160,6 +149,15 @@ if(PM5_SIM_SOURCES)
 endif()
 
 if(VIR_BUILD_PM5_TUI)
+	add_subdirectory(external/ftxui)
+	if(APPLE)
+		configure_file(
+			"${CMAKE_CURRENT_SOURCE_DIR}/Build/PM5Diagnostic-Info.plist.in"
+			"${CMAKE_CURRENT_BINARY_DIR}/PM5Diagnostic-Info.plist"
+			@ONLY
+		)
+	endif()
+
 	vir_collect_sources(PM5_TUI_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Tools/pm5-tui/src")
 	if(PM5_TUI_SOURCES)
 		if(APPLE)
@@ -216,19 +214,16 @@ if(VIR_BUILD_TESTS AND BUILD_TESTING)
 	endif()
 	if(TARGET pm5-sim)
 		foreach(test_source IN ITEMS
-			"${CMAKE_CURRENT_SOURCE_DIR}/Tests/Contract/pm5_sim_contract_tests.cpp"
-			"${CMAKE_CURRENT_SOURCE_DIR}/Tests/Integration/pm5_sim_integration_tests.cpp"
+			Tests/Contract/pm5_sim_contract_tests.cpp
+			Tests/Integration/pm5_sim_integration_tests.cpp
 		)
-			if(EXISTS "${test_source}")
-				get_filename_component(test_name "${test_source}" NAME_WE)
-				add_executable("${test_name}" "${test_source}")
-				target_link_libraries("${test_name}" PRIVATE pm5-sim)
-				add_test(NAME "${test_name}" COMMAND "${test_name}")
-			endif()
+			get_filename_component(test_target "${test_source}" NAME_WE)
+			add_executable("${test_target}" "${CMAKE_CURRENT_SOURCE_DIR}/${test_source}")
+			target_link_libraries("${test_target}" PRIVATE pm5-sim)
+			add_test(NAME "${test_target}" COMMAND "${test_target}")
 		endforeach()
 	endif()
 	if(TARGET pm5-tui)
-		find_package(Python3 COMPONENTS Interpreter REQUIRED)
 		add_test(
 			NAME pm5_tui_status_diagnostics
 			COMMAND "${Python3_EXECUTABLE}"
@@ -246,6 +241,21 @@ if(VIR_BUILD_TESTS AND BUILD_TESTING)
 		)
 		target_compile_features(pm5_tui_logger_tests PRIVATE cxx_std_20)
 		add_test(NAME pm5_tui_logger_tests COMMAND pm5_tui_logger_tests)
+
+		add_executable(
+			pm5_tui_metrics_writer_tests
+			Tools/pm5-tui/tests/RunMetricsWriterTests.cpp
+			Tools/pm5-tui/src/RunMetricsWriter.cpp
+		)
+		target_include_directories(pm5_tui_metrics_writer_tests PRIVATE
+			"${CMAKE_CURRENT_SOURCE_DIR}/Tools/pm5-tui/src"
+			"${CONCEPT2_PLUGIN_DIR}/Source/Concept2PMCore/Public"
+			"${CONCEPT2_PLUGIN_DIR}/Source/Concept2PMMac/Public"
+			"${CMAKE_CURRENT_SOURCE_DIR}/Source/RowingCore/Public"
+		)
+		target_link_libraries(pm5_tui_metrics_writer_tests PRIVATE Concept2PMCore)
+		target_compile_features(pm5_tui_metrics_writer_tests PRIVATE cxx_std_20)
+		add_test(NAME pm5_tui_metrics_writer_tests COMMAND pm5_tui_metrics_writer_tests)
 
 		add_test(
 			NAME pm5_tui_smoke

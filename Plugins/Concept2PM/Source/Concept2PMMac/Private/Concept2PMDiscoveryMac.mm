@@ -3,13 +3,16 @@
 
 #include "Concept2PMDiscoveryProfiles.h"
 #include "Concept2PMMac/Concept2PMDiscoveryFactory.h"
+#include "Concept2PMMac/Concept2PMRunDiagnostics.h"
 #include "PM5CapabilityProfiles.generated.h"
 
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstdio>
 #include <deque>
 #include <memory>
+#include <map>
 #include <mutex>
 #include <set>
 #include <utility>
@@ -95,6 +98,22 @@ namespace
 										  static_cast<unsigned int>(ShortId)];
 	}
 
+	std::uint16_t ShortIdFromUuid(CBUUID *Uuid)
+	{
+		NSString *Value = Uuid.UUIDString.uppercaseString;
+		if (Value.length != 36 ||
+			[Value compare:@"CE06"
+				   options:NSLiteralSearch
+					 range:NSMakeRange(0, 4)] != NSOrderedSame)
+			return 0;
+		unsigned int ShortId = 0;
+		NSScanner *Scanner = [NSScanner scannerWithString:
+											[Value substringWithRange:NSMakeRange(4, 4)]];
+		if (![Scanner scanHexInt:&ShortId] || !Scanner.isAtEnd || ShortId > 0xFFFFU)
+			return 0;
+		return static_cast<std::uint16_t>(ShortId);
+	}
+
 	std::uint8_t ToProfileProperties(CBCharacteristicProperties Properties)
 	{
 		std::uint8_t Result =
@@ -144,6 +163,20 @@ namespace
 			 Concept2PM::ToPM5CharacteristicProperties(
 				 Concept2PM::EPM5CharacteristicProperty::Notify),
 			 {17},
+			 ToRowingMetricSet(ERowingMetric::None)},
+			{Concept2PM::StrokeData,
+			 false,
+			 true,
+			 Concept2PM::ToPM5CharacteristicProperties(
+				 Concept2PM::EPM5CharacteristicProperty::Notify),
+			 {20},
+			 ToRowingMetricSet(ERowingMetric::None)},
+			{Concept2PM::AdditionalStrokeData,
+			 false,
+			 true,
+			 Concept2PM::ToPM5CharacteristicProperties(
+				 Concept2PM::EPM5CharacteristicProperty::Notify),
+			 {18},
 			 ToRowingMetricSet(ERowingMetric::None)}};
 		return {std::move(Profile)};
 	}
@@ -185,16 +218,18 @@ namespace
 
 class FMacMachine;
 
-class FMacDiscovery final : public IRowingMachineDiscovery
+class FMacDiscovery final : public IConcept2PMDiscovery
 {
   public:
 	explicit FMacDiscovery(
-		std::vector<Concept2PM::FPM5CapabilityProfile> InProfiles);
+		std::vector<Concept2PM::FPM5CapabilityProfile> InProfiles,
+		FPM5HardwareProbeConfiguration InProbeConfiguration);
 	~FMacDiscovery() override;
 
 	FRowingCommandResult StartScan() override;
 	FRowingCommandResult StopScan() override;
 	bool TryPollDiscoveryEvent(FRowingMachineEvent &OutEvent) override;
+	std::unique_ptr<IRowingMachine> TryTakeRelaunchMachine() override;
 	std::unique_ptr<IRowingMachine>
 	CreateMachine(const FRowingMachineId &MachineId) override;
 
@@ -222,6 +257,7 @@ class FMacDiscovery final : public IRowingMachineDiscovery
 	void TryReconnectRememberedPeripheral(CBCentralManager *Central);
 
 	std::vector<Concept2PM::FPM5CapabilityProfile> Profiles;
+	FPM5HardwareProbeConfiguration ProbeConfiguration;
 	id CentralDelegate = nil;
 	dispatch_queue_t Queue = nil;
 	std::mutex EventMutex;
@@ -242,14 +278,16 @@ class FMacDiscovery final : public IRowingMachineDiscovery
 	ERowingConnectionState State = ERowingConnectionState::Idle;
 };
 
-class FMacMachine final : public IRowingMachine
+class FMacMachine final : public IRowingMachine,
+						  public IConcept2PMRunDiagnostics
 {
   public:
 	FMacMachine(FMacDiscovery &InDiscovery,
 				CBCentralManager *InCentral,
 				dispatch_queue_t InQueue,
 				CBPeripheral *InPeripheral,
-				std::vector<Concept2PM::FPM5CapabilityProfile> InProfiles);
+				std::vector<Concept2PM::FPM5CapabilityProfile> InProfiles,
+				FPM5HardwareProbeConfiguration InProbeConfiguration);
 	~FMacMachine() override;
 
 	FRowingCommandResult Connect() override;
@@ -257,7 +295,13 @@ class FMacMachine final : public IRowingMachine
 	void StartRelaunchReconnect();
 	ERowingConnectionState GetConnectionState() const override;
 	FRowingMachineDiagnostics GetDiagnostics() const override;
+	FPM5RunDiagnostics GetPM5RunDiagnostics() const override;
+	bool TryPollPM5ProbePacket(FPM5ProbePacketEvidence &OutEvidence) override;
+	void FinalizePM5ProbeCapture() override;
 	bool TryPollEvent(FRowingMachineEvent &OutEvent) override;
+	void RecordCallbackFailure(EPM5CallbackStage Stage,
+							   std::uint16_t Characteristic,
+							   NSError *Error);
 
 	void OnConnected();
 	void OnConnectionFailed(NSError *Error);
@@ -278,16 +322,29 @@ class FMacMachine final : public IRowingMachine
 	void EmitFault(ERowingFaultCode Code,
 				   ERowingFaultSeverity Severity,
 				   ERowingOperation Operation,
-				   const char *Diagnostic);
+				   const char *Diagnostic,
+				   std::optional<std::uint64_t> ExpectedValue = std::nullopt,
+				   std::optional<std::uint64_t> ActualValue = std::nullopt);
 	void FinishIdentity();
 	void FinishTelemetryIfReady();
 	void ReceiveTelemetryPacket(std::uint16_t ShortId,
 								const std::vector<std::uint8_t> &Bytes,
-								std::uint64_t ReceivedMonotonicNs);
+								std::uint64_t ReceivedMonotonicNs,
+								ERowingConnectionState ConnectionStateAtReceive);
+	void PublishAvailableMetrics(
+		const Concept2PM::FPM5CharacteristicProfile &Characteristic);
 	void EnqueueNotification(CBCharacteristic *Characteristic);
 	void ScheduleDecoder();
 	void DrainNotifications();
 	void FailAcquisitionOverflow();
+	void CaptureProbePacket(
+		std::uint16_t ShortId,
+		const std::vector<std::uint8_t> &Bytes,
+		std::uint64_t ReceivedMonotonicNs,
+		ERowingConnectionState PacketConnectionState,
+		Concept2PM::EPacketError ParserResult,
+		const std::vector<std::size_t> &ApprovedPacketLengths,
+		std::uint64_t CharacteristicSequence);
 	void ArmHandshakeTimeout();
 	void ArmLivenessTimeout();
 	void BeginReconnect();
@@ -307,6 +364,7 @@ class FMacMachine final : public IRowingMachine
 	dispatch_queue_t DecoderQueue = nil;
 	id PeripheralDelegate = nil;
 	std::vector<Concept2PM::FPM5CapabilityProfile> Profiles;
+	FPM5HardwareProbeConfiguration ProbeConfiguration;
 	mutable std::mutex Mutex;
 	std::deque<FRowingMachineEvent> Events;
 	ERowingConnectionState State = ERowingConnectionState::Idle;
@@ -340,6 +398,15 @@ class FMacMachine final : public IRowingMachine
 	bool ReconnectContinuationConfirmed = false;
 	bool StatusRateWriteRequired = false;
 	bool StatusRateConfigured = false;
+	std::uint64_t StatusRateWriteAttemptCount = 0;
+	std::uint64_t StatusRateWriteSuccessCount = 0;
+	std::uint64_t StatusRateWriteFailureCount = 0;
+	std::uint32_t LastRequestedStatusPeriodMs = 0;
+	std::map<std::uint16_t, Concept2PM::FPM5CharacteristicDiagnostics>
+		CharacteristicDiagnostics;
+	std::map<std::pair<EPM5CallbackStage, std::uint16_t>,
+			 FPM5CallbackErrorDiagnostic>
+		CallbackErrorDiagnostics;
 	std::uint64_t HandshakeGeneration = 0;
 	std::uint64_t LivenessGeneration = 0;
 	bool ReconnectInProgress = false;
@@ -355,6 +422,8 @@ class FMacMachine final : public IRowingMachine
 		std::uint16_t ShortId = 0;
 		std::vector<std::uint8_t> Bytes;
 		std::uint64_t ReceivedMonotonicNs = 0;
+		ERowingConnectionState ConnectionStateAtReceive =
+			ERowingConnectionState::Idle;
 	};
 	mutable std::mutex AcquisitionMutex;
 	std::deque<FPendingNotification> AcquisitionQueue;
@@ -362,6 +431,9 @@ class FMacMachine final : public IRowingMachine
 	bool AcquisitionOverflowed = false;
 	std::uint32_t AcquisitionQueueHighWaterMark = 0;
 	std::uint64_t AcquisitionQueueOverflowCount = 0;
+	std::deque<FPM5ProbePacketEvidence> ProbeEvidenceQueue;
+	FPM5ProbeCaptureDiagnostics ProbeCaptureDiagnostics;
+	std::uint64_t ProbePacketSequence = 0;
 };
 
 @interface VIRPM5CentralDelegate : NSObject <CBCentralManagerDelegate>
@@ -471,10 +543,26 @@ FMacMachine::FMacMachine(
 	CBCentralManager *InCentral,
 	dispatch_queue_t InQueue,
 	CBPeripheral *InPeripheral,
-	std::vector<Concept2PM::FPM5CapabilityProfile> InProfiles)
+	std::vector<Concept2PM::FPM5CapabilityProfile> InProfiles,
+	FPM5HardwareProbeConfiguration InProbeConfiguration)
 	: Discovery(InDiscovery), Central(InCentral), Queue(InQueue),
-	  Profiles(std::move(InProfiles))
+	  Profiles(std::move(InProfiles)),
+	  ProbeConfiguration(std::move(InProbeConfiguration))
 {
+	ProbeCaptureDiagnostics.Enabled = ProbeConfiguration.CaptureRawTelemetry;
+	ProbeCaptureDiagnostics.Active = ProbeConfiguration.CaptureRawTelemetry;
+	if (ProbeConfiguration.CaptureRawTelemetry)
+	{
+		ProbeCaptureDiagnostics.StartedMonotonicNs = MonotonicNowNs();
+		ProbeCaptureDiagnostics.MaxCaptureDurationMs =
+			ProbeConfiguration.MaxCaptureDurationMs;
+		ProbeCaptureDiagnostics.MaxCapturedPacketCount =
+			ProbeConfiguration.MaxCapturedPacketCount;
+		ProbeCaptureDiagnostics.MaxCapturedPayloadBytes =
+			ProbeConfiguration.MaxCapturedPayloadBytes;
+		ProbeCaptureDiagnostics.EvidenceQueueCapacity =
+			ProbeConfiguration.EvidenceQueueCapacity;
+	}
 	DecoderQueue = dispatch_queue_create("com.virtualindoorrowing.pm5.decoder",
 										 DISPATCH_QUEUE_SERIAL);
 	@autoreleasepool
@@ -578,6 +666,85 @@ FRowingMachineDiagnostics FMacMachine::GetDiagnostics() const
 	return Diagnostics;
 }
 
+FPM5RunDiagnostics FMacMachine::GetPM5RunDiagnostics() const
+{
+	std::lock_guard<std::mutex> Lock(Mutex);
+	FPM5RunDiagnostics Diagnostics;
+	Diagnostics.RequestedStatusPeriodMs = ActiveProfile != nullptr
+											  ? ActiveProfile->RequestedStatusPeriodMs
+											  : LastRequestedStatusPeriodMs;
+	Diagnostics.StatusRateWriteAttemptCount = StatusRateWriteAttemptCount;
+	Diagnostics.StatusRateWriteSuccessCount = StatusRateWriteSuccessCount;
+	Diagnostics.StatusRateWriteFailureCount = StatusRateWriteFailureCount;
+	Diagnostics.ProbeCapture = ProbeCaptureDiagnostics;
+	Diagnostics.ProbeCapture.EvidenceQueueCurrentDepth =
+		static_cast<std::uint32_t>(ProbeEvidenceQueue.size());
+	Diagnostics.Characteristics.reserve(CharacteristicDiagnostics.size());
+	for (const auto &[ShortId, Stats] : CharacteristicDiagnostics)
+	{
+		(void)ShortId;
+		Diagnostics.Characteristics.push_back(Stats);
+	}
+	Diagnostics.CallbackErrors.reserve(CallbackErrorDiagnostics.size());
+	for (const auto &[Key, Stats] : CallbackErrorDiagnostics)
+	{
+		(void)Key;
+		Diagnostics.CallbackErrors.push_back(Stats);
+	}
+	return Diagnostics;
+}
+
+bool FMacMachine::TryPollPM5ProbePacket(FPM5ProbePacketEvidence &OutEvidence)
+{
+	std::lock_guard<std::mutex> Lock(Mutex);
+	if (ProbeEvidenceQueue.empty())
+		return false;
+	OutEvidence = std::move(ProbeEvidenceQueue.front());
+	ProbeEvidenceQueue.pop_front();
+	return true;
+}
+
+void FMacMachine::FinalizePM5ProbeCapture()
+{
+	// The CoreBluetooth callback queue produces acquisition work. Crossing it
+	// first and the decoder queue second ensures every packet observed before
+	// this call has reached the probe evidence queue before the TUI finalizes.
+	dispatch_sync(Queue, ^{
+				  });
+	dispatch_sync(DecoderQueue, ^{
+				  });
+	std::lock_guard<std::mutex> Lock(Mutex);
+	if (ProbeCaptureDiagnostics.Active)
+	{
+		ProbeCaptureDiagnostics.Active = false;
+		ProbeCaptureDiagnostics.StopReason = EPM5ProbeCaptureStopReason::RunStopped;
+	}
+}
+
+void FMacMachine::RecordCallbackFailure(EPM5CallbackStage Stage,
+										std::uint16_t Characteristic,
+										NSError *Error)
+{
+	auto &Stats = CallbackErrorDiagnostics[{Stage, Characteristic}];
+	Stats.Stage = Stage;
+	Stats.Characteristic = Characteristic;
+	++Stats.Count;
+	if (Error == nil)
+		return;
+	Stats.HasError = true;
+	Stats.LastErrorMonotonicNs = MonotonicNowNs();
+	if ([Error.domain isEqualToString:@"CBErrorDomain"])
+		Stats.LastErrorDomain = EPM5ErrorDomain::CoreBluetooth;
+	else if ([Error.domain isEqualToString:@"CBATTErrorDomain"])
+		Stats.LastErrorDomain = EPM5ErrorDomain::CoreBluetoothATT;
+	else if ([Error.domain isEqualToString:NSCocoaErrorDomain] ||
+			 [Error.domain isEqualToString:NSPOSIXErrorDomain])
+		Stats.LastErrorDomain = EPM5ErrorDomain::Foundation;
+	else
+		Stats.LastErrorDomain = EPM5ErrorDomain::Other;
+	Stats.LastErrorCode = static_cast<std::int32_t>(Error.code);
+}
+
 bool FMacMachine::TryPollEvent(FRowingMachineEvent &OutEvent)
 {
 	std::lock_guard<std::mutex> Lock(Mutex);
@@ -612,8 +779,8 @@ void FMacMachine::OnConnected()
 
 void FMacMachine::OnConnectionFailed(NSError *Error)
 {
-	(void)Error;
 	std::lock_guard<std::mutex> Lock(Mutex);
+	RecordCallbackFailure(EPM5CallbackStage::Connection, 0, Error);
 	if (State == ERowingConnectionState::Reconnecting)
 	{
 		ReconnectConnectInFlight = false;
@@ -630,8 +797,9 @@ void FMacMachine::OnConnectionFailed(NSError *Error)
 
 void FMacMachine::OnDisconnected(NSError *Error)
 {
-	(void)Error;
 	std::lock_guard<std::mutex> Lock(Mutex);
+	if (Error != nil)
+		RecordCallbackFailure(EPM5CallbackStage::Disconnection, 0, Error);
 	if (State == ERowingConnectionState::Idle)
 		return;
 	if (State == ERowingConnectionState::Reconnecting)
@@ -666,6 +834,7 @@ void FMacMachine::OnServicesDiscovered(NSError *Error)
 		static_cast<VIRPM5PeripheralDelegate *>(PeripheralDelegate);
 	if (Error != nil)
 	{
+		RecordCallbackFailure(EPM5CallbackStage::ServiceDiscovery, 0, Error);
 		EmitFault(ERowingFaultCode::MissingService,
 				  ERowingFaultSeverity::Terminal,
 				  ERowingOperation::Discover,
@@ -737,6 +906,11 @@ void FMacMachine::OnCharacteristicsDiscovered(CBService *Service,
 		Service.UUID, @"CE060030-43E5-11E4-916C-0800200C9A66");
 	if (Error != nil)
 	{
+		RecordCallbackFailure(
+			IsTelemetryService ? EPM5CallbackStage::TelemetryCharacteristicDiscovery
+							   : EPM5CallbackStage::IdentityCharacteristicDiscovery,
+			0,
+			Error);
 		EmitFault(ERowingFaultCode::MissingCharacteristic,
 				  ERowingFaultSeverity::Terminal,
 				  IsTelemetryService ? ERowingOperation::Subscribe
@@ -768,9 +942,16 @@ void FMacMachine::OnCharacteristicsDiscovered(CBService *Service,
 				continue;
 			const std::uint8_t ObservedProperties =
 				ToProfileProperties(Characteristic.properties);
+			auto &CharacteristicStats =
+				CharacteristicDiagnostics[ProfileCharacteristic->ShortId];
+			CharacteristicStats.Characteristic = ProfileCharacteristic->ShortId;
+			CharacteristicStats.PropertiesObserved = true;
+			CharacteristicStats.ObservedProperties = ObservedProperties;
 			if ((ObservedProperties & ProfileCharacteristic->RequiredProperties) !=
 				ProfileCharacteristic->RequiredProperties)
 			{
+				if (!ProfileCharacteristic->Required)
+					continue;
 				EmitFault(ERowingFaultCode::InvalidProperty,
 						  ERowingFaultSeverity::Terminal,
 						  ERowingOperation::Subscribe,
@@ -787,6 +968,7 @@ void FMacMachine::OnCharacteristicsDiscovered(CBService *Service,
 				NSData *Value = [NSData dataWithBytes:&StatusRate length:sizeof(StatusRate)];
 				StatusRateWriteRequired = true;
 				StatusRateConfigured = false;
+				++StatusRateWriteAttemptCount;
 				[Delegate.Peripheral writeValue:Value
 							  forCharacteristic:Characteristic
 										   type:CBCharacteristicWriteWithResponse];
@@ -796,6 +978,8 @@ void FMacMachine::OnCharacteristicsDiscovered(CBService *Service,
 				continue;
 			if (ProfileCharacteristic->Required)
 				FoundRequired.insert(ProfileCharacteristic->ShortId);
+			++CharacteristicDiagnostics[ProfileCharacteristic->ShortId]
+				  .NotificationEnableAttemptCount;
 			[Delegate.Peripheral setNotifyValue:YES forCharacteristic:Characteristic];
 		}
 		if (FoundRequired != RequiredNotifyCharacteristics)
@@ -833,6 +1017,9 @@ void FMacMachine::OnCharacteristicValue(CBCharacteristic *Characteristic,
 	{
 		if (Error != nil)
 		{
+			RecordCallbackFailure(EPM5CallbackStage::TelemetryValueUpdate,
+								  ShortIdFromUuid(Characteristic.UUID),
+								  Error);
 			EmitFault(ERowingFaultCode::InvalidValue,
 					  ERowingFaultSeverity::Warning,
 					  ERowingOperation::ReceiveTelemetry,
@@ -846,6 +1033,9 @@ void FMacMachine::OnCharacteristicValue(CBCharacteristic *Characteristic,
 		return;
 	if (Error != nil)
 	{
+		RecordCallbackFailure(EPM5CallbackStage::IdentityRead,
+							  ShortIdFromUuid(Characteristic.UUID),
+							  Error);
 		EmitFault(ERowingFaultCode::InvalidValue,
 				  ERowingFaultSeverity::Terminal,
 				  ERowingOperation::ReadIdentity,
@@ -884,18 +1074,22 @@ void FMacMachine::OnNotificationState(CBCharacteristic *Characteristic,
 	if (ActiveProfile == nullptr)
 		return;
 	std::optional<std::uint16_t> ShortId;
-	for (const std::uint16_t Candidate : RequiredNotifyCharacteristics)
-	{
-		if (IsUuid(Characteristic.UUID, CharacteristicUuid(Candidate)))
-		{
-			ShortId = Candidate;
-			break;
-		}
-	}
-	if (!ShortId)
+	const auto ProfileCharacteristic = std::find_if(
+		ActiveProfile->Characteristics.begin(), ActiveProfile->Characteristics.end(), [Characteristic](const Concept2PM::FPM5CharacteristicProfile &Candidate)
+		{ return Candidate.RequiresNotify &&
+				 IsUuid(Characteristic.UUID, CharacteristicUuid(Candidate.ShortId)); });
+	if (ProfileCharacteristic != ActiveProfile->Characteristics.end())
+		ShortId = ProfileCharacteristic->ShortId;
+	if (!ShortId || !ProfileCharacteristic->RequiresNotify)
 		return;
 	if (Error != nil || !Characteristic.isNotifying)
 	{
+		++CharacteristicDiagnostics[*ShortId].NotificationEnableFailureCount;
+		RecordCallbackFailure(EPM5CallbackStage::NotificationSubscription,
+							  ShortIdFromUuid(Characteristic.UUID),
+							  Error);
+		if (!ProfileCharacteristic->Required)
+			return;
 		EmitFault(ERowingFaultCode::InvalidProperty,
 				  ERowingFaultSeverity::Terminal,
 				  ERowingOperation::Subscribe,
@@ -904,6 +1098,7 @@ void FMacMachine::OnNotificationState(CBCharacteristic *Characteristic,
 				   ERowingConnectionReason::OperationFailed);
 		return;
 	}
+	++CharacteristicDiagnostics[*ShortId].NotificationEnableSuccessCount;
 	EnabledNotifyCharacteristics.insert(*ShortId);
 	FinishTelemetryIfReady();
 }
@@ -918,6 +1113,10 @@ void FMacMachine::OnStatusRateWritten(CBCharacteristic *Characteristic,
 		!IsUuid(Characteristic.UUID,
 				@"CE060034-43E5-11E4-916C-0800200C9A66"))
 	{
+		RecordCallbackFailure(EPM5CallbackStage::StatusRateWrite,
+							  ShortIdFromUuid(Characteristic.UUID),
+							  Error);
+		++StatusRateWriteFailureCount;
 		EmitFault(ERowingFaultCode::InvalidValue,
 				  ERowingFaultSeverity::Terminal,
 				  ERowingOperation::Subscribe,
@@ -926,6 +1125,7 @@ void FMacMachine::OnStatusRateWritten(CBCharacteristic *Characteristic,
 				   ERowingConnectionReason::OperationFailed);
 		return;
 	}
+	++StatusRateWriteSuccessCount;
 	StatusRateConfigured = true;
 	FinishTelemetryIfReady();
 }
@@ -933,8 +1133,14 @@ void FMacMachine::OnStatusRateWritten(CBCharacteristic *Characteristic,
 void FMacMachine::FinishTelemetryIfReady()
 {
 	if (ActiveProfile == nullptr ||
-		EnabledNotifyCharacteristics != RequiredNotifyCharacteristics ||
-		SeenRequiredCharacteristics != RequiredNotifyCharacteristics ||
+		!std::includes(EnabledNotifyCharacteristics.begin(),
+					   EnabledNotifyCharacteristics.end(),
+					   RequiredNotifyCharacteristics.begin(),
+					   RequiredNotifyCharacteristics.end()) ||
+		!std::includes(SeenRequiredCharacteristics.begin(),
+					   SeenRequiredCharacteristics.end(),
+					   RequiredNotifyCharacteristics.begin(),
+					   RequiredNotifyCharacteristics.end()) ||
 		(StatusRateWriteRequired && !StatusRateConfigured) ||
 		State != ERowingConnectionState::Subscribing)
 		return;
@@ -988,6 +1194,7 @@ void FMacMachine::EnqueueNotification(CBCharacteristic *Characteristic)
 	Notification.ShortId = ShortId;
 	Notification.Bytes.assign(Data, Data + Characteristic.value.length);
 	Notification.ReceivedMonotonicNs = MonotonicNowNs();
+	Notification.ConnectionStateAtReceive = State;
 	{
 		std::lock_guard<std::mutex> AcquisitionLock(AcquisitionMutex);
 		if (AcquisitionOverflowed)
@@ -1050,7 +1257,8 @@ void FMacMachine::DrainNotifications()
 		std::lock_guard<std::mutex> MachineLock(Mutex);
 		ReceiveTelemetryPacket(Notification.ShortId,
 							   Notification.Bytes,
-							   Notification.ReceivedMonotonicNs);
+							   Notification.ReceivedMonotonicNs,
+							   Notification.ConnectionStateAtReceive);
 	}
 }
 
@@ -1072,10 +1280,81 @@ void FMacMachine::FailAcquisitionOverflow()
 	[Central cancelPeripheralConnection:Delegate.Peripheral];
 }
 
+void FMacMachine::CaptureProbePacket(
+	std::uint16_t ShortId,
+	const std::vector<std::uint8_t> &Bytes,
+	std::uint64_t ReceivedMonotonicNs,
+	ERowingConnectionState PacketConnectionState,
+	Concept2PM::EPacketError ParserResult,
+	const std::vector<std::size_t> &ApprovedPacketLengths,
+	std::uint64_t CharacteristicSequence)
+{
+	if (!ProbeCaptureDiagnostics.Enabled)
+		return;
+
+	const std::uint64_t PacketSequence = ++ProbePacketSequence;
+	++ProbeCaptureDiagnostics.ObservedPacketCount;
+	if (ProbeCaptureDiagnostics.Active)
+	{
+		const std::uint64_t ElapsedMs =
+			ReceivedMonotonicNs >= ProbeCaptureDiagnostics.StartedMonotonicNs
+				? (ReceivedMonotonicNs -
+				   ProbeCaptureDiagnostics.StartedMonotonicNs) /
+					  1'000'000ULL
+				: 0;
+		if (ElapsedMs > ProbeConfiguration.MaxCaptureDurationMs)
+		{
+			ProbeCaptureDiagnostics.Active = false;
+			ProbeCaptureDiagnostics.StopReason =
+				EPM5ProbeCaptureStopReason::DurationLimit;
+		}
+		else if (ProbeCaptureDiagnostics.CapturedPacketCount >=
+				 ProbeConfiguration.MaxCapturedPacketCount)
+		{
+			ProbeCaptureDiagnostics.Active = false;
+			ProbeCaptureDiagnostics.StopReason =
+				EPM5ProbeCaptureStopReason::PacketLimit;
+		}
+	}
+	if (!ProbeCaptureDiagnostics.Active)
+	{
+		++ProbeCaptureDiagnostics.LimitDroppedPacketCount;
+		return;
+	}
+	if (ProbeEvidenceQueue.size() >= ProbeConfiguration.EvidenceQueueCapacity)
+	{
+		++ProbeCaptureDiagnostics.EvidenceQueueOverflowCount;
+		return;
+	}
+
+	FPM5ProbePacketEvidence Evidence;
+	Evidence.PacketSequence = PacketSequence;
+	Evidence.CharacteristicSequence = CharacteristicSequence;
+	Evidence.Characteristic = ShortId;
+	Evidence.ReceivedMonotonicNs = ReceivedMonotonicNs;
+	Evidence.ConnectionState = PacketConnectionState;
+	Evidence.ParserResult = ParserResult;
+	Evidence.ApprovedPacketLengths = ApprovedPacketLengths;
+	Evidence.OriginalPayloadLength = Bytes.size();
+	const std::size_t CapturedLength =
+		std::min(Bytes.size(), ProbeConfiguration.MaxCapturedPayloadBytes);
+	Evidence.PayloadBytes.assign(Bytes.begin(), Bytes.begin() + CapturedLength);
+	Evidence.PayloadTruncated = CapturedLength != Bytes.size();
+	if (Evidence.PayloadTruncated)
+		++ProbeCaptureDiagnostics.TruncatedPayloadCount;
+	++ProbeCaptureDiagnostics.CapturedPacketCount;
+	ProbeCaptureDiagnostics.CapturedPayloadByteCount += CapturedLength;
+	ProbeEvidenceQueue.push_back(std::move(Evidence));
+	ProbeCaptureDiagnostics.EvidenceQueueHighWaterMark = std::max(
+		ProbeCaptureDiagnostics.EvidenceQueueHighWaterMark,
+		static_cast<std::uint32_t>(ProbeEvidenceQueue.size()));
+}
+
 void FMacMachine::ReceiveTelemetryPacket(
 	std::uint16_t ShortId,
 	const std::vector<std::uint8_t> &Bytes,
-	std::uint64_t ReceivedMonotonicNs)
+	std::uint64_t ReceivedMonotonicNs,
+	ERowingConnectionState ConnectionStateAtReceive)
 {
 	if (ActiveProfile == nullptr ||
 		(State != ERowingConnectionState::Subscribing &&
@@ -1086,18 +1365,57 @@ void FMacMachine::ReceiveTelemetryPacket(
 	const auto *ProfileCharacteristic = FindProfileCharacteristic(ShortId);
 	if (ProfileCharacteristic == nullptr)
 		return;
+	auto &CharacteristicStats = CharacteristicDiagnostics[ShortId];
+	CharacteristicStats.Characteristic = ShortId;
+	CharacteristicStats.RecordNotification(ReceivedMonotonicNs, Bytes.size());
 	const Concept2PM::FDecodedPacket Packet = Concept2PM::DecodePacket(
 		ShortId, Bytes, ProfileCharacteristic->AllowedPacketLengths);
+	CaptureProbePacket(ShortId,
+					   Bytes,
+					   ReceivedMonotonicNs,
+					   ConnectionStateAtReceive,
+					   Packet.Error.Code,
+					   ProfileCharacteristic->AllowedPacketLengths,
+					   CharacteristicStats.NotificationCount);
 	if (!Packet.IsValid())
 	{
-		EmitFault(ERowingFaultCode::InvalidPacketLength,
-				  ERowingFaultSeverity::Terminal,
+		CharacteristicStats.RecordParserError(
+			Packet.Error.Code, Bytes.size(), ReceivedMonotonicNs);
+		const ERowingFaultCode FaultCode =
+			Packet.Error.Code == Concept2PM::EPacketError::LengthNotApproved
+				? ERowingFaultCode::InvalidPacketLength
+				: (Packet.Error.Code == Concept2PM::EPacketError::UnknownCharacteristic
+					   ? ERowingFaultCode::InvalidProperty
+					   : ERowingFaultCode::InvalidValue);
+		std::string Detail = "notification characteristic=";
+		char CharacteristicText[7]{};
+		std::snprintf(CharacteristicText, sizeof(CharacteristicText), "0x%04x", static_cast<unsigned int>(ShortId));
+		Detail += CharacteristicText;
+		Detail += " packet_length=" + std::to_string(Bytes.size()) + " allowed_lengths=";
+		for (std::size_t Index = 0;
+			 Index < ProfileCharacteristic->AllowedPacketLengths.size();
+			 ++Index)
+		{
+			if (Index != 0)
+				Detail += ',';
+			Detail += std::to_string(
+				ProfileCharacteristic->AllowedPacketLengths[Index]);
+		}
+		const ERowingFaultSeverity Severity = ProfileCharacteristic->Required
+												  ? ERowingFaultSeverity::Terminal
+												  : ERowingFaultSeverity::Warning;
+		EmitFault(FaultCode,
+				  Severity,
 				  ERowingOperation::ReceiveTelemetry,
-				  "notification did not match approved profile packet lengths");
-		Transition(ERowingConnectionState::Unsupported,
-				   ERowingConnectionReason::OperationFailed);
+				  Detail.c_str(),
+				  Packet.Error.ExpectedLength,
+				  Packet.Error.ActualLength);
+		if (ProfileCharacteristic->Required)
+			Transition(ERowingConnectionState::Unsupported,
+					   ERowingConnectionReason::OperationFailed);
 		return;
 	}
+	PublishAvailableMetrics(*ProfileCharacteristic);
 	SeenRequiredCharacteristics.insert(ShortId);
 	const auto NowNs = ReceivedMonotonicNs;
 	if (Packet.GeneralStatus)
@@ -1112,6 +1430,41 @@ void FMacMachine::ReceiveTelemetryPacket(
 	auto Sample = TelemetryMerger.Push(Packet, NowNs);
 	auto Correction = TelemetryMerger.TakePendingCorrection();
 	FinishTelemetryIfReady();
+	if (State == ERowingConnectionState::DiagnosticOnly ||
+		State == ERowingConnectionState::Ready)
+	{
+		if (Packet.StrokeData)
+		{
+			const auto &Fact = *Packet.StrokeData;
+			FRowingStrokeMetrics Stroke;
+			Stroke.Source = ERowingStrokeMetricsSource::KinematicsAndForce;
+			Stroke.SourceElapsedMs = Fact.ElapsedMs;
+			Stroke.StrokeCount = Fact.StrokeCount;
+			Stroke.CumulativeDistanceMm = Fact.CumulativeDistanceMm;
+			Stroke.DriveLengthMm = Fact.DriveLengthMm;
+			Stroke.DriveTimeMs = Fact.DriveTimeMs;
+			Stroke.RecoveryTimeMs = Fact.RecoveryTimeMs;
+			Stroke.StrokeDistanceMm = Fact.StrokeDistanceMm;
+			Stroke.PeakDriveForceDeciLb = Fact.PeakDriveForceDeciLb;
+			Stroke.AverageDriveForceDeciLb = Fact.AverageDriveForceDeciLb;
+			Stroke.WorkPerStrokeDeciJoules = Fact.WorkPerStrokeDeciJoules;
+			Emit(std::move(Stroke));
+		}
+		if (Packet.AdditionalStrokeData)
+		{
+			const auto &Fact = *Packet.AdditionalStrokeData;
+			FRowingStrokeMetrics Stroke;
+			Stroke.Source = ERowingStrokeMetricsSource::PowerAndProjection;
+			Stroke.SourceElapsedMs = Fact.ElapsedMs;
+			Stroke.StrokeCount = Fact.StrokeCount;
+			Stroke.StrokePowerW = Fact.StrokePowerW;
+			Stroke.CaloriesPerHour = Fact.CaloriesPerHour;
+			Stroke.ProjectedWorkTimeMs = Fact.ProjectedWorkTimeMs;
+			Stroke.ProjectedWorkDistanceMm = Fact.ProjectedWorkDistanceMm;
+			Stroke.ProjectedWorkOtherRaw = Fact.ProjectedWorkOtherRaw;
+			Emit(std::move(Stroke));
+		}
+	}
 	if (Sample && State == ERowingConnectionState::DiagnosticOnly)
 	{
 		LastPublishedSampleSequence = Sample->Sequence;
@@ -1128,6 +1481,19 @@ void FMacMachine::ReceiveTelemetryPacket(
 		!ActiveProfile->DiagnosticOnly &&
 		Correction->TargetSampleSequence == LastEmittedMetricSampleSequence)
 		Emit(std::move(*Correction));
+}
+
+void FMacMachine::PublishAvailableMetrics(
+	const Concept2PM::FPM5CharacteristicProfile &Characteristic)
+{
+	if (ActiveProfile == nullptr || ActiveProfile->DiagnosticOnly || !LastMachineInfo)
+		return;
+	const FRowingMetricSet AvailableMetrics =
+		LastMachineInfo->SupportedMetrics | Characteristic.ImplementedMetrics;
+	if (AvailableMetrics == LastMachineInfo->SupportedMetrics)
+		return;
+	LastMachineInfo->SupportedMetrics = AvailableMetrics;
+	Emit(*LastMachineInfo);
 }
 
 bool FMacMachine::OwnsPeripheral(CBPeripheral *Peripheral) const
@@ -1351,7 +1717,9 @@ void FMacMachine::Emit(FRowingMachineEventPayload Payload)
 void FMacMachine::EmitFault(ERowingFaultCode Code,
 							ERowingFaultSeverity Severity,
 							ERowingOperation Operation,
-							const char *Diagnostic)
+							const char *Diagnostic,
+							std::optional<std::uint64_t> ExpectedValue,
+							std::optional<std::uint64_t> ActualValue)
 {
 	FRowingFault Fault;
 	Fault.Code = Code;
@@ -1359,6 +1727,8 @@ void FMacMachine::EmitFault(ERowingFaultCode Code,
 	Fault.Operation = Operation;
 	Fault.ConnectionState = State;
 	Fault.DiagnosticText = Diagnostic;
+	Fault.ExpectedValue = ExpectedValue;
+	Fault.ActualValue = ActualValue;
 	Emit(std::move(Fault));
 }
 
@@ -1374,10 +1744,9 @@ void FMacMachine::FinishIdentity()
 	const Concept2PM::FCapabilityEvaluation Evaluation =
 		Concept2PM::EvaluateCapability(
 			{Model, Hardware, Firmware, *MachineKind}, Profiles);
-	Info.SupportedMetrics =
-		(Evaluation.Profile != nullptr && Evaluation.Profile->DiagnosticOnly)
-			? ToRowingMetricSet(ERowingMetric::None)
-			: Evaluation.SupportedMetrics;
+	// Capability evaluation describes decoder potential. Public machine info
+	// advertises only metrics backed by a valid notification in this connection.
+	Info.SupportedMetrics = ToRowingMetricSet(ERowingMetric::None);
 	Info.CapabilityProfileVersion = Evaluation.ProfileVersion;
 	Info.SupportState = Evaluation.SupportState;
 	Emit(Info);
@@ -1407,6 +1776,14 @@ void FMacMachine::FinishIdentity()
 			   Evaluation.SupportState == ERowingMachineSupportState::Allowed)))
 	{
 		ActiveProfile = Evaluation.Profile;
+		LastRequestedStatusPeriodMs = ActiveProfile->RequestedStatusPeriodMs;
+		for (const Concept2PM::FPM5CharacteristicProfile &Characteristic :
+			 ActiveProfile->Characteristics)
+		{
+			auto &Stats = CharacteristicDiagnostics[Characteristic.ShortId];
+			Stats.Characteristic = Characteristic.ShortId;
+			Stats.ApprovedPacketLengths = Characteristic.AllowedPacketLengths;
+		}
 		RequiredNotifyCharacteristics.clear();
 		for (const Concept2PM::FPM5CharacteristicProfile &Characteristic :
 			 ActiveProfile->Characteristics)
@@ -1465,8 +1842,10 @@ void FMacMachine::FinishIdentity()
 }
 
 FMacDiscovery::FMacDiscovery(
-	std::vector<Concept2PM::FPM5CapabilityProfile> InProfiles)
-	: Profiles(std::move(InProfiles))
+	std::vector<Concept2PM::FPM5CapabilityProfile> InProfiles,
+	FPM5HardwareProbeConfiguration InProbeConfiguration)
+	: Profiles(std::move(InProfiles)),
+	  ProbeConfiguration(std::move(InProbeConfiguration))
 {
 	@autoreleasepool
 	{
@@ -1516,7 +1895,12 @@ void FMacDiscovery::TryReconnectRememberedPeripheral(CBCentralManager *Central)
 		return;
 	}
 	RelaunchMachine = std::make_unique<FMacMachine>(
-		*this, Central, Queue, Peripherals.firstObject, Profiles);
+		*this,
+		Central,
+		Queue,
+		Peripherals.firstObject,
+		Profiles,
+		ProbeConfiguration);
 	ActiveMachine = RelaunchMachine.get();
 	RelaunchMachine->StartRelaunchReconnect();
 }
@@ -1554,14 +1938,21 @@ FRowingCommandResult FMacDiscovery::StopScan()
 
 bool FMacDiscovery::TryPollDiscoveryEvent(FRowingMachineEvent &OutEvent)
 {
-	if (RelaunchMachine != nullptr && RelaunchMachine->TryPollEvent(OutEvent))
-		return true;
 	std::lock_guard<std::mutex> Lock(EventMutex);
 	if (Events.empty())
 		return false;
 	OutEvent = std::move(Events.front());
 	Events.pop_front();
 	return true;
+}
+
+std::unique_ptr<IRowingMachine> FMacDiscovery::TryTakeRelaunchMachine()
+{
+	__block FMacMachine *TransferredMachine = nullptr;
+	dispatch_sync(Queue, ^{
+	  TransferredMachine = RelaunchMachine.release();
+	});
+	return std::unique_ptr<IRowingMachine>(TransferredMachine);
 }
 
 std::unique_ptr<IRowingMachine>
@@ -1582,7 +1973,12 @@ FMacDiscovery::CreateMachine(const FRowingMachineId &MachineId)
 		  static_cast<VIRPM5CentralDelegate *>(CentralDelegate);
 	  CBPeripheral *Peripheral = Delegate.KnownPeripherals[It->RetainedIndex];
 	  CreatedMachine = new FMacMachine(
-		  *this, Delegate.Central, Queue, Peripheral, Profiles);
+		  *this,
+		  Delegate.Central,
+		  Queue,
+		  Peripheral,
+		  Profiles,
+		  ProbeConfiguration);
 	  ActiveMachine = CreatedMachine;
 	  SaveRememberedPeripheral(Peripheral);
 	});
@@ -1774,19 +2170,30 @@ void FMacDiscovery::Emit(FRowingMachineEventPayload Payload)
 	EnqueueEvent(Events, EventSequence, LastEventTimestampNs, std::move(Payload));
 }
 
-std::unique_ptr<IRowingMachineDiscovery> CreateConcept2PMDiscovery(
-	std::vector<Concept2PM::FPM5CapabilityProfile> Profiles)
+std::unique_ptr<IConcept2PMDiscovery> CreateConcept2PMDiscovery(
+	std::vector<Concept2PM::FPM5CapabilityProfile> Profiles,
+	FPM5HardwareProbeConfiguration ProbeConfiguration)
 {
-	return std::make_unique<FMacDiscovery>(std::move(Profiles));
+	return std::make_unique<FMacDiscovery>(std::move(Profiles),
+										   std::move(ProbeConfiguration));
 }
 
-std::unique_ptr<IRowingMachineDiscovery> CreateConcept2PMDiscovery()
+std::unique_ptr<IConcept2PMDiscovery> CreateConcept2PMDiscovery()
 {
 	return CreateConcept2PMDiscovery(
 		Concept2PM::GetGeneratedPM5CapabilityProfiles());
 }
 
-std::unique_ptr<IRowingMachineDiscovery> CreateConcept2PMDiagnosticDiscovery()
+std::unique_ptr<IConcept2PMDiscovery> CreateConcept2PMDiagnosticDiscovery()
 {
 	return CreateConcept2PMDiscovery(AdapterPrivateProfiles());
+}
+
+std::unique_ptr<IConcept2PMDiscovery> CreateConcept2PMHardwareProbeDiscovery(
+	FPM5HardwareProbeConfiguration Configuration)
+{
+	Configuration.CaptureRawTelemetry = true;
+	return CreateConcept2PMDiscovery(
+		Concept2PM::GetGeneratedPM5CapabilityProfiles(),
+		std::move(Configuration));
 }

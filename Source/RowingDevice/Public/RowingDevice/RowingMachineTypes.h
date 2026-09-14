@@ -204,7 +204,8 @@ enum class ERowingMachineEventKind : std::uint8_t
 	ConnectionRestored,
 	FaultObserved,
 	DiagnosticSampleObserved,
-	MetricCorrected
+	MetricCorrected,
+	StrokeMetricsObserved
 };
 
 struct FRowingDiagnosticSample
@@ -219,6 +220,38 @@ struct FRowingMetricCorrection
 	FRowingMetricSample CorrectedSample;
 };
 
+enum class ERowingStrokeMetricsSource : std::uint8_t
+{
+	KinematicsAndForce,
+	PowerAndProjection
+};
+
+// A sparse, timestamped stroke record. PM characteristics have independent
+// update paths, so two records with the same StrokeCount may complement each
+// other; consumers must not join them by arrival order alone.
+struct FRowingStrokeMetrics
+{
+	ERowingStrokeMetricsSource Source =
+		ERowingStrokeMetricsSource::KinematicsAndForce;
+	std::uint64_t SourceElapsedMs = 0;
+	std::optional<std::uint64_t> StrokeCount;
+	std::optional<std::uint64_t> CumulativeDistanceMm;
+	std::optional<std::uint32_t> DriveLengthMm;
+	std::optional<std::uint32_t> DriveTimeMs;
+	std::optional<std::uint32_t> RecoveryTimeMs;
+	std::optional<std::uint32_t> StrokeDistanceMm;
+	std::optional<std::uint32_t> PeakDriveForceDeciLb;
+	std::optional<std::uint32_t> AverageDriveForceDeciLb;
+	std::optional<std::uint32_t> WorkPerStrokeDeciJoules;
+	std::optional<std::uint32_t> StrokePowerW;
+	std::optional<std::uint32_t> CaloriesPerHour;
+	std::optional<std::uint64_t> ProjectedWorkTimeMs;
+	std::optional<std::uint64_t> ProjectedWorkDistanceMm;
+	// Concept2's BLE table names this field "projected work other" but does
+	// not define a stable unit. Preserve the raw 24-bit value without inference.
+	std::optional<std::uint32_t> ProjectedWorkOtherRaw;
+};
+
 using FRowingMachineEventPayload = std::variant<FRowingMachineDescriptor,
 												FRowingConnectionStateChanged,
 												FRowingMachineInfo,
@@ -227,11 +260,13 @@ using FRowingMachineEventPayload = std::variant<FRowingMachineDescriptor,
 												FRowingConnectionRestored,
 												FRowingFault,
 												FRowingDiagnosticSample,
-												FRowingMetricCorrection>;
+												FRowingMetricCorrection,
+												FRowingStrokeMetrics>;
 
-static_assert(std::variant_size_v<FRowingMachineEventPayload> == 9);
+static_assert(std::variant_size_v<FRowingMachineEventPayload> == 10);
 static_assert(static_cast<std::uint8_t>(ERowingMachineEventKind::DiagnosticSampleObserved) == 7);
 static_assert(static_cast<std::uint8_t>(ERowingMachineEventKind::MetricCorrected) == 8);
+static_assert(static_cast<std::uint8_t>(ERowingMachineEventKind::StrokeMetricsObserved) == 9);
 
 struct FRowingMachineEvent
 {
@@ -259,7 +294,7 @@ struct FRowingMachineEvent
 			return ERowingMachineEventKind::DiagnosticSampleObserved;
 		if (std::holds_alternative<FRowingMetricCorrection>(Payload))
 			return ERowingMachineEventKind::MetricCorrected;
-		return ERowingMachineEventKind::MetricCorrected;
+		return ERowingMachineEventKind::StrokeMetricsObserved;
 	}
 };
 

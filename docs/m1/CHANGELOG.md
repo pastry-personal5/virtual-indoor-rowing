@@ -6,6 +6,59 @@ This file records accepted delivery-history changes for Milestone 1. Follow the 
 
 ### Changed
 
+- Split ordinary TUI diagnostics from an explicit `make hil-pm5` hardware-probe
+  mode. Metrics schema v4 records bounded raw rowing-service packets only in the
+  visibly active, owner-only probe, with characteristic/global sequence,
+  monotonic receive time, connection state, parser outcome, approved lengths,
+  exact payload length/hex, and explicit duration/packet/queue loss counters.
+  This supplies the missing byte-level evidence for real 15-byte `0x0036`
+  variants without weakening the reviewed capability profile or capturing PM
+  identity payloads.
+- Transferred a remembered-PM5 relaunch connection from discovery into the
+  TUI's normal single-machine ownership path, so it is explicitly disconnected
+  and its actual final state, queues, and PM5 diagnostics are retained at stop.
+- `SupportedMetrics` now begins empty and expands only after structurally valid
+  notifications prove each source in the current connection; optional profile
+  declarations no longer claim unavailable hardware metrics.
+- Tightened capability generation to reject packet lengths outside the exact
+  implemented layouts, and added per-characteristic approved lengths plus the
+  last parser-error length/timestamp to redacted run aggregates.
+- Added an always-visible, high-contrast PM5 TUI status footer that distinguishes
+  live, connecting, stale, reconnecting, unsupported, permission, failed, and
+  diagnostic-only states while continuously showing telemetry age, transition
+  reason, support state, sample/reconnect counts, quality, faults, and queue health.
+- Revised the exact PM5 development capability profile to v4: keep the allowed
+  tuple pinned to the revision 0.34 18-byte `0x0036` BLE layout, retain decoder
+  test coverage for the older published 15-byte layout, and treat unapproved or
+  malformed optional stroke notifications as warnings instead of terminating
+  otherwise valid required status telemetry. Decoder diagnostics now retain the
+  characteristic, observed packet length, and approved lengths without payloads.
+- Expanded per-run PM5 metrics to schema v3 with timestamped connection,
+  identity, RSSI-only discovery, stale, reconnect, and fault records; capture
+  diagnostic-only telemetry and notification-enable outcomes separately, and
+  retain categorized CoreBluetooth error codes without IDs or raw error text.
+- Expanded the PM5 TUI telemetry panel to fill nearly the whole app viewport;
+  Wave launches use a magnified block, and Apple Terminal is resized when possible.
+- Per-run metrics now include adapter-private characteristic properties,
+  notification counts/cadence histograms, parser-error categories, status-rate
+  write outcomes, and successful reconnect gap durations. These measurements
+  improve future HIL captures; the previous six-minute run is not backfilled.
+- Added sparse, independently timestamped stroke metrics from PM5 stroke-data
+  notifications: drive/recovery timing, drive/stroke distance, peak/average
+  force, work per stroke, stroke power, calories/hour, and projected-work
+  fields. The undefined-unit projected-work value remains raw. Profile v4
+  declares `0x0035`/`0x0036` optional for the exact PM5 tuple and subscribes
+  only when notify is available; hardware acceptance is still pending.
+- Recorded the 2026-09-14 short reconnecting launch with zero telemetry as a
+  no-data observation, not as a reconnect failure or hardware acceptance case.
+- The 2026-09-13 user-confirmed six-minute real-rowing capture is now recorded
+  as performed evidence, with its PM completion state and known measurement
+  limits; it is not called an acceptance pass while required aggregates and
+  hardware scenarios remain unverified.
+- Timestamped per-run metrics now end with normalized quality counters and
+  generic acquisition/event queue high-water and overflow summaries, making
+  future HIL captures self-describing without adding PM protocol details to the
+  public TUI contract.
 - Expanded PM5 TUI diagnostic logging to record normalized telemetry and late
   corrections, connection transitions, stale events, and a redacted aggregate
   stop summary with quality, fault, and queue counters. The Phase 1 evidence

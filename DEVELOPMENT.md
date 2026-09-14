@@ -27,7 +27,7 @@ These are pinned architecture decisions, not suggestions. A replacement needs co
    make format-check
    ```
 
-5. Run `make unreal-smoke` only after `make doctor` passes. Run `make hil-pm5` for a user-driven hardware session; simulator success is not hardware evidence.
+5. Run `make unreal-smoke` only after `make doctor` passes. Run `make hil-pm5` for a user-driven hardware session; simulator success is not hardware evidence. Invoking `make hil-pm5` explicitly enables the bounded raw-telemetry hardware probe described below.
 6. Before handoff, run `git diff --check` and `git status --short`, then state exactly what was verified and what remains unverified.
 
 Generated native build output is under `Build/native/`. The checked-in `make clean` command removes only that directory.
@@ -48,6 +48,18 @@ There is no maximum characters-per-line limit for source files. The checked-in `
 ## PM5 TUI logs
 
 The PoC TUI creates `Logs/pm5-tui/` on launch and writes `pm5-tui.log` there. The default threshold is `DEBUG`; files rotate at 1 MiB, retaining three numbered backups. The directory and log files are owner-only, and generated log files are ignored by Git. Diagnostic logging records commands, lifecycle events, and redacted faults, but excludes peripheral IDs, PM serials, raw BLE payloads, and metric values such as heart rate.
+
+Every launch also creates one owner-only, Git-ignored JSONL file under
+`Metrics/pm5-tui/`. Ordinary `make pm5-tui` runs record normalized and aggregate
+evidence without raw payloads. The explicit `make hil-pm5` hardware-probe mode
+additionally records bounded rowing-service telemetry payloads, UUID short IDs,
+parser outcomes, approved lengths, per-characteristic sequence numbers, and
+monotonic receive timestamps. The TUI and log visibly state when this capture is
+active. Capture stops after 65 minutes or 100,000 packets and reports any
+truncation, queue overflow, or limit drop in the final record. It never captures
+identity-characteristic payloads, peripheral identifiers, or PM serial numbers.
+Treat hardware-probe JSONL as private athlete/device evidence: inspect it
+locally, scrub any exported fixture, and do not commit or attach the raw file.
 
 ## Change-specific checklist
 

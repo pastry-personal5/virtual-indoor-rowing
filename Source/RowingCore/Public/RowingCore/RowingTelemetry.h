@@ -46,7 +46,18 @@ enum class ERowingMetric : std::uint64_t
 	StrokeCount = 1ULL << 10,
 	WorkoutState = 1ULL << 11,
 	RowingState = 1ULL << 12,
-	StrokeState = 1ULL << 13
+	StrokeState = 1ULL << 13,
+	DriveLength = 1ULL << 14,
+	DriveTime = 1ULL << 15,
+	RecoveryTime = 1ULL << 16,
+	StrokeDistance = 1ULL << 17,
+	PeakDriveForce = 1ULL << 18,
+	AverageDriveForce = 1ULL << 19,
+	WorkPerStroke = 1ULL << 20,
+	CaloriesPerHour = 1ULL << 21,
+	ProjectedWorkTime = 1ULL << 22,
+	ProjectedWorkDistance = 1ULL << 23,
+	ProjectedWorkOther = 1ULL << 24
 };
 
 using FRowingMetricSet = std::uint64_t;

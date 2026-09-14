@@ -53,11 +53,16 @@ Only `IndoorRower` is accepted by this milestone. The other values prevent the p
 | `HardwareVersion` | bounded UTF-8 string | Exact observed hardware revision |
 | `FirmwareVersion` | bounded UTF-8 string | Exact observed firmware revision |
 | `MachineKind` | `ERowingMachineKind` | Parsed connected-erg type |
-| `SupportedMetrics` | bitset | Metrics available under the approved profile |
+| `SupportedMetrics` | bitset | Metrics backed by structurally valid source notifications observed in the current connection; starts empty and expands as sources are proven, and the run-metrics JSON records both names and numeric flags |
 | `CapabilityProfileVersion` | unsigned integer | Bundled profile version used for evaluation |
 | `SupportState` | enum | `Allowed`, `Warn`, or `Blocked` |
 
 Raw serial number is intentionally absent.
+
+`MachineInfoObserved` may be emitted again when a newly observed optional source
+expands `SupportedMetrics`. Profile decoder potential alone does not advertise a
+metric: an absent characteristic, failed subscription, or invalid packet leaves
+its metrics unavailable.
 
 `Allowed` means the exact reviewed profile may proceed to `Ready`. `Warn` never enters `Ready` and never emits `MetricSampled`. A narrowly scoped PoC diagnostic profile may emit the separate `DiagnosticSampleObserved` event, which is display-only, unverified, and must not be consumed by workout, persistence, or ranking logic. Other Warn profiles permit identity inventory and redacted diagnostics only. `Blocked` stops after the safe identity/capability check. A profile may move to `Allowed` only through the evidence and review process described in this milestone.
 
@@ -113,6 +118,34 @@ The initial transition reasons are `None`, `UserRequested`, `OperationStarted`, 
 
 The initial quality flags reuse the definitions in [data model and protocols](../architecture/06-data-and-protocols.md): `MissingField`, `SourceGap`, `Duplicate`, `TimeRegression`, `DistanceRegression`, `DeviceReconnected`, `LateCorrection`, `UnsupportedValue`, and `Outlier`. Flags may accumulate; no Boolean `Verified` field replaces the evidence.
 
+### `FRowingStrokeMetrics`
+
+Stroke detail is a separate sparse event, not a field that must align with the
+10 Hz `FRowingMetricSample` cadence. PM sources are independent: consumers may
+receive two records with the same `StrokeCount`, one for kinematics/force and
+one for power/projection. Join only by the source stroke count when present;
+never by arrival order. `SourceElapsedMs` and the enclosing event's monotonic
+timestamp preserve both PM time and local receive timing.
+
+| Field | Type | Unit/meaning |
+|---|---|---|
+| `Source` | enum | `KinematicsAndForce` or `PowerAndProjection` packet group |
+| `SourceElapsedMs` | `uint64` | PM elapsed time |
+| `StrokeCount` | optional `uint64` | PM stroke identifier/correlation key |
+| `CumulativeDistanceMm` | optional `uint64` | PM cumulative distance carried by the stroke-data source |
+| `DriveLengthMm` | optional `uint32` | Drive length in millimeters |
+| `DriveTimeMs` | optional `uint32` | Drive time in milliseconds |
+| `RecoveryTimeMs` | optional `uint32` | Recovery time in milliseconds |
+| `StrokeDistanceMm` | optional `uint32` | PM stroke distance in millimeters |
+| `PeakDriveForceDeciLb` | optional `uint32` | Peak force in 0.1 lb-force |
+| `AverageDriveForceDeciLb` | optional `uint32` | Average drive force in 0.1 lb-force |
+| `WorkPerStrokeDeciJoules` | optional `uint32` | Work in 0.1 joules |
+| `StrokePowerW` | optional `uint32` | Stroke power in watts |
+| `CaloriesPerHour` | optional `uint32` | PM stroke calorie rate |
+| `ProjectedWorkTimeMs` | optional `uint64` | PM projected work time in milliseconds |
+| `ProjectedWorkDistanceMm` | optional `uint64` | PM projected work distance in millimeters |
+| `ProjectedWorkOtherRaw` | optional `uint32` | Opaque 24-bit PM value; unit/semantics intentionally unspecified |
+
 This milestone does not define smoothed speed, predicted distance, virtual distance, course position, scoring, or workout summaries.
 
 ## Events
@@ -130,6 +163,7 @@ This milestone does not define smoothed speed, predicted distance, virtual dista
 | `FaultObserved` | `FRowingFault` | Never coalesced |
 | `DiagnosticSampleObserved` | `FRowingDiagnosticSample` | Never coalesced; unverified display-only data, never workout input |
 | `MetricCorrected` | `FRowingMetricCorrection` | Never coalesced; replaces the complete prior sample named by `TargetSampleSequence` |
+| `StrokeMetricsObserved` | `FRowingStrokeMetrics` | Never coalesced; sparse per-stroke facts, separate from continuous samples |
 
 Every event contains an adapter event sequence and local monotonic timestamp. Events produced by one adapter are dequeued in producer order.
 
@@ -208,3 +242,4 @@ The exact transport interface may evolve privately as long as the public orderin
 - Reinterpreting a unit, changing requiredness, changing event order, or changing lifecycle semantics is breaking.
 - Removed enum values remain reserved and unknown numeric source values remain diagnosable.
 - Public serialized wire/storage contracts are out of scope; these in-process C++ types must not be copied directly into future Protobuf or database schemas without separate review.
+- `StrokeMetricsObserved` is appended as event-kind value 9; existing event-kind values 0–8 remain unchanged. Metrics-file serialization advances to schema version 3.

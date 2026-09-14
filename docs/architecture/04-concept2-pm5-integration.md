@@ -177,12 +177,22 @@ The merger publishes an immutable `MetricSample` at the best supported cadence, 
 | stroke state | general status | unknown preserved |
 | workout/rowing state | general status | drives lifecycle with debounce rules |
 | stroke power W | additional stroke data | stroke event value, not falsely treated as continuous 10 Hz power |
+| drive/recovery detail | stroke data | drive length/time, recovery time, stroke distance; emitted as sparse stroke metrics |
+| stroke force/work | stroke data | peak/average drive force in 0.1 lb-force and work per stroke in 0.1 J |
+| projected work | additional stroke data | projected work time/distance; undocumented-unit "other" value remains raw |
 | average power W | additional status 2 | aggregate |
 | heart rate bpm | additional status 1 | nullable and privacy-controlled |
 | drag factor | general status | nullable |
 | stroke count | stroke data | monotonic cross-check |
 | interval data | split characteristics | finalized aggregate/events |
 | data quality | adapter/merger | bit set plus diagnostic detail event |
+
+Detailed `0x0035`/`0x0036` notifications emit sparse `StrokeMetricsObserved`
+events with both PM elapsed time and local receive timestamp. They do not depend
+on exact timestamp equality with the continuous sample stream. When both packet
+groups provide a stroke count, that count is the correlation key; arrival order
+is not. `0x0036`'s projected-work-other field has no stable documented unit and
+must remain raw until clarified by Concept2.
 
 Notifications for the same PM timestamp can arrive in either order. Hold an incomplete merge bucket for a small fixed window (initially 30 ms), then publish with absent fields marked null. Late information emits a typed correction tied to sample sequence; rendering may use it, while persistence retains a deterministic merge rule.
 

@@ -32,7 +32,7 @@ namespace
 		}
 	};
 
-	class FUnavailableDiscovery final : public IRowingMachineDiscovery
+	class FUnavailableDiscovery final : public IConcept2PMDiscovery
 	{
 	  public:
 		explicit FUnavailableDiscovery(
@@ -53,6 +53,10 @@ namespace
 		{
 			return false;
 		}
+		std::unique_ptr<IRowingMachine> TryTakeRelaunchMachine() override
+		{
+			return nullptr;
+		}
 		std::unique_ptr<IRowingMachine>
 		CreateMachine(const FRowingMachineId &) override
 		{
@@ -64,20 +68,30 @@ namespace
 	};
 } // namespace
 
-std::unique_ptr<IRowingMachineDiscovery> CreateConcept2PMDiscovery(
-	std::vector<Concept2PM::FPM5CapabilityProfile> Profiles)
+std::unique_ptr<IConcept2PMDiscovery> CreateConcept2PMDiscovery(
+	std::vector<Concept2PM::FPM5CapabilityProfile> Profiles,
+	FPM5HardwareProbeConfiguration ProbeConfiguration)
 {
+	(void)ProbeConfiguration;
 	return std::make_unique<FUnavailableDiscovery>(std::move(Profiles));
 }
 
-std::unique_ptr<IRowingMachineDiscovery> CreateConcept2PMDiscovery()
+std::unique_ptr<IConcept2PMDiscovery> CreateConcept2PMDiscovery()
 {
 	return CreateConcept2PMDiscovery(
 		Concept2PM::GetGeneratedPM5CapabilityProfiles());
 }
 
-std::unique_ptr<IRowingMachineDiscovery> CreateConcept2PMDiagnosticDiscovery()
+std::unique_ptr<IConcept2PMDiscovery> CreateConcept2PMDiagnosticDiscovery()
 {
 	return CreateConcept2PMDiscovery({});
+}
+
+std::unique_ptr<IConcept2PMDiscovery> CreateConcept2PMHardwareProbeDiscovery(
+	FPM5HardwareProbeConfiguration Configuration)
+{
+	Configuration.CaptureRawTelemetry = true;
+	return CreateConcept2PMDiscovery(
+		Concept2PM::GetGeneratedPM5CapabilityProfiles(), Configuration);
 }
 #endif

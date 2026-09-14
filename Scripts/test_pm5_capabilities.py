@@ -71,11 +71,22 @@ def valid_manifest() -> dict:
 	}
 
 
+def add_unknown_0036_layout(manifest: dict) -> None:
+	manifest["profiles"][0]["optional_characteristics"].append(
+		{
+			"short_id": "0x0036",
+			"required_properties": ["notify"],
+			"allowed_packet_lengths": [16],
+			"implemented_fields": ["stroke_power"],
+		}
+	)
+
+
 class PM5CapabilityManifestTests(unittest.TestCase):
 	def test_checked_in_manifest_generates_reviewed_pm5_allow_list(self) -> None:
 		manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
 		normalized = validate_manifest(manifest)
-		self.assertEqual(normalized["profile_version"], 2)
+		self.assertEqual(normalized["profile_version"], 4)
 		self.assertEqual(len(normalized["profiles"]), 1)
 		profile = normalized["profiles"][0]
 		self.assertEqual(profile["model"], "PM5")
@@ -84,17 +95,20 @@ class PM5CapabilityManifestTests(unittest.TestCase):
 		self.assertEqual(profile["support_state"], "Allowed")
 		self.assertEqual(
 			[(characteristic["id"], characteristic["lengths"]) for characteristic in profile["characteristics"]],
-			[(0x0031, [19]), (0x0032, [17]), (0x0034, [])],
+			[(0x0031, [19]), (0x0032, [17]), (0x0034, []), (0x0035, [20]), (0x0036, [18])],
 		)
 		header = render_header(manifest)
 		self.assertIn("GetGeneratedPM5CapabilityProfiles()", header)
 		self.assertIn("Profiles.reserve(1);", header)
 		self.assertIn('Profile.MonitorModel = "PM5";', header)
-		self.assertIn("Profile.Version = 2U;", header)
+		self.assertIn("Profile.Version = 4U;", header)
 		self.assertIn(
 			"0x0034U, false, false, ToPM5CharacteristicProperties(EPM5CharacteristicProperty::Read) | ToPM5CharacteristicProperties(EPM5CharacteristicProperty::Write), {}",
 			header,
 		)
+		self.assertIn("ERowingMetric::PeakDriveForce", header)
+		self.assertIn("ERowingMetric::WorkPerStroke", header)
+		self.assertIn("ERowingMetric::ProjectedWorkOther", header)
 
 	def test_synthetic_profile_generates_exact_runtime_tuple_and_metrics(self) -> None:
 		manifest = valid_manifest()
@@ -159,6 +173,8 @@ class PM5CapabilityManifestTests(unittest.TestCase):
 			("unsupported machine enum", lambda value: value["profiles"][0].__setitem__("machine_kind", "SkiErg")),
 			("unsupported property", lambda value: value["profiles"][0]["required_characteristics"][0].__setitem__("required_properties", ["read"])),
 			("undersized packet", lambda value: value["profiles"][0]["required_characteristics"][0].__setitem__("allowed_packet_lengths", [18])),
+			("unknown exact packet layout", lambda value: value["profiles"][0]["optional_characteristics"][0].__setitem__("allowed_packet_lengths", [21])),
+			("unknown 0x0036 packet layout", add_unknown_0036_layout),
 			("unsupported field", lambda value: value["profiles"][0]["required_characteristics"][0].__setitem__("implemented_fields", ["heart_rate"])),
 			("missing required stream", lambda value: value["profiles"][0]["required_characteristics"].pop()),
 			("unimplemented optional stream", lambda value: value["profiles"][0]["optional_characteristics"].append(copy.deepcopy(value["profiles"][0]["required_characteristics"][0]))),

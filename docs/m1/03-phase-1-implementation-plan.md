@@ -1,8 +1,8 @@
 # Milestone 1 Phase 1 implementation plan
 
-Status: Planned  
+Status: In progress
 Owner: A0 — CTO / Principal Architect  
-Last reviewed: 2026-09-13
+Last reviewed: 2026-09-14
 
 ## Goal and success criteria
 
@@ -81,6 +81,9 @@ A1 implements the minimum production-shaped path:
     - On TUI launch, attempt to reconnect to the stored PM5 without requiring a new scan
     - If the stored PM5 is unavailable, fall back to normal scanning behavior
     - Show clear status messages about the reconnection attempt
+    - Transfer the remembered-PM5 machine to the TUI's single `IRowingMachine`
+      owner so normal event polling, explicit shutdown, and final diagnostics use
+      the same path as a manually selected machine
 
 The implementation uses only the published Concept2 specification and observed hardware evidence. It does not send CSAFE commands, attempt authentication, mutate PM state, or infer undocumented fields.
 
@@ -105,12 +108,28 @@ Required display:
 - normalized workout, rowing, and stroke states;
 - quality flags, stale warning, queue depth, and categorical fault.
 
+Connection/readiness and blocking fault state remain visible in a high-contrast
+status line fixed to the bottom of the interactive viewport. It distinguishes
+live, in-progress, warning, critical, and diagnostic-only conditions without
+depending on color alone, and continues updating telemetry age when events stop.
+
 Unavailable optional metrics render as `—`. The display never substitutes zero or
 derives missing official metrics. By explicit local diagnostic authorization, each
 TUI run writes one owner-only JSONL file below `Metrics/pm5-tui/`; it contains
-timestamped normalized samples and corrections for local AI-assisted analysis.
-It contains no raw BLE packets, PM serial number, peripheral identifier, account
-data, or network export, is ignored by Git, and is not a workout/session journal.
+timestamped normalized samples and corrections plus redacted run aggregates for
+local AI-assisted analysis. Aggregates include queue state, reconnect gaps, and
+adapter-private per-characteristic counts, observed properties, cadence,
+notification-enable outcomes, and categorized parser errors. Schema version 3
+also records timestamped discovery, identity, connection-state, stale,
+reconnect, categorical fault, and sparse per-stroke detail events. Stroke
+records retain PM elapsed time and stroke count and are independent of the
+continuous sample cadence. Missing optional sources remain absent. The PM's
+undocumented-unit projected-work field is retained only as a raw value;
+adapter summaries retain per-callback Bluetooth error domains/codes without
+localized error text. Warn-profile diagnostic samples are captured separately
+from workout-ready samples. It contains no raw BLE packets, PM serial number,
+peripheral identifier, account data, or network export, is ignored by Git, and
+is not a workout/session journal.
 A non-interactive fallback renders bounded snapshots for simulator smoke tests.
 
 ### 6. Build deterministic test support

@@ -165,7 +165,7 @@ Event payloads are Protobuf, even inside SQLite blobs, and carry `event_schema_v
 - `ConnectionRestored`
 - `MetricSampled`
 - `MetricCorrected`
-- `StrokeCompleted`
+- `StrokeCompleted` (PM-keyed sparse stroke facts; may include timing, force, work, power, and calories independently of the sample cadence)
 - `IntervalStarted`
 - `IntervalCompleted`
 - `RaceJoined`

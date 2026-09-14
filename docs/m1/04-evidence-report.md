@@ -49,15 +49,16 @@ Complete after the repository toolchain commands exist.
 
 | Check | Build/source revision | Result | Evidence location or note |
 |---|---|---|---|
-| `make doctor` | `144d1c3f4e80-dirty` | Pass | 2026-09-13 KST; pinned workstation checks passed, including Xcode/SDK/clang, CMake/Ninja, Git LFS version, and Unreal fingerprint. Command output not archived separately. |
-| Native configure | `144d1c3f4e80-dirty` | Pass | 2026-09-13 KST; arm64 Debug CMake/Ninja configuration. |
-| Native arm64 build | `144d1c3f4e80-dirty` | Pass | 2026-09-13 KST; no outstanding compile work in the configured tree. |
-| Native unit/contract tests | `144d1c3f4e80-dirty` | Pass, 11/11 | 2026-09-13 KST; `make test` after the profile-generator compile check and TUI nullable-metric smoke additions. Includes core, protocol, simulator contract/integration, TUI logger and command smoke tests. |
-| Simulator integration tests | `144d1c3f4e80-dirty` | Pass | 2026-09-13 KST; deterministic replay integration suite is included in CTest. |
-| Empty Unreal Editor target | `144d1c3f4e80-dirty` | Blocked in sandbox | UnrealBuildTool started but could not create external shared-memory/configuration files. Rerun on the provisioned host; no compile result established. |
-| Empty Unreal application target | Pending | Pending | No separate application target is defined in the current smoke command. |
-| Bluetooth usage-description inspection | `144d1c3f4e80-dirty` | Present in built bundle | 2026-09-13 KST; generated `pm5-tui.app/Contents/Info.plist` contains `NSBluetoothAlwaysUsageDescription`. |
-| Development signature/TCC identity | `144d1c3f4e80-dirty` | Ad-hoc signature verifies; TCC identity pending | 2026-09-13 KST; `codesign --verify --deep --strict` passes for the built diagnostic bundle. Permission approval/denial/retry HIL cases remain pending. |
+| `make doctor` | `dbe71f4f4904-dirty` | Pass | 2026-09-14 KST; macOS 26.6.2 arm64, Xcode 26.1.1, SDK/clang, CMake/Ninja, Git LFS 3.8.0, and approved Unreal 5.8.2 fingerprint all matched. |
+| Native configure | `dbe71f4f4904-dirty` | Pass | 2026-09-14 KST; arm64 Debug CMake/Ninja configuration via `make configure`. |
+| Native arm64 build | `dbe71f4f4904-dirty` | Pass | 2026-09-14 KST; `make build`; modified TUI and metrics writer compiled and app bundle was ad-hoc signed. |
+| Native unit/contract tests | `dbe71f4f4904-dirty` | Pass, 12/12 | 2026-09-14 KST; `make test` covers timestamped per-run aggregates, queue diagnostics, PM5 characteristic properties/counts/cadence histograms, parser categories, reconnect gaps, and percentile serialization. |
+| Simulator integration tests | `dbe71f4f4904-dirty` | Pass | 2026-09-14 KST; deterministic replay integration suite passed under CTest. |
+| C++ formatting and whitespace | `dbe71f4f4904-dirty` | Pass | 2026-09-14 KST; `make format-check` and `git diff --check`. |
+| Empty Unreal Editor target | `dbe71f4f4904-dirty` | Blocked by sandbox | 2026-09-14 KST; UBT launched, then could not create UBA shared memory in `/tmp` or user config under Application Support. No compile result established. |
+| Native GitHub Actions workflow | `dbe71f4f4904-dirty` | Pending | 2026-09-14 KST; public Actions API returned zero runs. The local workflow is untracked and the dirty source changes are not on `origin/main` (`dbe71f4f4904`); no remote CI result exists for this worktree. |
+| Bluetooth usage-description inspection | `dbe71f4f4904-dirty` | Present in built bundle | 2026-09-14 KST; generated `pm5-tui.app/Contents/Info.plist` contains `NSBluetoothAlwaysUsageDescription`. |
+| Development signature/TCC identity | `dbe71f4f4904-dirty` | Ad-hoc signature verifies; TCC cases pending | 2026-09-14 KST; `codesign --verify --deep --strict` passes for the built diagnostic bundle. Fresh approval/denial/settings-repair HIL cases remain pending. |
 
 For any numerical claim, add the requested/observed telemetry rate, observation duration, sample count, exclusions, and calculation method in the note. Do not compare results from different profiles or toolchain fingerprints as if they were one run.
 
@@ -76,7 +77,7 @@ Published PM5 protocol source pinned for the first profile review:
 - Accessed: 2026-09-13 KST.
 - Document: Concept2 PM CSAFE Communication Definition, revision 0.34, dated 2025-07-17.
 - SHA-256: `7ee2513c1084082092f3cfb8c9437682912535c549a7b948e5aba5321d562e48`.
-- Protocol review: BLE GATT table, pages 17–18, specifies `0x0031` General Status as a 19-byte notification and `0x0032` Additional Status 1 as a 17-byte notification. The separate multiplexed-information section's different `0x0032` length is not the BLE GATT layout and is not used by this decoder.
+- Protocol review: BLE GATT table, printed pages 17–18 and 21–22, specifies `0x0031`/`0x0032` as 19/17-byte status notifications and `0x0035`/`0x0036` as 20/18-byte stroke notifications. The separate multiplexed-information section gives conflicting `0x0035`/`0x0036` lengths and is not the BLE GATT layout used by this decoder.
 
 The digest is copied into the exact development capability profile. The profile permits
 the documented `0x0031` and `0x0032` notification layouts and conditionally enables
@@ -153,9 +154,61 @@ provide per-characteristic notification counts, a verified requested/observed
 high-water/overflow values, or parser-error categorization. The stop summary
 also cannot establish all of those omitted measurements. No crash is recorded,
 but missing queue and parser evidence cannot be treated as proof of zero
-overflow or parser overread. The acceptance result therefore remains
-incomplete pending a run with complete aggregate instrumentation and the other
-hardware cases.
+overflow or parser overread. The adapter now records these measurements for
+future runs, but a repeat HIL capture is still required; this historical file is
+not backfilled.
+
+## Subsequent no-data launch
+
+The next recorded launch, source revision `dbe71f4f4904-dirty`, ran from
+2026-09-13T17:22:55.936Z to 17:23:00.545Z (2026-09-14 KST). The TUI entered
+`Reconnecting` but was stopped before telemetry arrived. Its per-run metrics
+file records zero samples, corrections, stale events, and faults, with null
+queue summaries. This short launch neither contradicts the completed workout
+capture nor establishes reconnect failure; it is not a hardware acceptance
+case. The local metrics/log files remain Git-ignored.
+
+## Profile-v3 HIL parser failure (investigation; acceptance still pending)
+
+The 2026-09-14 01:39:27Z diagnostic launch used source revision
+`dbe71f4f4904-dirty`. The exact PM5/634/8200-000372-178.067/IndoorRower tuple
+was logged `Allowed` and entered `Ready` at 01:39:43.867Z. At 01:40:12.263Z,
+the TUI logged a zero-valued stroke-metrics event followed by
+`InvalidPacketLength` and a transition from `Ready` to `Unsupported`. The old
+log omitted the offending characteristic ID and packet length, so it cannot
+prove which stream or exact layout caused the rejection.
+
+The code path exposed two defects in the new optional stroke streams: profile
+v3 allowed only an 18-byte `0x0036` packet, while an [older official Concept2
+BLE interface definition](https://www.concept2.nl/files/pdf/us/monitors/PM5_BluetoothSmartInterfaceDefinition.pdf)
+documents a 15-byte form; and a parse failure on any
+optional stream was treated as terminal for the whole device. The pinned
+revision 0.34 reference uses the 18-byte form. The decoder has test coverage for
+both published exact layouts and leaves the extra projected-work field absent
+for the 15-byte form, but the active `Allowed` profile remains pinned to the
+revision 0.34 18-byte layout. An unapproved 15-byte optional notification is
+counted and reported with characteristic/length metadata without disabling the
+required `0x0031`/`0x0032` status streams. This is a code-level correction, not
+proof that the observed HIL packet was `0x0036`/15 bytes. Repeat HIL with profile
+v4 and inspect the parser diagnostics before changing hardware acceptance.
+
+## Latest HIL availability check (not a device test)
+
+The 2026-09-14 KST interactive `make hil-pm5` launch used source revision
+`dbe71f4f4904-dirty`. An explicit scan produced the categorical `Permission`
+fault with TUI text “Bluetooth is unavailable on this Mac”; it found no
+candidates and recorded zero samples, zero reconnects, zero stroke-metric
+records, and one fault. The 48.013-second run was stopped cleanly. A read-only
+`system_profiler SPBluetoothDataType -detailLevel mini` check returned
+`controllerInfo == nil` and no controller details in this execution
+environment. This is not evidence of a denied TCC prompt or a PM5 problem; the
+host did not expose a Bluetooth controller to this run. The owner-only metrics
+file remains local at
+`Metrics/pm5-tui/pm5-tui-2026-09-13T18:39:41.604Z-371757248568416.jsonl`.
+
+Run the HIL command on the interactive reference Mac with Bluetooth hardware
+available and permission granted before attempting the profile-v4 device
+cases. No PM5 was selected and no rowing occurred in this availability check.
 
 ## PM5 identity and capability review template
 
@@ -170,11 +223,11 @@ Do not enter a serial number or peripheral identifier.
 | Firmware revision | `8200-000372-178.067` (user supplied as `178.067`; full identity value is recorded in the redacted diagnostic observation) |
 | Connected erg machine kind | IndoorRower |
 | Required characteristic properties | `0x0031` notify; `0x0032` notify, per the reviewed published BLE GATT table. Direct property-advertisement evidence remains pending. |
-| Optional characteristics observed | `0x0034` is declared as `read`/`write`; the adapter fails closed if CoreBluetooth does not advertise both properties. Direct property outcome is pending the next HIL run. |
-| Approved packet lengths | `0x0031`: 19 bytes; `0x0032`: 17 bytes, per the reviewed published BLE GATT table. |
+| Optional characteristics declared | `0x0034` read/write, `0x0035` notify, and `0x0036` notify. The adapter continues without optional sources that are absent or fail subscription. Direct property outcomes remain pending the next HIL run. |
+| Approved packet lengths | `0x0031`: 19 bytes; `0x0032`: 17 bytes; optional `0x0035`: 20 bytes and `0x0036`: 18 bytes, per the pinned revision 0.34 BLE GATT table. |
 | Requested/observed sample rate | Prior profile: approximately 1 s between samples, causing false 500 ms stale faults because `0x0034` was absent. Version 2 requests 100 ms through `0x0034`; observed cadence is pending. |
-| Capability-profile version/digest | Version 2; `PM5Capabilities.json` SHA-256 `60b1ac8831daad96f1c831f2db6fd0a9f39a2eb350f6881fa90bf26d09a4b4a1` |
-| Reviewers | User-directed initial development profile; formal A1/A0 sign-off pending. |
+| Capability-profile version/digest | Version 4; `PM5Capabilities.json` SHA-256 `e864a0eec0dd495126a449d59654361470b453590bc256c89a2e309e86bef4f1` |
+| Reviewers | User approved the exact development profile on 2026-09-14; role-based HIL acceptance and milestone sign-off remain pending. |
 | Support decision and rationale | `Allowed` only for the exact PM5/634/8200-000372-178.067/IndoorRower tuple and the two reviewed status streams. Hardware acceptance remains pending. |
 
 Identity discovery alone does not authorize telemetry readiness. The profile still requires
@@ -224,43 +277,45 @@ The report contains aggregate counters only. A failure requiring packet-level di
 
 | Suite | Seed/fixture version | Result | Notes |
 |---|---|---|---|
-| Core unit and conversion tests | Checked-in native fixtures | Pass | 2026-09-13 KST, current dirty workspace; fixed-scale conversions, state handling, quality accumulation, regression, gap, reconnect, and redacted formatting checks pass. |
-| Public-contract dependency checks | Checked-in header allow-list | Pass | 2026-09-13 KST; public headers remain free of platform, PM5, terminal, and Unreal implementation dependencies. |
-| Concept2 parser corpus | Checked-in published-layout fixtures | Pass | 2026-09-13 KST; approved status/stroke layouts and exact fixed-scale fields pass. |
-| Truncation/sentinel/unknown tests | Checked-in published-layout fixtures | Pass | 2026-09-13 KST; every byte-truncation boundary, approved-length rejection, heart-rate sentinel, extrema, and unknown enums pass. |
-| Merge callback-order tests | Checked-in synthetic facts | Pass | 2026-09-13 KST; callback ordering, join-window boundary, late correction, and stopped-source duplicate behavior pass. |
-| Discovery/session state tests | `pm5-sim` deterministic scenarios | Pass | 2026-09-13 KST; permission, scan, selection, malformed/unsupported identity, stale recovery, and same-identity reconnect scenarios pass. |
-| Simulator deterministic replay | `pm5-sim` golden replay | Pass | 2026-09-13 KST; repeated replay produces the same ordered events and digest. |
-| Queue overflow/shutdown tests | `pm5-sim` bounded queues | Pass | 2026-09-13 KST; overflow and shutdown are explicit and diagnostics are preserved. |
-| Non-interactive TUI smoke | Scripted synthetic events | Pass | 2026-09-13 KST; unavailable values, identity redaction, telemetry/correction, transition, stale, and aggregate stop logging pass. |
+| Core unit and conversion tests | Checked-in native fixtures | Pass | 2026-09-14 KST; `make test`; fixed-scale conversion, state, quality, regression, gap, reconnect, and formatting tests pass. |
+| Public-contract dependency checks | Checked-in header allow-list | Pass | 2026-09-14 KST; public headers remain free of platform, PM5, terminal, and Unreal implementation dependencies. |
+| Concept2 parser corpus | Checked-in published-layout fixtures | Pass | 2026-09-14 KST; approved status/stroke layouts and exact fixed-scale fields pass. |
+| Truncation/sentinel/unknown tests | Checked-in published-layout fixtures | Pass | 2026-09-14 KST; every byte-truncation boundary, approved-length rejection, heart-rate sentinel, extrema, and unknown enums pass. |
+| Merge callback-order tests | Checked-in synthetic facts | Pass | 2026-09-14 KST; callback ordering, join-window boundary, late correction, and stopped-source duplicate behavior pass. |
+| Discovery/session state tests | `pm5-sim` deterministic scenarios | Pass | 2026-09-14 KST; permission, scan, selection, malformed/unsupported identity, stale recovery, and same-identity reconnect scenarios pass. |
+| Simulator deterministic replay | `pm5-sim` golden replay | Pass | 2026-09-14 KST; repeated replay produces the same ordered events and digest. |
+| Queue overflow/shutdown tests | `pm5-sim` bounded queues | Pass | 2026-09-14 KST; overflow and shutdown are explicit and diagnostics are preserved. |
+| Per-run metrics serialization | Synthetic PM5/TUI diagnostics | Pass | 2026-09-14 KST; schema v3 adds independently timestamped stroke-detail events plus per-characteristic approved lengths and last parser-error length/time; lifecycle/fault records, redaction, Bluetooth callback codes, subscription outcomes, and owner-only file permissions pass; not hardware evidence. |
+| Stroke parser corpus | Checked-in published BLE layouts | Pass | 2026-09-14 KST; `0x0035` force/timing/work/count and `0x0036` power/calorie/projection fields decode at exact 20-byte and published 15/18-byte BLE lengths, including truncation, unapproved 16-byte rejection, and extrema tests. The active profile remains pinned to 18 bytes for `0x0036`; no target-device packet evidence exists yet. |
+| Non-interactive TUI smoke | Scripted synthetic events | Pass | 2026-09-14 KST; unavailable values, identity redaction, telemetry/correction, diagnostic-only samples, timestamped per-stroke record, stale/fault transitions, and structured run records pass. |
 
 ## Open blockers and risks
 
 | Item | Owner | Resolution required |
 |---|---|---|
-| Unreal smoke was blocked before compilation by sandbox writes outside the workspace | A7 | Rerun `make unreal-smoke` on the provisioned host; do not treat UBT startup as a pass |
-| The initial development profile has no direct HIL property/rate evidence | A1/A0 | Rerun the exact tuple with profile version 2. Record `0x0034` property/configuration outcome, notification counts/cadence, and a formal support review. |
-| HIL evidence lacks per-characteristic counters, queue summaries, a clean-stop record, and a six-minute acceptance run | A1/A6 | Add redacted aggregate/provenance output and complete the required hardware scenarios without storing raw identifiers or telemetry |
-| Real-adapter `Allowed`, stale, reconnect, bounded-queue, and event-timestamp paths need implementation/verification | A1/A0 | Implement against the accepted contract and add deterministic tests before HIL acceptance |
-| TUI required status display and protocol-boundary conformance need review | A1/A8 | Complete the TUI contract fields and ensure it receives no PM characteristic/profile implementation details |
+| Unreal smoke is blocked by sandbox-denied shared-memory and user-configuration writes | A7 | Run `make unreal-smoke` in the approved host environment; UBT did not reach compilation here. |
+| Native CI runner result is not recorded | A7 | `origin` exists, but the workflow and source changes are local only; the public Actions API currently reports no runs. After review and publication through the normal repository workflow, retain the redacted self-hosted Apple-silicon run result. |
+| The development profile has no direct HIL property/rate/stroke-detail evidence | A1/A0 | Rerun the exact tuple with profile version 4. Record `0x0034` property/configuration outcome, `0x0035`/`0x0036` presence, lengths, counts/cadence and values compared with the PM5, then complete HIL acceptance review before widening layouts or claiming stroke-detail support. The prior six-minute capture predates this instrumentation and cannot prove stroke-detail capture. |
+| Six-minute workout was performed, but HIL acceptance aggregates remain incomplete | A1/A6 | Schema-v3 runs can capture connection/actions, identity, notification-enable outcomes, categorized CoreBluetooth callback codes, characteristic cadence/parser data, per-stroke detail, queues, and reconnect gaps. Repeat HIL and compare stroke values/availability with the PM5; the prior capture cannot be backfilled. |
+| Real-adapter `Allowed`, stale, reconnect, bounded-queue, and event-timestamp paths need HIL verification | A1/A0 | Deterministic unit/simulator coverage passes; complete targeted real-device cases before acceptance. |
+| Formal TUI/public-contract integration review is pending | A1/A8 | TUI status fields and public-boundary tests are implemented; A8 must review contract conformance and diagnostics. |
 | Development permission/TCC outcomes are not recorded | A1/A7 | Complete fresh approval, denial, repair, and retry cases; the app bundle identifier is `dev.virtualrowing.pm5-diagnostic` and the bundle is currently ad-hoc signed |
-| CI runner results are not recorded | A7 | Run the checked-in native workflow on its provisioned Apple-silicon self-hosted runner and retain the redacted result |
 
 ## Exit decision
 
 | Decision | Date | Evidence reviewed | Approvers | Rationale |
 |---|---|---|---|---|
-| Not ready — documentation baseline only | 2026-09-13 | This document; no implementation evidence | A0 | Toolchain and capability evidence are pending. |
+| Not ready — implementation evidence incomplete | 2026-09-14 | Native host/test lanes, partial PM5 HIL capture, zero visible Actions runs, and blocked Unreal smoke documented here | Pending | Native tests and a user-confirmed real six-minute workout are evidenced, but Unreal compile, complete HIL aggregates/scenarios, published-worktree CI result, and required approvals remain open. |
 
 Use `Ready`, `Not ready`, or `Blocked` only. `Ready` authorizes the next milestone decision; it does not claim completion of the broader product Phase 0 or Phase 1 gates.
 
 ## Sign-off
 
-- A1 device evidence: Pending.
-- A2 core contract implementation: Pending.
-- A6 deterministic test evidence: Pending.
-- A7 toolchain/CI evidence: Pending.
+- A1 device evidence: Partial; six-minute real workout captured, HIL acceptance evidence incomplete.
+- A2 core contract implementation: Implemented/tested locally; formal review pending.
+- A6 deterministic test evidence: Native/simulator suite passes; formal sign-off pending.
+- A7 toolchain/CI evidence: Doctor/native lanes pass locally; Unreal smoke and CI runner result pending.
 - A0 architecture and capability approval: Pending.
 - A8 integration recommendation: Pending.
 
-Current milestone decision: **Not ready — documentation baseline only.**
+Current milestone decision: **Not ready — implementation evidence incomplete.**

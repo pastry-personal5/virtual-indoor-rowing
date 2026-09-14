@@ -17,6 +17,7 @@ namespace
 	constexpr std::size_t AdditionalStatus2Length = 20;
 	constexpr std::size_t StrokeDataLength = 20;
 	constexpr std::size_t AdditionalStrokeDataLength = 18;
+	constexpr std::size_t LegacyAdditionalStrokeDataLength = 15;
 
 	std::vector<std::uint8_t> GeneralStatusPacket()
 	{
@@ -38,14 +39,16 @@ namespace
 
 	std::vector<std::uint8_t> StrokeDataPacket()
 	{
-		// 123.45 s, stroke count 1234.
-		return {0x39, 0x30, 0x00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xD2, 0x04};
+		// 123.45 s, drive 149 cm/1.28 s, recovery 2.58 s, 25 lb peak,
+		// 15 lb average, 1000 J work, stroke count 1234.
+		return {0x39, 0x30, 0x00, 0x85, 0x1A, 0x00, 149, 128, 0x02, 0x01, 0x64, 0x00, 0xFA, 0x00, 0x96, 0x00, 0x10, 0x27, 0xD2, 0x04};
 	}
 
 	std::vector<std::uint8_t> AdditionalStrokeDataPacket()
 	{
-		// 123.45 s, 250 W stroke power, 1200 cal/hr, 1234 strokes.
-		return {0x39, 0x30, 0x00, 0xFA, 0x00, 0xB0, 0x04, 0xD2, 0x04, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+		// 123.45 s, 250 W, 1200 cal/hr, 1234 strokes, 300 s/1234 m
+		// projected work and an opaque projected-work-other value.
+		return {0x39, 0x30, 0x00, 0xFA, 0x00, 0xB0, 0x04, 0xD2, 0x04, 0x2C, 0x01, 0x00, 0xD2, 0x04, 0x00, 0x34, 0x12, 0x00};
 	}
 
 	struct FPacketFixture
@@ -114,6 +117,14 @@ namespace
 		assert(Stroke.IsValid());
 		assert(Stroke.StrokeData);
 		assert(Stroke.StrokeData->ElapsedMs == 123450);
+		assert(Stroke.StrokeData->CumulativeDistanceMm == 678900);
+		assert(Stroke.StrokeData->DriveLengthMm == 1490);
+		assert(Stroke.StrokeData->DriveTimeMs == 1280);
+		assert(Stroke.StrokeData->RecoveryTimeMs == 2580);
+		assert(Stroke.StrokeData->StrokeDistanceMm == 1000);
+		assert(Stroke.StrokeData->PeakDriveForceDeciLb == 250);
+		assert(Stroke.StrokeData->AverageDriveForceDeciLb == 150);
+		assert(Stroke.StrokeData->WorkPerStrokeDeciJoules == 10000);
 		assert(Stroke.StrokeData->StrokeCount == 1234);
 
 		const auto AdditionalStroke = DecodePacket(
@@ -126,6 +137,31 @@ namespace
 		assert(AdditionalStroke.AdditionalStrokeData->StrokePowerW == 250);
 		assert(AdditionalStroke.AdditionalStrokeData->CaloriesPerHour == 1200);
 		assert(AdditionalStroke.AdditionalStrokeData->StrokeCount == 1234);
+		assert(AdditionalStroke.AdditionalStrokeData->ProjectedWorkTimeMs == 300000);
+		assert(AdditionalStroke.AdditionalStrokeData->ProjectedWorkDistanceMm == 1234000);
+		assert(AdditionalStroke.AdditionalStrokeData->ProjectedWorkOtherRaw == 0x1234);
+
+		auto LegacyAdditionalStrokeData = AdditionalStrokeDataPacket();
+		LegacyAdditionalStrokeData.resize(LegacyAdditionalStrokeDataLength);
+		const auto LegacyAdditionalStroke = DecodePacket(
+			AdditionalStrokeData,
+			LegacyAdditionalStrokeData,
+			{LegacyAdditionalStrokeDataLength, AdditionalStrokeDataLength});
+		assert(LegacyAdditionalStroke.IsValid());
+		assert(LegacyAdditionalStroke.AdditionalStrokeData);
+		assert(LegacyAdditionalStroke.AdditionalStrokeData->StrokePowerW == 250);
+		assert(LegacyAdditionalStroke.AdditionalStrokeData->StrokeCount == 1234);
+		assert(LegacyAdditionalStroke.AdditionalStrokeData->ProjectedWorkTimeMs == 300000);
+		assert(LegacyAdditionalStroke.AdditionalStrokeData->ProjectedWorkDistanceMm == 1234000);
+		assert(!LegacyAdditionalStroke.AdditionalStrokeData->ProjectedWorkOtherRaw);
+
+		LegacyAdditionalStrokeData.resize(16);
+		const auto PartialLegacyAdditionalStroke = DecodePacket(
+			AdditionalStrokeData,
+			LegacyAdditionalStrokeData,
+			{LegacyAdditionalStrokeDataLength, AdditionalStrokeDataLength});
+		assert(!PartialLegacyAdditionalStroke.IsValid());
+		assert(PartialLegacyAdditionalStroke.Error.Code == EPacketError::LengthNotApproved);
 	}
 
 	void every_parser_rejects_each_truncated_length()
@@ -218,6 +254,8 @@ namespace
 			{StrokeDataLength});
 		assert(AllMaximumStroke.IsValid());
 		assert(AllMaximumStroke.StrokeData->ElapsedMs == 0xFFFFFFULL * 10ULL);
+		assert(AllMaximumStroke.StrokeData->DriveLengthMm == 2550);
+		assert(AllMaximumStroke.StrokeData->WorkPerStrokeDeciJoules == 65535);
 		assert(AllMaximumStroke.StrokeData->StrokeCount == 65535);
 
 		const auto AllMaximumAdditionalStroke = DecodePacket(
@@ -233,6 +271,63 @@ namespace
 			   65535);
 		assert(AllMaximumAdditionalStroke.AdditionalStrokeData->StrokeCount ==
 			   65535);
+		assert(AllMaximumAdditionalStroke.AdditionalStrokeData->ProjectedWorkTimeMs ==
+			   0xFFFFFFULL * 1000ULL);
+		assert(AllMaximumAdditionalStroke.AdditionalStrokeData->ProjectedWorkDistanceMm ==
+			   0xFFFFFFULL * 1000ULL);
+		assert(AllMaximumAdditionalStroke.AdditionalStrokeData->ProjectedWorkOtherRaw ==
+			   0xFFFFFF);
+	}
+
+	void pm5_characteristic_diagnostics_count_cadence_gaps_and_parser_errors()
+	{
+		using namespace Concept2PM;
+		FPM5CharacteristicDiagnostics Stats;
+		Stats.Characteristic = GeneralStatus;
+		Stats.ApprovedPacketLengths = {19};
+		Stats.RecordNotification(1'000'000'000ULL, 19);
+		Stats.RecordNotification(1'100'000'000ULL, 19);
+		Stats.RecordNotification(1'750'000'000ULL, 20);
+		Stats.RecordParserError(EPacketError::LengthNotApproved);
+		Stats.RecordParserError(EPacketError::InvalidValue, 18, 1'800'000'000ULL);
+
+		assert(Stats.NotificationCount == 3);
+		assert(Stats.FirstReceivedMonotonicNs == 1'000'000'000ULL);
+		assert(Stats.LastReceivedMonotonicNs == 1'750'000'000ULL);
+		assert(Stats.IntervalCount == 2);
+		assert(Stats.IntervalTotalNs == 750'000'000ULL);
+		assert(Stats.MinIntervalNs == 100'000'000ULL);
+		assert(Stats.MaxIntervalNs == 650'000'000ULL);
+		assert(Stats.LongGapCount == 1);
+		assert(Stats.IntervalHistogram[10] == 1);
+		assert(Stats.IntervalHistogram[65] == 1);
+		assert(Stats.ParserErrorCounts[static_cast<std::size_t>(EPacketError::LengthNotApproved)] == 1);
+		assert(Stats.ParserErrorCounts[static_cast<std::size_t>(EPacketError::InvalidValue)] == 1);
+		assert(Stats.ApprovedPacketLengths == std::vector<std::size_t>{19});
+		assert(Stats.ObservedPacketLengths.size() == 2);
+		assert(Stats.ObservedPacketLengths[0].PacketLength == 19);
+		assert(Stats.ObservedPacketLengths[0].Count == 2);
+		assert(Stats.ObservedPacketLengths[1].PacketLength == 20);
+		assert(Stats.ObservedPacketLengths[1].Count == 1);
+		assert(Stats.LastParserErrorCode == EPacketError::InvalidValue);
+		assert(Stats.LastParserErrorActualLength == 18);
+		assert(Stats.LastParserErrorMonotonicNs == 1'800'000'000ULL);
+
+		FPM5CharacteristicDiagnostics SameTimestamp;
+		SameTimestamp.RecordNotification(10'000'000ULL);
+		SameTimestamp.RecordNotification(10'000'000ULL);
+		SameTimestamp.RecordNotification(20'000'000ULL);
+		assert(SameTimestamp.IntervalCount == 2);
+		assert(SameTimestamp.MinIntervalNs == 0);
+		assert(SameTimestamp.IntervalHistogram[0] == 1);
+
+		FPM5CharacteristicDiagnostics StrokeEvents;
+		StrokeEvents.Characteristic = StrokeData;
+		StrokeEvents.RecordNotification(1'000'000'000ULL, 20);
+		StrokeEvents.RecordNotification(2'000'000'000ULL, 20);
+		assert(!StrokeEvents.TracksContinuousStatusCadence());
+		assert(StrokeEvents.IntervalCount == 1);
+		assert(StrokeEvents.LongGapCount == 0);
 	}
 
 	void unknown_enums_are_explicitly_flagged()
@@ -532,6 +627,9 @@ namespace
 		ExpectEventKind(std::move(Correction),
 						ERowingMachineEventKind::MetricCorrected,
 						8);
+		ExpectEventKind(FRowingStrokeMetrics{},
+						ERowingMachineEventKind::StrokeMetricsObserved,
+						9);
 	}
 } // namespace
 
@@ -541,6 +639,7 @@ int main()
 	every_parser_rejects_each_truncated_length();
 	every_parser_rejects_unapproved_lengths_and_characteristics();
 	parser_preserves_extrema_and_documented_sentinels();
+	pm5_characteristic_diagnostics_count_cadence_gaps_and_parser_errors();
 	unknown_enums_are_explicitly_flagged();
 	merger_joins_all_callback_orders();
 	merger_flushes_exactly_on_the_join_window_boundary();

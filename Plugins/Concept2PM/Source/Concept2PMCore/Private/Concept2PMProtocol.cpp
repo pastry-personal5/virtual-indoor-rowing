@@ -133,7 +133,7 @@ namespace Concept2PM
 									: Characteristic == AdditionalStatus1 ? 17
 									: Characteristic == AdditionalStatus2 ? 20
 									: Characteristic == StrokeData		  ? 20
-																		  : 18;
+																		  : 15;
 		if (Bytes.size() < Minimum)
 		{
 			Result.Error = {EPacketError::LengthNotApproved,
@@ -186,6 +186,15 @@ namespace Concept2PM
 			FStrokeDataFact Fact;
 			Fact.ElapsedMs =
 				static_cast<std::uint64_t>(ReadU24(Bytes, 0)) * 10ULL;
+			Fact.CumulativeDistanceMm =
+				static_cast<std::uint64_t>(ReadU24(Bytes, 3)) * 100ULL;
+			Fact.DriveLengthMm = static_cast<std::uint32_t>(Bytes[6]) * 10U;
+			Fact.DriveTimeMs = static_cast<std::uint32_t>(Bytes[7]) * 10U;
+			Fact.RecoveryTimeMs = ReadU16(Bytes, 8) * 10U;
+			Fact.StrokeDistanceMm = ReadU16(Bytes, 10) * 10U;
+			Fact.PeakDriveForceDeciLb = ReadU16(Bytes, 12);
+			Fact.AverageDriveForceDeciLb = ReadU16(Bytes, 14);
+			Fact.WorkPerStrokeDeciJoules = ReadU16(Bytes, 16);
 			Fact.StrokeCount = ReadU16(Bytes, 18);
 			Result.StrokeData = Fact;
 		}
@@ -197,6 +206,12 @@ namespace Concept2PM
 			Fact.StrokePowerW = ReadU16(Bytes, 3);
 			Fact.CaloriesPerHour = ReadU16(Bytes, 5);
 			Fact.StrokeCount = ReadU16(Bytes, 7);
+			Fact.ProjectedWorkTimeMs =
+				static_cast<std::uint64_t>(ReadU24(Bytes, 9)) * 1000ULL;
+			Fact.ProjectedWorkDistanceMm =
+				static_cast<std::uint64_t>(ReadU24(Bytes, 12)) * 1000ULL;
+			if (Bytes.size() >= 18)
+				Fact.ProjectedWorkOtherRaw = ReadU24(Bytes, 15);
 			Result.AdditionalStrokeData = Fact;
 		}
 		return Result;
@@ -223,11 +238,6 @@ namespace Concept2PM
 			Result.SupportState = Profile.SupportState;
 			Result.ProfileVersion = Profile.Version;
 			Result.Profile = &Profile;
-			for (const FPM5CharacteristicProfile &Characteristic :
-				 Profile.Characteristics)
-			{
-				Result.SupportedMetrics |= Characteristic.ImplementedMetrics;
-			}
 			return Result;
 		}
 		return Result;

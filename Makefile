@@ -1,4 +1,4 @@
-.PHONY: doctor configure build test format-check pm5-tui unreal-smoke hil-pm5 clean
+.PHONY: doctor configure build test format-check pm5-tui unreal-smoke hil-pm5 clean clean-logs clean-metrics clean-all
 
 # Verify the host machine and installed tools against the pinned M1 baseline.
 doctor:
@@ -35,3 +35,18 @@ hil-pm5:
 # Remove generated native build output.
 clean:
 	python3 Scripts/dev.py clean
+
+# Purge all log files
+clean-logs:
+	find . -type f \( -name "*.log" -o -name "LastTest.log" -o -name "LastTestsFailed.log" \) -delete
+	rm -rf Logs/
+	rm -rf Build/*/Logs/
+
+# Purge all metrics files and directories
+clean-metrics:
+	find . -type f \( -name "*.metrics" \) -delete
+	find . -type d \( -name "*metric*" -o -name "pm5_tui_metrics_writer_tests.dir" \) -exec rm -rf {} +
+
+# Clean both logs and metrics
+clean-all: clean-logs clean-metrics
+	@echo "All logs and metrics files have been purged."
