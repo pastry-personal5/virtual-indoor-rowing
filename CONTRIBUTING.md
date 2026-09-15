@@ -18,9 +18,9 @@ Keep changes small and scoped. Do not couple gameplay, UI, or cloud code to Conc
 | `Infra/terraform/` | Cloud infrastructure |
 | `Tests/` | Fixtures and automated coverage |
 | `Content/` | Unreal assets; use Git LFS for large binaries |
-| `docs/` | Specifications, ADRs, milestones, and research |
+| `docs/` | Specifications, ADRs, phase-scoped milestones, and research |
 
-The code roots are planned; do not create unrelated structure before the relevant milestone authorizes it.
+The code roots are planned; do not create unrelated structure before a milestone in the relevant delivery phase authorizes it.
 
 ## Engineering rules
 
@@ -47,4 +47,4 @@ git status --short
 
 Use imperative, scoped commit subjects, for example `docs: clarify PM5 authority` or `feat(device): decode general status`. A pull request states intent, affected requirements/ADRs, verification, and risks. Include UI screenshots, schema rollback notes, and performance or PM5 evidence when applicable.
 
-Use an ADR to reverse an accepted decision. Use `docs/m<N>/CHANGELOG.md` for material milestone history; do not put generated artifacts, secrets, or routine formatting edits there.
+Use an ADR to reverse an accepted decision. Every delivery phase has one or more milestones and may have many; each milestone belongs to exactly one phase and uses the name `Phase <N> Milestone <M>`. Record material milestone history in `docs/phase-<N>/CHANGELOG.md`, identifying the milestone in every entry. Milestone completion does not pass the phase exit gate. Do not put generated artifacts, secrets, or routine formatting edits there.

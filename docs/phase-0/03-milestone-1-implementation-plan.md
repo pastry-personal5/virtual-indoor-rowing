@@ -1,7 +1,7 @@
-# Milestone 1 Phase 1 implementation plan
+# Delivery Phase 0 Milestone 1 implementation plan
 
 Status: In progress
-Owner: A0 — CTO / Principal Architect  
+Owner: A0 — CTO / Principal Architect
 Last reviewed: 2026-09-14
 
 ## Goal and success criteria
@@ -203,7 +203,7 @@ Hardware checks are manual/self-hosted and never required on ordinary pull-reque
 
 ## Exit gate
 
-Milestone 1 Phase 1 is complete when:
+Milestone 1 is complete when:
 
 - the accepted Xcode and stock Unreal baseline are installed, fingerprinted, and pass their smoke lanes;
 - native automated checks pass on the reference Apple-silicon host; publication of a CI run is deferred follow-on work;
@@ -217,10 +217,8 @@ Milestone 1 Phase 1 is complete when:
 On 2026-09-14, the recorded A0/A8 decision explicitly deferred publication of
 Apple-silicon CI and the manual TCC, PM-display comparison, stale, deliberate
 disconnect/reconnect, wrong-device, and clean-shutdown HIL scenarios. Those
-items remain required before a product milestone or broader support claim, but
-are not M1 Phase 1 exit gates.
-
-The exit decision is recorded as `Ready`, `Not ready`, or `Blocked`. `Ready` means this diagnostic path is trustworthy enough to inform the next funded milestone; it does not mark the product Phase 0 or Phase 1 exit gate complete.
+items remain required before a later product-delivery milestone or broader support claim, but
+are not delivery Phase 0 Milestone 1 exit gates.
 
 Failure does not justify widening profiles, weakening tool pins, ignoring malformed fields, or implementing product workarounds. Record the evidence, assign the risk, and revise the architecture through the normal review process.
 

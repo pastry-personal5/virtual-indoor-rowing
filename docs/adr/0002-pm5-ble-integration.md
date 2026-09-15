@@ -40,6 +40,6 @@ The integration must remain responsive during rendering load, preserve workout d
 
 ## Validation and revisit
 
-Revisit after Phase 0 HIL data, when BLE failed-session/support rate exceeds the agreed threshold, if the Apple app lifecycle prevents reliable acquisition, or when older monitor demand funds USB. Any new transport must pass the same normalized fixtures/session invariants.
+Revisit after delivery Phase 0 HIL data, when BLE failed-session/support rate exceeds the agreed threshold, if the Apple app lifecycle prevents reliable acquisition, or when older monitor demand funds USB. Any new transport must pass the same normalized fixtures/session invariants.
 
 Evidence: [Concept2 PM5 research](../archive/research/2026-09-12-concept2-pm5.md).

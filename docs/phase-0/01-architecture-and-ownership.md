@@ -1,4 +1,4 @@
-# Milestone 1 Phase 1 architecture and ownership
+# Delivery Phase 0 diagnostic architecture and ownership
 
 Status: Planned  
 Owner: A0 — CTO / Principal Architect  
@@ -58,7 +58,7 @@ Tests/
   Contract/                             public-interface invariants
   Integration/                         simulator/TUI integration tests
   Fixtures/PM5/                         sanitized, reviewed non-production fixtures
-docs/m1/                                milestone architecture, plan, and evidence
+docs/phase-0/                                diagnostic architecture, plans, and evidence
 VirtualRowing.uproject                  empty Unreal toolchain smoke host
 ```
 
@@ -101,7 +101,7 @@ The profile may disable an optional characteristic or tighten a previously appro
 
 CoreBluetooth delegates run on one dedicated serial dispatch queue. Delegate payload bytes are copied before callback return and then placed on a bounded acquisition queue. Decoding, validation, merging, and unit conversion run on a worker outside both the CoreBluetooth queue and the TUI thread.
 
-Normalized events cross a second bounded queue to a single consumer. Phase 1 uses a capacity of 512 ordered events. The implementation must expose queue depth and overflow as diagnostics. It must not silently drop connection, fault, stroke/state, or other non-coalescable events.
+Normalized events cross a second bounded queue to a single consumer. Diagnostic Milestone 1 uses a capacity of 512 ordered events. The implementation must expose queue depth and overflow as diagnostics. It must not silently drop connection, fault, stroke/state, or other non-coalescable events.
 
 The public API is non-blocking:
 
@@ -117,10 +117,10 @@ Any later change to multiple consumers, callbacks, coroutine/future ownership, o
 
 | Area | Primary owner | Review requirement |
 |---|---|---|
-| `docs/architecture`, `docs/adr`, `docs/m1` | A0 | A8 for merge readiness |
+| `docs/architecture`, `docs/adr`, `docs/phase-0` | A0 | A8 for merge readiness |
 | Public `RowingCore` and `RowingDevice` headers | A0 contract authority; A2 implementation | A0 approval for every public change |
 | `Plugins/Concept2PM` and PM parser fixtures | A1 | A0 for contract changes; A8 integration review |
-| `Tools/pm5-tui` | A1 for this diagnostic-only phase | A8; no product UI behavior |
+| `Tools/pm5-tui` | A1 for these diagnostic-only milestones | A8; no product UI behavior |
 | `RowingCore` telemetry validation helpers | A2 | A0 contract review; must remain vendor-neutral |
 | `Tools/pm5-sim`, contract/integration scenarios | A6 | A8; A1 reviews claims about PM5 behavior |
 | `Build`, toolchain configuration, scripts, CI, root build metadata | A7 | A0 for dependency changes; A8 merge review |
@@ -139,7 +139,7 @@ An owner may add private implementation details inside its boundary. It may not 
 
 ## Principal risks
 
-| Risk | Early signal | Phase 1 response | Owner |
+| Risk | Early signal | Milestone 1 response | Owner |
 |---|---|---|---|
 | Accepted Xcode/Unreal versions unavailable or incompatible | Doctor or smoke build fails | Keep installed versions side by side; do not relax ADR pins without evidence and an ADR review | A7/A0 |
 | PM5 firmware/layout differs from documentation | Unexpected properties, length, or enum | Fail closed, record redacted tuple/metadata, add no guessed decoder | A1 |

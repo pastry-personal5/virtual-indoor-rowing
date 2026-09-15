@@ -122,7 +122,7 @@ These are release-blocking:
 - Distance-to-spline transforms at start/end/checkpoints and closed-route wrap.
 - Prediction cap, server correction damping, stale coast limit, remote interpolation buffer.
 - Boat collision/wake/VFX cannot mutate official distance.
-- Avatar phase mapping for every stroke state and fallback.
+- Avatar stroke-phase mapping for every stroke state and fallback.
 
 ## SQLite durability tests
 
@@ -164,7 +164,7 @@ Recovery tests assert exact event/sample loss and quality flags, not only “app
 
 ### Race service
 
-- Phase/message allow-list and per-phase quotas.
+- Connection-phase/message allow-list and per-connection-phase quotas.
 - Single-use ticket, wrong room/role/audience/build, expiry and reconnect grant.
 - Time-sync offset/uncertainty, false-start boundaries, delayed packets.
 - Accepted/rejected distance at exact ruleset boundaries.

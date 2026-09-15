@@ -2,7 +2,7 @@
 
 ## Current state
 
-The repository has a native M1 diagnostic build and test system, plus an empty Unreal smoke host. It is not yet a complete rowing product. The active bounded work is [Milestone 1](docs/m1/README.md); its real-hardware and Unreal smoke gates remain separate from native test success.
+The repository has a native diagnostic build and test system, plus an empty Unreal smoke host. It is not yet a complete rowing product. The active bounded work is the [diagnostic foundation packet](docs/phase-0/README.md), which contributes evidence to delivery Phase 0; its real-hardware and Unreal smoke gates remain separate from native test success.
 
 ## Supported baseline
 
@@ -14,7 +14,7 @@ These are pinned architecture decisions, not suggestions. A replacement needs co
 
 ## Setup and verification workflow
 
-1. Read [ARCHITECTURE.md](ARCHITECTURE.md), [CONTRIBUTING.md](CONTRIBUTING.md), and the relevant milestone/specification.
+1. Read [ARCHITECTURE.md](ARCHITECTURE.md), [CONTRIBUTING.md](CONTRIBUTING.md), and the relevant delivery phase, milestone, and specification.
 2. Set `UE_ROOT` to the approved stock Unreal 5.8.2 installation if it is not in a recognized default location.
 3. Inspect the working tree before editing; preserve unrelated changes.
 4. Run the pinned native checks:
@@ -39,7 +39,7 @@ Generated native build output is under `Build/native/`. The checked-in `make cle
 3. Add deterministic fixtures and simulator/replay scenarios to `Tools/pm5-sim/`. Sanitize fixtures and never include athlete data or serial numbers.
 4. Use UnrealBuildTool for Unreal modules. Package with `RunUAT.sh`/BuildGraph as specified in the delivery architecture.
 5. Validate protocol/schema compatibility, journal recovery, and idempotency before dependent UI or cloud work.
-6. Run the physical PM5 acceptance procedure in the M1 plan; simulator or short diagnostic output alone is insufficient.
+6. Run the physical PM5 acceptance procedure in the diagnostic milestone plan; simulator or short diagnostic output alone is insufficient.
 
 ## Source line length
 
@@ -73,7 +73,7 @@ locally, scrub any exported fixture, and do not commit or attach the raw file.
 
 ## Useful references
 
-- [Milestone 1 implementation plan](docs/m1/03-phase-1-implementation-plan.md)
+- [Delivery Phase 0 Milestone 1 implementation plan](docs/phase-0/03-milestone-1-implementation-plan.md)
 - [Verification strategy](docs/architecture/09-verification-strategy.md)
 - [Delivery and operations](docs/architecture/08-delivery-and-operations.md)
 - [Accepted ADRs](docs/adr/)

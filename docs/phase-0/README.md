@@ -1,4 +1,4 @@
-# Milestone 1 Phase 1: toolchain and PM5 diagnostic foundation
+# Delivery Phase 0: toolchain and PM5 diagnostic foundation
 
 Status: Complete — bounded diagnostic foundation
 Owner: A0 — CTO / Principal Architect  
@@ -6,15 +6,15 @@ Last reviewed: 2026-09-14
 
 ## Purpose
 
-Milestone 1 Phase 1 establishes the first executable repository foundation and proves the smallest trustworthy path from a Concept2 Model D fitted with a PM5 to normalized rowing telemetry on the reference Apple-silicon Mac.
+This packet contributes to delivery Phase 0 by establishing the first executable repository foundation and proving the smallest trustworthy path from a Concept2 Model D fitted with a PM5 to normalized rowing telemetry on the reference Apple-silicon Mac.
 
 The proof of concept is a standalone native terminal UI. It shares the engine-independent C++ and Objective-C++ boundaries intended for the later Unreal plug-in, but it is not a product UI and does not begin gameplay implementation.
 
 ## Relationship to the product delivery plan
 
-This milestone is a bounded foundation spike within the evidence work described as Phase 0 in [the phased delivery plan](../architecture/10-delivery-plan.md). It is not the complete Phase 1 walking skeleton described there.
+This packet contains multiple bounded diagnostic milestones within the evidence work described as delivery Phase 0 in [the phased delivery plan](../architecture/10-delivery-plan.md). Each milestone belongs only to Phase 0. Their completion does not complete the full delivery Phase 0 exit gate and does not begin the delivery Phase 1 walking skeleton.
 
-Completing this milestone proves only:
+Completing these diagnostic milestones proves only:
 
 - reproducible local foundations and CI-ready definitions for the native diagnostic path;
 - basic PM5 discovery, selection, connection, identity, subscription, and reconnection;
@@ -22,7 +22,7 @@ Completing this milestone proves only:
 - live, ephemeral presentation in a diagnostic terminal UI;
 - simulator and real-hardware evidence for the implemented path.
 
-It does not satisfy the product Phase 0 or Phase 1 exit gates by itself.
+It does not satisfy the delivery Phase 0 or Phase 1 exit gates by itself.
 
 ## Supported reference setup
 
@@ -41,14 +41,11 @@ The diagnostic executable may gather identity evidence from a PM5, but a device 
 |---|---|---|
 | Product platform and engine | Resolved | Apple-silicon macOS, stock Unreal 5.8, and the ADR-0001 toolchain baseline apply. |
 | Launch device boundary | Resolved | Model D with PM5 over BLE; the public contract remains hardware-neutral. |
-| Capability profile | Complete for M1 Phase 1; follow-on HIL evidence deferred | The exact `.069` tuple reaches `Ready` under development profile version 6. The observed 15-byte optional `0x0036` layout and the published 18-byte layout are both admitted. PM-display comparison and expanded HIL cases remain follow-on work. |
+| Capability profile | Complete for the diagnostic milestones; follow-on HIL evidence deferred | The exact `.069` tuple reaches `Ready` under development profile version 6. The observed 15-byte optional `0x0036` layout and the published 18-byte layout are both admitted. PM-display comparison and expanded HIL cases remain follow-on work. |
 | Toolchain baseline | Native and Unreal smoke lanes pass | `make doctor`, configure/build/test, format check, and `make unreal-smoke` pass on the pinned host. Sandboxed invocations can still be denied access to UBT's user-state files and are not smoke evidence. |
-| Product features | Explicitly deferred | The TUI is a diagnostic tool, not a substitute for the Phase 1 walking skeleton. |
+| Product features | Explicitly deferred | The TUI is a diagnostic tool, not a substitute for the delivery Phase 1 walking skeleton. |
 
-This bounded implementation is complete against the revised M1 Phase 1 exit
-gate. Formal product readiness, published CI, and the deferred hardware cases
-remain follow-on work; they are not worked around by widening support or
-weakening requirements.
+This bounded implementation is complete against its diagnostic milestone gates, not the delivery Phase 0 exit gate. Formal product readiness, published CI, and the deferred hardware cases remain follow-on work; they are not worked around by widening support or weakening requirements.
 
 ## In scope
 
@@ -81,23 +78,23 @@ weakening requirements.
 
 1. [Architecture and ownership](01-architecture-and-ownership.md)
 2. [Public interfaces](02-public-interfaces.md)
-3. [Implementation plan](03-phase-1-implementation-plan.md)
+3. [Milestone 1 implementation plan](03-milestone-1-implementation-plan.md)
 4. [Evidence report](04-evidence-report.md)
-5. [Phase 2 remembered-PM5 and TUI implementation](05-phase-2-tui-relaunch-reconnect.md)
-6. [Milestone changelog](CHANGELOG.md)
+5. [Milestone 2 remembered-PM5 and TUI implementation](05-milestone-2-tui-relaunch-reconnect.md)
+6. [Delivery Phase 0 changelog](CHANGELOG.md)
 
-## Phase 2 follow-on
+## Diagnostic Milestone 2 follow-on
 
-Phase 2 hardens remembered-PM5 relaunch reconnect, adds a user-driven forget
+Diagnostic Milestone 2 hardens remembered-PM5 relaunch reconnect, adds a user-driven forget
 flow, and places the selectable PM5 list in a tall right-side TUI pane. It was
 completed on 2026-09-14 as a bounded diagnostic milestone after the owner
-accepted the six user-reported Phase 2 HIL passes and the available local
-artifacts. This does not represent the product roadmap's solo-alpha phase or
+accepted the six user-reported Milestone 2 HIL passes and the available local
+artifacts. This does not represent delivery Phase 2, the solo-alpha phase, or
 product/release acceptance. Evidence limitations and the separately skipped
 physical multiple-candidate test remain follow-on items before support expansion.
 
 ## Completion rule
 
-The milestone is complete only when all required automated checks pass and the real Model D/PM5 hardware run meets the exit criteria in the implementation plan. Documentation, simulator success, or a successful BLE connection alone is not sufficient.
+Each milestone is complete only when its required automated checks pass and its required real Model D/PM5 hardware run meets the applicable exit criteria. Documentation, simulator success, or a successful BLE connection alone is not sufficient. Completing these milestones records Phase 0 progress but does not pass the delivery Phase 0 exit gate.
 
 Any public-interface change, dependency reversal, or relaxation of the accepted toolchain/PM5 decisions requires A0 review. Merge readiness is reviewed by A8.

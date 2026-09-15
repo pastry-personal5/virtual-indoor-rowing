@@ -38,9 +38,9 @@ Each identifier is stable and should be referenced by epics, tests, and release 
 
 ### First-generation capability envelope
 
-This table describes the intended first commercial product generation, not one MVP backlog. The target phase is the earliest phase that may commit the capability; later work remains contingent on the preceding technical and product investment gates. See the [delivery plan](10-delivery-plan.md), [executive review](00-executive-review.md), and proposed [ADR-0007](../adr/0007-evidence-gated-product-delivery.md).
+This table describes the intended first commercial product generation, not one MVP backlog. “Phase” means the capitalized product-delivery phases defined in the [delivery plan](10-delivery-plan.md). The earliest delivery phase is the first phase in which the capability may be committed, not a promise that it is funded or complete; later work remains contingent on the preceding technical and product investment gates. See also the [executive review](00-executive-review.md) and proposed [ADR-0007](../adr/0007-evidence-gated-product-delivery.md).
 
-| ID | Capability | Earliest target | Notes |
+| ID | Capability | Earliest delivery phase | Notes |
 |---|---|---|---|
 | FR-001 | First-run onboarding and accessibility setup | Phase 2 | Large type, high contrast, audio levels, units, privacy choices; minimal setup begins in Phase 1 |
 | FR-002 | PM5 discovery, explicit pairing, reconnect, and diagnostics | Phase 1 | BLE launch transport; latest supported firmware matrix |
@@ -58,7 +58,7 @@ This table describes the intended first commercial product generation, not one M
 | FR-014 | Concept2 Online Logbook export | Phase 3 | Explicit link and per-session opt-out; server-side delivery with retries |
 | FR-015 | FIT activity export | Phase 2 | User-owned file suitable for compatible fitness services |
 | FR-016 | Subscription entitlement | Phase 3 | Provider adapter; implementation contingent on pricing evidence; never interrupt an active workout |
-| FR-017 | Support and operator tooling | Phase 1–4 | Redacted local diagnostics first; account/race operations arrive with their supported workflows |
+| FR-017 | Support and operator tooling | Phase 1 | Redacted local diagnostics first; account operations arrive in Phase 3 and race operations in Phase 4 with their supported workflows |
 | FR-018 | Account data export and deletion | Phase 3 | Ships with account storage; includes integration-token revocation and retention status |
 
 ### Deferred scope
@@ -133,3 +133,6 @@ Objectives are initial and must be converted into automated release gates where 
 | Ghost | A privacy-filtered replay generated from a completed session |
 | Control plane | Accounts, catalog, history, match creation, entitlements, and administrative APIs |
 | Real-time plane | Short-lived authoritative race rooms and state distribution |
+| Delivery phase | One of the capitalized Phase 0–5 product outcomes and exit gates defined in the delivery plan; every phase contains one or more milestones and may contain many |
+| Investment level | An evidence-gated funding decision proposed by ADR-0007; Foundation spans delivery Phases 0–1 and each later level maps to one phase |
+| Milestone | A bounded unit of work belonging to exactly one delivery phase; identifiers use `Phase <N> Milestone <M>`, and milestone completion does not imply that the delivery-phase exit gate has passed |

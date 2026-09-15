@@ -1,4 +1,4 @@
-# Milestone 1 Phase 1 public interfaces
+# Delivery Phase 0 diagnostic public interfaces
 
 Status: Planned contract  
 Owner: A0 — CTO / Principal Architect  
@@ -157,7 +157,7 @@ This milestone does not define smoothed speed, predicted distance, virtual dista
 | `MachineDiscovered` | `FRowingMachineDescriptor` | Latest RSSI may replace an older discovery update for the same ID |
 | `ConnectionStateChanged` | prior state, new state, reason | Never coalesced |
 | `MachineInfoObserved` | `FRowingMachineInfo` | Never coalesced |
-| `MetricSampled` | `FRowingMetricSample` | Not coalesced in the Phase 1 diagnostic path |
+| `MetricSampled` | `FRowingMetricSample` | Not coalesced in the Milestone 1 diagnostic path |
 | `TelemetryStale` | last sequence and age | Never coalesced |
 | `ConnectionRestored` | identity-confirmed machine and gap duration | Never coalesced |
 | `FaultObserved` | `FRowingFault` | Never coalesced |

@@ -7,7 +7,8 @@ This is an architecture-first repository; no executable product build is checked
 - Architecture text using **must**, **shall**, or an accepted ADR is normative.
 - Research under `docs/archive/research/` is dated evidence, not requirements.
 - Accepted ADRs change only through a superseding ADR.
-- Milestone delivery history belongs in `docs/m<N>/CHANGELOG.md`; it does not change architecture.
+- Every delivery phase must contain one or more milestones and may contain many. Every milestone belongs to exactly one delivery phase and is identified as `Phase <N> Milestone <M>`.
+- Milestone delivery history belongs in `docs/phase-<N>/CHANGELOG.md`, with each entry identifying its milestone; it does not change architecture or imply that the delivery-phase exit gate has passed.
 
 ## Architecture boundaries
 
@@ -30,9 +31,9 @@ This is an architecture-first repository; no executable product build is checked
 | `Infra/terraform/` | Cloud infrastructure |
 | `Tests/` | Fixtures and automated tests |
 | `Content/` | Unreal assets; large assets use Git LFS |
-| `docs/` | Specifications, ADRs, milestones, and research |
+| `docs/` | Specifications, ADRs, phase-scoped milestones, and research |
 
-These code roots are planned. Do not create unrelated structure before the relevant milestone authorizes it.
+These code roots are planned. Do not create unrelated structure before a milestone in the relevant delivery phase authorizes it.
 
 ## Implementation and tests
 

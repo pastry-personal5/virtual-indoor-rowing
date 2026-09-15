@@ -1,7 +1,7 @@
-# Milestone 1 Phase 2: remembered PM5 and diagnostic TUI
+# Delivery Phase 0 Milestone 2: remembered PM5 and diagnostic TUI
 
-Status: Complete — bounded diagnostic milestone; product/release acceptance remains separate  
-Owner: A0 — CTO / Principal Architect  
+Status: Complete — bounded diagnostic milestone; product/release acceptance remains separate
+Owner: A0 — CTO / Principal Architect
 Last reviewed: 2026-09-14
 
 ## Goal
@@ -113,12 +113,12 @@ fault after readiness had been restored. The available capture records no
 Each run records the source revision, toolchain, PM5 tuple/profile, requested
 status period, characteristic counts/cadence, sample population and duration,
 reconnect gaps, queue high-water/overflow counts, parser-error categories, and
-outcome. Missing measurements remain explicitly incomplete. This phase does
+outcome. Missing measurements remain explicitly incomplete. This milestone does
 not widen the supported device matrix.
 
 The current environment has passed `make build`, all 12 native tests, and the
 format check on tracked-source candidates. The formatter command skips Unreal
-generated directories, which are not source inputs. All six required Phase 2
+generated directories, which are not source inputs. All six required Milestone 2
 manual scenarios are user-reported passes; the owner accepts them for this
 bounded diagnostic milestone alongside the available local HIL artifacts.
 Per-scenario metadata remains incomplete as noted above, so this decision does
@@ -151,4 +151,4 @@ outside the repository.
 
 | Decision | Date | Evidence reviewed | Approvers | Rationale |
 |---|---|---|---|---|
-| Complete — bounded M1 Phase 2 diagnostic scope | 2026-09-14 | All six operator-reported Phase 2 HIL passes; source-tagged profile-v6 live-row metrics; remembered-device relaunch revalidation; `make build`, 12/12 native tests, `make format-check` | User as A0; local A8 integration review | The user accepted Phase 2 completion. Artifact gaps, the absence of logged stale/link-loss transitions in the new captures, and the separately skipped physical multiple-candidate test remain explicit follow-on limitations; this is not product/release acceptance. |
+| Complete — bounded delivery Phase 0 Milestone 2 diagnostic scope | 2026-09-14 | All six operator-reported Milestone 2 HIL passes; source-tagged profile-v6 live-row metrics; remembered-device relaunch revalidation; `make build`, 12/12 native tests, `make format-check` | User as A0; local A8 integration review | The user accepted Milestone 2 completion. Artifact gaps, the absence of logged stale/link-loss transitions in the new captures, and the separately skipped physical multiple-candidate test remain explicit follow-on limitations; this is not product/release acceptance. |

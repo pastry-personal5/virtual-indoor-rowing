@@ -37,6 +37,6 @@ Unreal's standard game license can require a royalty after the published revenue
 
 ## Validation and revisit
 
-Phase 0 must compile, cook, package, sign, notarize, and run a Bluetooth-enabled Shipping build with this exact trio. Revisit when Epic changes the support matrix, Apple security/SDK policy forces a move, the target OS changes, or a newer combination passes all client, HIL, packaging, and soak gates.
+Delivery Phase 0 must compile, cook, package, sign, notarize, and run a Bluetooth-enabled Shipping build with this exact trio. Revisit when Epic changes the support matrix, Apple security/SDK policy forces a move, the target OS changes, or a newer combination passes all client, HIL, packaging, and soak gates.
 
 Evidence: [platform and Unreal research](../archive/research/2026-09-12-platform-and-unreal.md).

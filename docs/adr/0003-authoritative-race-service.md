@@ -38,4 +38,4 @@ Running Unreal Linux dedicated servers would add engine source builds, large ima
 
 ## Validation and revisit
 
-Phase 0 proves two-client time sync/race/replay. Public beta requires load at twice forecast, room worker failure/fencing, deterministic results, and p99 tick ≤25 ms. Revisit for physics interactions, transport latency evidence, or when Go room logic can no longer represent approved rules.
+Delivery Phase 0 proves two-client time sync/race/replay. Public beta requires load at twice forecast, room worker failure/fencing, deterministic results, and p99 tick ≤25 ms. Revisit for physics interactions, transport latency evidence, or when Go room logic can no longer represent approved rules.

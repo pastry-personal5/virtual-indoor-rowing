@@ -8,9 +8,26 @@ Last reviewed: 2026-09-13
 
 Build a trustworthy local rowing instrument first, then a polished solo game, then cloud synchronization, and only then ranked competition. Multiplayer assumptions are present in domain/contracts from the start, but public racing is not allowed to become the path by which basic device/session reliability is discovered.
 
-Planning range for a focused startup team is roughly 8–12 months to a defensible public release. This is not a commitment until Phase 0 spikes measure toolchain, PM5, content, and staffing risk.
+Planning range for a focused startup team is roughly 8–12 months to a defensible public release. This is not a commitment until delivery Phase 0 spikes measure toolchain, PM5, content, and staffing risk.
 
-The range assumes the recommended team is staffed, external approvals do not block, and phases do not overlap beyond demonstrated capacity. At every exit gate, founders make a separate investment decision using product evidence, staffing, cost, runway, and remaining risk. Passing an engineering gate does not automatically fund the next phase. See the [executive review](00-executive-review.md) and proposed [ADR-0007](../adr/0007-evidence-gated-product-delivery.md).
+The range assumes the recommended team is staffed, external approvals do not block, and delivery phases do not overlap beyond demonstrated capacity. At every exit gate, founders make a separate investment decision using product evidence, staffing, cost, runway, and remaining risk. Passing an engineering gate does not automatically fund the next delivery phase. See the [executive review](00-executive-review.md) and proposed [ADR-0007](../adr/0007-evidence-gated-product-delivery.md).
+
+## Delivery-phase definitions
+
+In product and delivery documents, capitalized **Phase 0** through **Phase 5** means the delivery phases defined here. A phase identifies a bounded product outcome and its exit gate; it is not a synonym for a milestone, workstream, protocol state, workout segment, race-room state, or animation state. Those other uses must be qualified, such as “diagnostic milestone,” “connection phase,” “workout phase,” or “stroke phase.”
+
+Every delivery phase shall contain one or more milestones and may contain many. Each milestone shall belong to exactly one delivery phase, use the identifier `Phase <N> Milestone <M>`, and have a bounded scope and gate. Milestone numbers are local to their phase. Passing a milestone gate records incremental progress only; a delivery phase passes only when its phase exit gate evaluates the combined required outcomes and evidence from all applicable milestones.
+
+| Delivery phase | Product outcome | Investment level in proposed ADR-0007 |
+|---|---|---|
+| Phase 0 — evidence and foundation | Retire critical feasibility risks and establish the technical and product evidence base | Foundation |
+| Phase 1 — walking skeleton | Deliver a trustworthy signed internal end-to-end rowing instrument | Foundation |
+| Phase 2 — solo alpha and content pipeline | Deliver a repeatable, polished offline solo product | Solo product |
+| Phase 3 — accounts, sync, and private beta | Add connected value without weakening offline completion | Connected beta |
+| Phase 4 — real-time group rows and ranked racing | Add server-authoritative social and competitive rowing | Social/racing beta |
+| Phase 5 — public beta to GA | Qualify a supportable commercial release | Commercial GA |
+
+The phase number describes sequence, not approval or completion. Work is committed only after its investment gate is approved. A capability’s “earliest delivery phase” in the [product scope](01-product-scope.md) is the first phase in which it may be committed; it is not a promise that the capability is funded or complete. Milestones may be added, removed, or replanned within their owning phase without renumbering the delivery phases, provided the phase outcome and normative requirements remain intact.
 
 ## Recommended team
 
@@ -28,7 +45,7 @@ Minimum sustainable cross-functional team:
 | Security/privacy/SRE | fractional early, named owner; increase pre-beta | threat/privacy reviews, incident/release/on-call |
 | Support/community | add by private beta | device setup, diagnostics, event operations |
 
-With fewer people, preserve the phase order and reduce content/social scope rather than making device durability, security, testing, or operations part-time invisible work.
+With fewer people, preserve the delivery-phase order and reduce content/social scope rather than making device durability, security, testing, or operations part-time invisible work.
 
 ## Phase 0 — evidence and foundation (2–4 weeks)
 
@@ -66,7 +83,7 @@ With fewer people, preserve the phase order and reduce content/social scope rath
 - Exact engine/Xcode/macOS/PM tuples are recorded.
 - No unresolved blocker to BLE telemetry, notarization, or local session durability.
 - Top risks have owners, triggers, and contingency.
-- A compatible design-partner cohort is named, observed first-use evidence exists, and the founders have defined what customer evidence would fund Phase 1 and Phase 2.
+- A compatible design-partner cohort is named, observed first-use evidence exists, and the founders have defined what customer evidence would fund delivery Phases 1 and 2.
 
 ## Phase 1 — walking skeleton (4–6 weeks)
 
@@ -90,7 +107,7 @@ A signed internal macOS app connects to the PM5, rows a gray-box route, shows li
 - 60-minute hardware run meets preliminary latency/durability; process-kill recovery evidence exists.
 - Fresh install/permission denial/repair and signed package pass.
 - No account, subscription, external integration, or multiplayer required to complete the row.
-- Design partners can attempt the supported setup without an engineer driving the UI; failures are categorized and feed the Phase 2 estimate.
+- Design partners can attempt the supported setup without an engineer driving the UI; failures are categorized and feed the delivery Phase 2 estimate.
 
 ## Phase 2 — solo alpha and content pipeline (6–10 weeks)
 
@@ -221,11 +238,11 @@ Avoid buying a generic MMO backend: the hard domain is ordered PM measurements, 
 | Global latency from Seoul | H / M | >150 ms p95 preflight share | warn/unrank; second race region trigger; no premature multi-region account writes | online/product |
 | Realtime cost/fanout | M / M | egress/tick/custom metric trend | caps/interest/delta, load/cost tests, dedicated workers at trigger | online/platform |
 | Content production dominates schedule | H / M | route misses budgets/milestones | one excellent route, reusable kits/procedural tooling, outsource with validator | content/product |
-| Concept2 API/protocol/trademark approval | M / H | unanswered approval or production-write block | engage Phase 0; keep export optional; published-only protocol; neutral branding | business/device |
+| Concept2 API/protocol/trademark approval | M / H | unanswered approval or production-write block | engage in delivery Phase 0; keep export optional; published-only protocol; neutral branding | business/device |
 | Unreal commercial cost/terms | L–M / H | revenue/funding/distribution changes | legal/finance review, royalty reporting owner, forecast; custom license if justified | CEO/finance |
 | Update/signing key compromise | L / Critical | unauthorized release/key access | isolated keys, two-person approval, transparency, rotation/revocation drill | security/release |
 | Privacy/subscription market obligations | M / H | late counsel/store/support requirements | choose markets early, minimize data, provider checkout, policy/flows before beta | product/legal |
-| Startup team over-scope | H / H | parallel unfinished systems, slipping reliability | phase gates, deferred list, one route/PM/platform, feature freeze before GA | CTO/product |
+| Startup team over-scope | H / H | parallel unfinished systems, slipping reliability | delivery-phase gates, deferred list, one route/PM/platform, feature freeze before GA | CTO/product |
 
 Risk status is reviewed every two weeks through beta. “Mitigated” requires evidence, not work started.
 

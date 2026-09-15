@@ -1,6 +1,6 @@
-# Milestone 1 Phase 1 evidence report
+# Delivery Phase 0 Milestone 1 evidence report
 
-Status: Complete for revised M1 Phase 1 exit gate; follow-on hardware evidence deferred
+Status: Complete for revised Milestone 1 exit gate; follow-on hardware evidence deferred
 Owner: A7 for toolchain evidence, A1 for HIL evidence, A6 for automated evidence  
 Architecture review: A0  
 Integration review: A8  
@@ -89,7 +89,7 @@ required hardware acceptance evidence.
 
 The local rotating log at `Logs/pm5-tui/pm5-tui.log` contains a session on 2026-09-13 from 03:54:52Z to 03:56:04Z. It records explicit candidate selection, an identity read, transition to `DIAGNOSTIC ONLY (unverified)`, 36 `DiagnosticSampleObserved` events between 03:55:25Z and 03:56:00Z, and a deliberate disconnect. The sample count and interval are obtained by counting those redacted event timestamps; the log does not store sample values or raw BLE data. The user-provided terminal transcript identifies the observed tuple as PM5, hardware `634`, firmware `8200-000372-178.067`, capability `2`.
 
-Two subsequent launches at 05:21:18Z and 05:21:33Z only issue `status` and stop; neither scans nor reconnects. They do not establish a relaunch-reconnect feature (which is Phase 2 scope). The current local log has 73 lines and SHA-256 `e93e9759ea17e441175b285fe9a08bc77f944a894f0ab140a75ebbf6c44e8cba`; it is ignored by Git and remains a workstation artifact, not a checked-in release artifact. Those existing records predate build-revision and identity-tuple logging, so they are not source-stamped.
+Two subsequent launches at 05:21:18Z and 05:21:33Z only issue `status` and stop; neither scans nor reconnects. They do not establish a relaunch-reconnect feature (which is diagnostic Milestone 2 scope). The current local log has 73 lines and SHA-256 `e93e9759ea17e441175b285fe9a08bc77f944a894f0ab140a75ebbf6c44e8cba`; it is ignored by Git and remains a workstation artifact, not a checked-in release artifact. Those existing records predate build-revision and identity-tuple logging, so they are not source-stamped.
 
 This is evidence of a short passive notification/decoder path only. The log does not prove changing metric values, record characteristic notification counts or a requested/observed 100 ms rate, or cover stale/reconnect behavior. The profile was explicitly unverified and never entered `Ready`. It does not complete any real-hardware acceptance case or replace the required 6-minute run.
 
@@ -148,7 +148,7 @@ unexplained in-workout regression. The same end-of-workout tail contains many
 unchanged stopped-row samples, explaining the duplicate/missing-field totals.
 
 This is evidence that a real workout was completed and normalized telemetry
-was captured; it is not yet a Phase 1 acceptance pass. The capture does not
+was captured; it is not yet a Milestone 1 acceptance pass. The capture does not
 provide per-characteristic notification counts, a verified requested/observed
 100 ms period or cadence distribution, gap-duration distribution, queue
 high-water/overflow values, or parser-error categorization. The stop summary
@@ -275,7 +275,7 @@ first notifications before `Ready`.
 
 | Scenario | Result | Aggregate evidence/notes |
 |---|---|---|
-| Fresh permission approval | Pass (user-reported) | Recorded in Phase 2; source revision and PM5 tuple were not included. |
+| Fresh permission approval | Pass (user-reported) | Recorded in diagnostic Milestone 2; source revision and PM5 tuple were not included. |
 | Permission denial | Pass (user-reported, 2026-09-14) | No source revision, PM5 tuple, or run evidence was included in the report. |
 | Settings repair and retry | Pass (user-reported, 2026-09-14) | No source revision, PM5 tuple, or run evidence was included in the report. |
 | Explicit scan and target selection | Pending | |
@@ -330,16 +330,16 @@ The report contains aggregate counters only. A failure requiring packet-level di
 
 | Item | Owner | Resolution required |
 |---|---|---|
-| Published Apple-silicon CI | A7 | The local native suite passes; publish and retain a redacted self-hosted runner result before the next product milestone. |
-| HIL evidence review | A1/A0/A7 | Phase 2 was closed for bounded diagnostic scope by owner decision; all six required scenarios are user-reported passes. The 2026-09-14 profile-v6 metrics add a source revision, exact tuple, live-row aggregates, and zero-overflow evidence; a separate artifact records remembered-device relaunch reconnect. Per-scenario comparison readings and stale/link-loss events are not present in these artifacts. Before product release qualification or support expansion, review complete redacted run metadata and resolve the physical multiple-candidate case skipped by user decision; other pending cases in the hardware scenario table remain open. |
+| Published Apple-silicon CI | A7 | The local native suite passes; publish and retain a redacted self-hosted runner result before the next delivery Phase 0 milestone. |
+| HIL evidence review | A1/A0/A7 | Diagnostic Milestone 2 was closed for bounded scope by owner decision; all six required scenarios are user-reported passes. The 2026-09-14 profile-v6 metrics add a source revision, exact tuple, live-row aggregates, and zero-overflow evidence; a separate artifact records remembered-device relaunch reconnect. Per-scenario comparison readings and stale/link-loss events are not present in these artifacts. Before product release qualification or support expansion, review complete redacted run metadata and resolve the physical multiple-candidate case skipped by user decision; other pending cases in the hardware scenario table remain open. |
 
 ## Exit decision
 
 | Decision | Date | Evidence reviewed | Approvers | Rationale |
 |---|---|---|---|---|
-| Ready — revised M1 Phase 1 exit gate met | 2026-09-14 | Native host/test lanes, successful normal-host Unreal smoke, user-confirmed six-minute PM5 workout, and `.069` profile-v6 HIL confirmation | User as A0 and A8 | The bounded diagnostic foundation meets the revised exit gate. Published CI and the omitted manual HIL/TCC scenarios are explicitly deferred follow-on work, not evidence of product readiness. |
+| Ready — revised delivery Phase 0 Milestone 1 exit gate met | 2026-09-14 | Native host/test lanes, successful normal-host Unreal smoke, user-confirmed six-minute PM5 workout, and `.069` profile-v6 HIL confirmation | User as A0 and A8 | The bounded diagnostic foundation meets the revised milestone exit gate. Published CI and the omitted manual HIL/TCC scenarios are explicitly deferred follow-on work, not evidence of product readiness. |
 
-Use `Ready`, `Not ready`, or `Blocked` only. `Ready` authorizes the next milestone decision; it does not claim completion of the broader product Phase 0 or Phase 1 gates.
+Use `Ready`, `Not ready`, or `Blocked` only. `Ready` authorizes the next milestone decision; it does not claim completion of the broader delivery Phase 0 or Phase 1 gates.
 
 ## Sign-off
 
@@ -350,4 +350,4 @@ Use `Ready`, `Not ready`, or `Blocked` only. `Ready` authorizes the next milesto
 - A0 architecture and capability approval: User-approved on 2026-09-14.
 - A8 integration recommendation: User-approved on 2026-09-14.
 
-Current milestone decision: **Ready — revised M1 Phase 1 exit gate met.**
+Current milestone decision: **Ready — revised delivery Phase 0 Milestone 1 exit gate met.**

@@ -65,7 +65,7 @@ The detailed requirements are in [security](docs/architecture/07-security-privac
 
 ## Change rules
 
-Accepted ADRs are binding. Reverse one only with a superseding ADR. Keep public contracts small, versioned, and hardware-neutral. Changes to an `FR-*` or `QA-*` requirement require traceable verification. Record milestone delivery history in that milestone's `CHANGELOG.md`; changelogs do not change architecture.
+Accepted ADRs are binding. Reverse one only with a superseding ADR. Keep public contracts small, versioned, and hardware-neutral. Changes to an `FR-*` or `QA-*` requirement require traceable verification. Every delivery phase must contain one or more milestones and may contain many; each milestone belongs to exactly one phase. Record milestone delivery history in the owning phase's `CHANGELOG.md`. Completing a milestone does not complete its phase or pass the phase exit gate, and changelogs do not change architecture.
 
 ## Detailed references
 

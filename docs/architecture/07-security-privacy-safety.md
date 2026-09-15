@@ -106,7 +106,7 @@ Authorization tests include owner, unrelated user, blocked user, expired entitle
 
 - TLS 1.2 minimum and TLS 1.3 preferred at public edge; modern cipher policy and HSTS for web properties.
 - WAF managed rules plus explicit endpoint rate/size policies. Rate limits combine IP/network signals with authenticated principal and operation.
-- REST mutation idempotency, WebSocket phase/message allow-lists, bounded Protobuf fields, and monotonic sequences.
+- REST mutation idempotency, WebSocket connection-phase/message allow-lists, bounded Protobuf fields, and monotonic sequences.
 - Stream uploads/downloads with deadlines. Enforce compressed and uncompressed limits before/while decoding; quarantine failures.
 - Parameterized SQL only. Do not build object keys, redirects, callback URLs, or shell commands from unchecked input.
 - Outbound provider clients allow-list HTTPS hosts, reject redirects to untrusted origins, set connection/request timeouts, cap responses, and use circuit breakers.

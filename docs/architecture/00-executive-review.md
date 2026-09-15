@@ -28,7 +28,7 @@ The recommended sequence is:
 | PM5 boundary | Strong | Keep the published-protocol, capability-matrix, and hardware-in-loop approach |
 | Local durability | Strong with clarified failure semantics | Gate completion on durable commit; distinguish process crash from sudden power loss |
 | Unreal boundary | Strong | Keep measurement and workout rules outside Actors, Blueprints, and rendering |
-| Online architecture | Sound target, premature as a full build | Preserve contracts and seams; build only the control/API slice required by the current phase |
+| Online architecture | Sound target, premature as a full build | Preserve contracts and seams; build only the control/API slice required by the active delivery phase |
 | Ranked racing | Honest about the limits of BLE | Keep “ranked eligible” evidence-based; never market ordinary BLE as hardware attestation |
 | Security/privacy | Production-oriented | Retain the controls, but implement them when the associated data or workflow first exists |
 | Delivery plan | Technically sequenced but commercially under-gated | Add customer, retention, pricing, staffing, and runway gates to every investment step |
@@ -74,17 +74,19 @@ Metric definitions, exclusions, consent, owner, query, and decision threshold be
 
 ## Evidence-gated commitments
 
-The functional table in [product scope](01-product-scope.md) is the first commercial-generation capability envelope. It is not one MVP backlog. Use these commitment levels:
+The functional table in [product scope](01-product-scope.md) is the first commercial-generation capability envelope. It is not one MVP backlog. Use these investment levels, mapped to the delivery phases in the [delivery plan](10-delivery-plan.md):
 
-| Commitment | Outcome | Typical included capabilities | Investment gate |
-|---|---|---|---|
-| Foundation | A reliable local rowing instrument and gray-box experience | PM5 connection, HUD, Just Row, journal/recovery, basic diagnostics | Toolchain, BLE, durability, and observed setup evidence |
-| Solo product | A product target users voluntarily repeat | One excellent route, workouts, history, FIT, accessibility, signed content | External cohort demonstrates activation and repeat rows |
-| Connected beta | Cross-device value without weakening offline use | Account claim, sync, catalog, privacy operations, optional Logbook | Local retention justifies cloud/data operational cost |
-| Social/racing beta | Scheduled rowing creates incremental value | Private groups, authoritative rooms, provisional/final results, operator controls | Private-row experiment plus deterministic race and load evidence |
-| Commercial GA | A supportable, monetized release | Proven packaging, entitlement where needed, on-call, legal and support readiness | Real pricing conversion, runway, SLO, and staffing evidence |
+Each delivery phase is executed through one or more phase-scoped milestones and may contain many. Investment approval activates a delivery phase; milestone gates measure progress within it, while the phase exit gate decides whether its combined outcome is complete.
 
-Do not begin a later commitment merely because its interfaces already exist. Interface foresight is inexpensive; production implementation and operations are not.
+| Investment level | Delivery phase(s) | Outcome | Typical included capabilities | Investment gate |
+|---|---|---|---|---|
+| Foundation | Phases 0–1 | A reliable local rowing instrument and gray-box experience | PM5 connection, HUD, Just Row, journal/recovery, basic diagnostics | Toolchain, BLE, durability, and observed setup evidence |
+| Solo product | Phase 2 | A product target users voluntarily repeat | One excellent route, workouts, history, FIT, accessibility, signed content | External cohort demonstrates activation and repeat rows |
+| Connected beta | Phase 3 | Cross-device value without weakening offline use | Account claim, sync, catalog, privacy operations, optional Logbook | Local retention justifies cloud/data operational cost |
+| Social/racing beta | Phase 4 | Scheduled rowing creates incremental value | Private groups, authoritative rooms, provisional/final results, operator controls | Private-row experiment plus deterministic race and load evidence |
+| Commercial GA | Phase 5 | A supportable, monetized release | Proven packaging, entitlement where needed, on-call, legal and support readiness | Real pricing conversion, runway, SLO, and staffing evidence |
+
+Do not begin a later investment level merely because its interfaces already exist. Interface foresight is inexpensive; production implementation and operations are not.
 
 ## First 90 days
 
@@ -110,12 +112,12 @@ Run product, device/client, and company-readiness work in parallel, with one int
 - Run repeated rows with the same cohort over several weeks, not a one-session usability test.
 - Measure activation, return behavior, trust failures, support burden, route appeal, and structured-workout demand.
 - Present a real packaging and price proposition; distinguish politeness from commitment.
-- Re-estimate Phase 2 using measured content throughput, device defects, team availability, and cash runway.
-- Accept, revise, or reject ADR-0007 and explicitly fund the next phase. If evidence is weak, change the product or target cohort before building the cloud/race platform.
+- Re-estimate delivery Phase 2 using measured content throughput, device defects, team availability, and cash runway.
+- Accept, revise, or reject ADR-0007 and explicitly fund the next delivery phase. If evidence is weak, change the product or target cohort before building the cloud/race platform.
 
 ## Architecture guardrails for a lean startup
 
-- Preserve the domain boundaries in the target design, but create deployables only when the active phase needs them.
+- Preserve the domain boundaries in the target design, but create deployables only when the active delivery phase needs them.
 - Start the control plane as one modular Go process and one PostgreSQL database; do not provision every named managed service for the walking skeleton.
 - Keep race contracts and deterministic rule fixtures engine-independent, but delay production gateways, leases, recovery, and multi-AZ load work until private group rows are approved.
 - Build the PM simulator and local journal early because they shorten every later test cycle and protect the core promise.
@@ -144,5 +146,5 @@ A replan is a successful use of evidence, not an architecture failure.
 - Review product evidence weekly and the risk register every two weeks through beta.
 - Maintain one decision log with hypothesis, experiment, cohort, threshold, result, and decision.
 - Record a named owner and expiry for every exception, assumption, remote kill switch, and postponed security/privacy control.
-- Reforecast scope, staffing, runway, and target release date at each phase gate.
+- Reforecast scope, staffing, runway, and target release date at each delivery-phase gate.
 - Supersede accepted ADRs when evidence reverses them; do not allow a roadmap slide to silently override architecture.

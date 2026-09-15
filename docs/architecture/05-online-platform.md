@@ -142,11 +142,11 @@ Initial guardrails are 16 active rowers in a ranked room, 64 in an unranked grou
 
 Use binary Protobuf messages over TLS WebSocket (`wss` on 443). Rowing updates are small and at most 10 Hz, so WebSocket interoperability and operational simplicity outweigh QUIC complexity at launch. The protocol still uses latest-state semantics so a future transport can avoid head-of-line blocking.
 
-### Connection phases
+### Race-room connection phases
 
 `Connect → AuthenticateTicket → TimeSync → Lobby → Ready → Countdown → Active → Finishing → Result → Close`
 
-Messages legal in each phase are allow-listed. Rate/size limits are phase-specific. A heartbeat is exchanged every 5 seconds when no other traffic exists.
+Messages legal in each connection phase are allow-listed. Rate/size limits are connection-phase-specific. A heartbeat is exchanged every 5 seconds when no other traffic exists.
 
 ### Time synchronization
 
@@ -183,7 +183,7 @@ Rejected data receives a reason and last accepted sequence. Accepted progress is
 
 ## Room recovery
 
-The worker writes a bounded room checkpoint to Redis at least once per second: ruleset/content hashes, phase/epoch, participants, last accepted sequence/progress, penalties, and a rolling result-chain hash. This is operational recovery state, not the final durable record.
+The worker writes a bounded room checkpoint to Redis at least once per second: ruleset/content hashes, race-room phase/epoch, participants, last accepted sequence/progress, penalties, and a rolling result-chain hash. This is operational recovery state, not the final durable record.
 
 If an owner heartbeat expires:
 
