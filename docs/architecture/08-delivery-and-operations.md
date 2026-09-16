@@ -107,6 +107,8 @@ Run in parallel where dependencies permit:
 
 ### Release-candidate pipeline
 
+This pipeline, including all signing/notarization/Sparkle steps below, is required starting Phase 4; per [ADR-0008](../adr/0008-defer-macos-signing-to-phase-4.md), Phase 0–3 release candidates stop at step 4 (unsigned build/cook/stage plus SBOM/provenance) and distribute the unsigned artifact directly.
+
 1. Resolve an immutable source revision, build manifest, dependency locks, and approved content set.
 2. Build/test on a clean, ephemeral Apple-silicon runner whose engine/toolchain fingerprint matches the manifest.
 3. Compile, cook, and stage the Shipping app with Unreal Automation Tool/BuildGraph.
@@ -122,7 +124,7 @@ Release signing is a protected job with two-person approval. Secrets are deliver
 
 ## macOS packaging and channels
 
-Initial direct distribution uses a notarized Developer ID DMG and Sparkle 2. This avoids making Mac App Store review/sandbox/billing constraints a launch dependency while retaining Gatekeeper trust.
+Initial direct distribution uses a notarized Developer ID DMG and Sparkle 2, starting Phase 4 (ADR-0008). This avoids making Mac App Store review/sandbox/billing constraints a launch dependency while retaining Gatekeeper trust. Before Phase 4, the `internal`/`alpha`/`beta` channels below distribute the unsigned ad-hoc build directly, with manual reinstall in place of Sparkle-managed updates.
 
 Channels:
 

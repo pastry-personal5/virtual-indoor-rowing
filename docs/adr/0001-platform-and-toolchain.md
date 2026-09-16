@@ -1,6 +1,6 @@
 # ADR-0001: macOS, Unreal, and toolchain baseline
 
-- Status: Accepted
+- Status: Accepted; Phase 0 sign/notarize validation timing superseded by [ADR-0008](0008-defer-macos-signing-to-phase-4.md)
 - Date: 2026-09-12
 - Owners: CTO, client lead, release lead
 
@@ -37,6 +37,6 @@ Unreal's standard game license can require a royalty after the published revenue
 
 ## Validation and revisit
 
-Delivery Phase 0 must compile, cook, package, sign, notarize, and run a Bluetooth-enabled Shipping build with this exact trio. Revisit when Epic changes the support matrix, Apple security/SDK policy forces a move, the target OS changes, or a newer combination passes all client, HIL, packaging, and soak gates.
+Delivery Phase 0 must compile, cook, package, and run an unsigned, ad-hoc-built Bluetooth-enabled Shipping build with this exact trio; signing and notarization become a required gate at Phase 4 per [ADR-0008](0008-defer-macos-signing-to-phase-4.md). Revisit when Epic changes the support matrix, Apple security/SDK policy forces a move, the target OS changes, or a newer combination passes all client, HIL, packaging, and soak gates.
 
 Evidence: [platform and Unreal research](../archive/research/2026-09-12-platform-and-unreal.md).

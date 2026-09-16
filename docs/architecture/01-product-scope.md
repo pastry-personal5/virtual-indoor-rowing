@@ -89,7 +89,7 @@ The reference Mac and PM5 hardware-in-loop rig are the acceptance environment. U
 | QA-009 | Session correctness | No duplicate finalized sessions; distance/time summary matches accepted PM source within source resolution |
 | QA-010 | Accessibility | Full setup/menu keyboard navigation, scalable HUD, color-independent target feedback, subtitle/cue equivalents |
 | QA-011 | Startup | Warm start to local menu p95 ≤8 s with cached shaders/content; usable offline if cloud is unreachable |
-| QA-012 | Update safety | Every executable is signed/notarized; update feed and archive are independently signed; rollback artifact retained |
+| QA-012 | Update safety | From Phase 4 (ADR-0008): every executable is signed/notarized; update feed and archive are independently signed; rollback artifact retained |
 | QA-013 | Privacy operations | Export request begins immediately; deletion completes within the published policy window and is auditable |
 | QA-014 | Observability | Every cloud request and race has a correlation ID; client logs contain no access token, raw email, or raw PM serial |
 
@@ -114,7 +114,7 @@ Objectives are initial and must be converted into automated release gates where 
 | Tahoe version intent is 26.6.2 | Product owner confirmation and CI host check | Requirement corrected or accepted in ADR-0001 |
 | PM5 BLE stays connected for long rows on the target Mac | 2-hour repeated hardware-in-loop soak across supported firmware | No unexplained disconnect; recovery objective met |
 | 100 ms PM status notifications are sustainable with subscribed characteristics | Packet capture and notification-loss test | Loss <0.1% in clean RF; decoder handles gaps |
-| Unreal 5.8 and Xcode 26.1.1 can build, sign, and run on Tahoe 26.6.2 | Packaged vertical slice, not Editor-only | Notarized arm64 app passes Gatekeeper and Bluetooth prompt |
+| Unreal 5.8 and Xcode 26.1.1 can build and run on Tahoe 26.6.2 | Packaged vertical slice, not Editor-only | Unsigned, ad-hoc-built arm64 app launches via Gatekeeper right-click-Open and passes the Bluetooth prompt; notarization is a Phase 4 requirement per ADR-0008 |
 | Custom Go race protocol meets rowing latency needs | WAN-emulated 16-rower ranked and 64-rower group tests | QA-005/006 and convergence tests pass |
 | Full-fidelity world holds 60 fps thermally | Representative route and HUD soak | QA-001 passes without editor overhead |
 

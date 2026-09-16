@@ -56,6 +56,16 @@ def capture(args: list[str], *, env: dict[str, str] | None = None) -> str | None
 	return result.stdout.strip()
 
 
+def capture_combined(args: list[str], *, env: dict[str, str] | None = None) -> str | None:
+	try:
+		result = subprocess.run(args, cwd=ROOT, env=env, check=False, text=True, capture_output=True)
+	except OSError:
+		return None
+	if result.returncode != 0:
+		return None
+	return (result.stdout + result.stderr).strip()
+
+
 def version_number(value: str | None) -> tuple[int, ...] | None:
 	if not value:
 		return None
@@ -93,6 +103,7 @@ def find_unreal(versions: dict) -> Path | None:
 	candidates.extend([
 		Path("/Users/Shared/Epic Games/UE_5.8"),
 		Path("/Applications/Epic Games/UE_5.8"),
+		Path("/Volumes/Unreal_Engine_Volume/work/UE_5.8"),
 		Path("/Volumes/Work_Volume/UnrealEngine/UE_5.8"),
 	])
 	for candidate in candidates:
@@ -492,6 +503,27 @@ def binary_architectures(binary: Path) -> set[str] | None:
 	return set(output.split()) if output else None
 
 
+def app_bundle_sha256(app: Path) -> str:
+	digest = hashlib.sha256()
+	for path in sorted(app.rglob("*"), key=lambda item: item.relative_to(app).as_posix()):
+		relative_path = path.relative_to(app).as_posix().encode("utf-8")
+		if path.is_symlink():
+			digest.update(relative_path)
+			digest.update(b"\0")
+			digest.update(b"symlink\0")
+			digest.update(os.readlink(path).encode("utf-8"))
+			continue
+		if path.is_dir():
+			continue
+		digest.update(relative_path)
+		digest.update(b"\0")
+		digest.update(b"file\0")
+		with path.open("rb") as source:
+			for chunk in iter(lambda: source.read(1024 * 1024), b""):
+				digest.update(chunk)
+	return digest.hexdigest()
+
+
 def verify_package(app: Path, versions: dict) -> list[str]:
 	failures: list[str] = []
 	if not app.is_dir():
@@ -536,7 +568,7 @@ def unreal_package_verify() -> int:
 		for failure in failures:
 			print(f"FAIL {failure}", file=sys.stderr)
 		return 1
-	print(f"OK unsigned Shipping package: {app}")
+	print(f"OK unsigned Shipping package: app_sha256={app_bundle_sha256(app)}")
 	return 0
 
 
@@ -603,6 +635,16 @@ def verify_bluetooth_probe_result(path: Path) -> str | None:
 	return None
 
 
+def verify_release_signature(app: Path) -> str | None:
+	options = capture_combined(["codesign", "-d", "--options", ":-", str(app)]) or ""
+	if "runtime" not in options.lower():
+		return "Hardened Runtime is not enabled"
+	entitlement_text = capture(["codesign", "-d", "--entitlements", ":-", str(app)]) or ""
+	if "get-task-allow" in entitlement_text:
+		return "get-task-allow must be absent from Shipping entitlements"
+	return None
+
+
 def release_sign_notarize() -> int:
 	identity = os.environ.get("VIR_DEVELOPER_ID_IDENTITY")
 	notary_profile = os.environ.get("VIR_NOTARY_KEYCHAIN_PROFILE")
@@ -635,9 +677,9 @@ def release_sign_notarize() -> int:
 		return 1
 	if run(["codesign", "--verify", "--deep", "--strict", "--verbose=2", str(app)]).returncode:
 		return 1
-	entitlement_text = capture(["codesign", "-d", "--entitlements", ":-", str(app)]) or ""
-	if "get-task-allow" in entitlement_text:
-		print("ERROR: get-task-allow must be absent from Shipping entitlements", file=sys.stderr)
+	signature_failure = verify_release_signature(app)
+	if signature_failure:
+		print(f"ERROR: {signature_failure}", file=sys.stderr)
 		return 1
 	dmg = UNREAL_SHIPPING_DIR / "VirtualRowing.dmg"
 	if dmg.exists():

@@ -338,7 +338,7 @@ All rows below require an immutable revision, a redacted runner class, UTC times
 | Bluetooth probe — Deny | Pending | Pending | Record only result state and duration from the schema-v1 result. |
 | Bluetooth probe — Settings repair then Allow | Pending | Pending | Record only result state and duration from the schema-v1 result. |
 | Normal launch no prompt | Pending | Pending | Record the reset TCC precondition and observed absence of a prompt; do not record a user or device identity. |
-| Developer ID signing, notarization, stapling, and Gatekeeper | Pending — protected credential owner | Pending | Credential owner records immutable revision, app/DMG hashes, notarization ID, hardened-runtime/no-`get-task-allow` result, clean standard-user Gatekeeper result, and fresh-Allow categorical probe result. |
+| Developer ID signing, notarization, stapling, and Gatekeeper | Deferred to Phase 4 (ADR-0008) | Deferred | Not a Milestone 3 or Phase 0 requirement. At Phase 4, the credential owner records immutable revision, app/DMG hashes, notarization ID, hardened-runtime/no-`get-task-allow` result, clean standard-user Gatekeeper result, and fresh-Allow categorical probe result. |
 
 ## Deferred follow-on evidence
 

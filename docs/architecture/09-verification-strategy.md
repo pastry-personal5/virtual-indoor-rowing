@@ -25,7 +25,7 @@ Every launch requirement (`FR-*`, `QA-*`) has an owner and evidence link in a ma
 | Security/privacy | every change/release/periodic | static/dependency, fuzz, authz, secret/log checks, threat cases, external review |
 | Release acceptance | each candidate | clean install, permissions, sign/notarize/update/rollback, production synthetic |
 
-The pyramid has many pure tests and fewer physical tests, but no simulator result substitutes for release hardware evidence.
+The pyramid has many pure tests and fewer physical tests, but no simulator result substitutes for release hardware evidence. Per [ADR-0008](../adr/0008-defer-macos-signing-to-phase-4.md), the sign/notarize/update portion of release acceptance applies from Phase 4 onward; Phase 0–3 release candidates are unsigned/ad-hoc and skip only that portion.
 
 ## Deterministic fixtures and tools
 
@@ -220,7 +220,7 @@ At minimum:
 9. Race worker dies under load; generation fencing/recovery or cancellation is correct, with no split-brain result.
 10. Concept2 endpoint is slow/failing/duplicates; VIR completes normally and delivery status/retry/user action is correct.
 11. A private session/ghost/export URL is probed by another account and blocked with an auditable generic response.
-12. A signed update from last stable succeeds; wrong signature/hash/feed fails; interrupted update leaves last stable runnable.
+12. From Phase 4 (ADR-0008): a signed update from last stable succeeds; wrong signature/hash/feed fails; interrupted update leaves last stable runnable.
 
 ## Performance and thermal testing
 

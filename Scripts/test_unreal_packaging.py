@@ -76,6 +76,12 @@ class UnrealShippingPackagingTests(unittest.TestCase):
 		with patch.object(dev, "binary_architectures", return_value={"arm64"}):
 			self.assertIn("missing expected executable: Contents/MacOS/VirtualRowing", dev.verify_package(app, self.versions))
 
+	def test_app_bundle_hash_changes_when_bundle_content_changes(self) -> None:
+		app = self.make_app()
+		before = dev.app_bundle_sha256(app)
+		(app / "Contents" / "MacOS" / "VirtualRowing").write_bytes(b"changed-main")
+		self.assertNotEqual(before, dev.app_bundle_sha256(app))
+
 	def test_bluetooth_probe_result_accepts_exact_redacted_schema(self) -> None:
 		result = self.root / "toolchain-bluetooth-probe.json"
 		result.write_text(json.dumps({
@@ -100,6 +106,24 @@ class UnrealShippingPackagingTests(unittest.TestCase):
 			"peripheral_identifier": "must-not-appear",
 		}), encoding="utf-8")
 		self.assertEqual(dev.verify_bluetooth_probe_result(result), "unexpected fields")
+
+	def test_release_signature_rejects_missing_hardened_runtime(self) -> None:
+		with patch.object(dev, "capture_combined", return_value="flags=0x10000\n"), patch.object(dev, "capture", return_value=""):
+			self.assertEqual(
+				dev.verify_release_signature(self.root / "VirtualRowing.app"),
+				"Hardened Runtime is not enabled",
+			)
+
+	def test_release_signature_rejects_get_task_allow(self) -> None:
+		with patch.object(dev, "capture_combined", return_value="flags=0x10000(runtime)\n"), patch.object(dev, "capture", return_value="<key>get-task-allow</key>"):
+			self.assertEqual(
+				dev.verify_release_signature(self.root / "VirtualRowing.app"),
+				"get-task-allow must be absent from Shipping entitlements",
+			)
+
+	def test_release_signature_accepts_hardened_runtime_without_debug_entitlement(self) -> None:
+		with patch.object(dev, "capture_combined", return_value="flags=0x10000(runtime)\n"), patch.object(dev, "capture", return_value="<dict/>"):
+			self.assertIsNone(dev.verify_release_signature(self.root / "VirtualRowing.app"))
 
 
 if __name__ == "__main__":

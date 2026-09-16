@@ -37,7 +37,7 @@ Minimum sustainable cross-functional team:
 |---|---:|---|
 | Product/rowing domain | 1 product lead + fractional qualified coach | scope, workout content, acceptance, safety wording |
 | Client/game | 2 senior Unreal C++ engineers | domain runtime, UI, world, performance |
-| Device/macOS | 1 senior Apple/native engineer | CoreBluetooth, PM codec, signing/updater; can pair with client |
+| Device/macOS | 1 senior Apple/native engineer | CoreBluetooth, PM codec, signing/updater from Phase 4 (ADR-0008); can pair with client |
 | Online/platform | 2 senior Go/cloud engineers | control/realtime/data/infrastructure |
 | 3D/content | 1 technical artist + contract art/audio | route pipeline, environments, avatar, performance |
 | Quality | 1 automation/SDET | simulator, HIL, end-to-end, load/release evidence |
@@ -59,13 +59,14 @@ With fewer people, preserve the delivery-phase order and reduce content/social s
 
 | Spike | Evidence required | Decision unlocked |
 |---|---|---|
-| Toolchain | Stock UE 5.8 Shipping app builds with Xcode 26.1.1 on Tahoe 26.6.2, runs arm64, signs/notarizes, Bluetooth permission works | confirm or revise ADR-0001/0006 |
+| Toolchain | Stock UE 5.8 Shipping app builds with Xcode 26.1.1 on Tahoe 26.6.2, runs arm64 as an unsigned ad-hoc-built bundle, Bluetooth permission works | confirm or revise ADR-0001/0006/0008 |
 | PM5 BLE | Discover/read/subscribe to real PM5s, 100 ms telemetry for 60 minutes, disconnect/reconnect captures, exact Model D/PM tuples | allowed capability seed and ADR-0002 |
 | Managed workout | Configure/read back one distance, time, and interval workout using only current published CSAFE | launch managed-workout feasibility |
 | Local durability | Append 10 Hz samples to chunked SQLite journal while rendering; kill at write boundaries and recover | journal parameters/ADR-0004 |
 | Visual performance | One representative water route + one detailed boat/avatar at 2560×1600/60 fps for 60 minutes | render feature/content budgets |
 | Realtime | Two load clients plus Go room loop; 20/10 Hz, time sync, reconnect, deterministic replay/result | ADR-0003 and protocol seed |
-| Packaging/update | Update a prior signed/notarized test build through approved Sparkle version; corrupt feed/archive and rollback | update design acceptance |
+
+Signing/notarization and the Sparkle update pipeline are deferred to Phase 4 per [ADR-0008](../adr/0008-defer-macos-signing-to-phase-4.md); there is no Phase 0 packaging/update spike.
 
 ### Business/external actions
 
@@ -73,7 +74,7 @@ With fewer people, preserve the delivery-phase order and reduce content/social s
 - Define the product thesis, metric catalog, experiment log, target segment, alternatives, acquisition path, and a testable price/package proposition.
 - Contact Concept2 developer relations: production use, protocol questions, qualification/authentication boundaries, Logbook write approval process, trademark/marketing review.
 - Have counsel/finance review the current Unreal EULA and royalty plan. “Free-to-use” is not the same as royalty-free after commercial thresholds.
-- Enroll and establish organizational Apple Developer ID ownership; no signing identity tied only to a founder's personal account.
+- Enroll and establish organizational Apple Developer ID ownership ahead of Phase 4, when it is first required; no signing identity tied only to a founder's personal account.
 - Review Sparkle, FIT SDK, Unreal/Fab/content/audio/font, Protobuf, SQLite, Zstandard, cloud, IdP, and billing licenses/terms.
 - Choose launch markets and start privacy/subscription/consumer/accessibility/legal assessment for those markets.
 
@@ -81,7 +82,7 @@ With fewer people, preserve the delivery-phase order and reduce content/social s
 
 - All spikes have reproducible code/reports or an explicit decision to descope.
 - Exact engine/Xcode/macOS/PM tuples are recorded.
-- No unresolved blocker to BLE telemetry, notarization, or local session durability.
+- No unresolved blocker to BLE telemetry or local session durability; per ADR-0008, an unsigned ad-hoc build is sufficient evidence and notarization is not a Phase 0 blocker.
 - Top risks have owners, triggers, and contingency.
 - A compatible design-partner cohort is named, observed first-use evidence exists, and the founders have defined what customer evidence would fund delivery Phases 1 and 2.
 
@@ -89,7 +90,7 @@ With fewer people, preserve the delivery-phase order and reduce content/social s
 
 ### Deliverable
 
-A signed internal macOS app connects to the PM5, rows a gray-box route, shows live metrics, journals every session, survives offline/cloud absence, and uploads to a minimal development API.
+An unsigned, ad-hoc-built internal macOS app (per [ADR-0008](../adr/0008-defer-macos-signing-to-phase-4.md), launched via explicit Gatekeeper right-click-Open) connects to the PM5, rows a gray-box route, shows live metrics, journals every session, survives offline/cloud absence, and uploads to a minimal development API.
 
 ### Build order
 
@@ -99,13 +100,13 @@ A signed internal macOS app connects to the PM5, rows a gray-box route, shows li
 4. SQLite journal/chunks/recovery/outbox.
 5. Minimal Unreal HUD, boat distance-to-spline, stroke animation states.
 6. Control API session endpoint, PostgreSQL, object upload, worker validation.
-7. Developer ID/sign/notarize internal pipeline and redacted diagnostics.
+7. Unsigned ad-hoc build/package/verify pipeline and redacted diagnostics; Developer ID signing/notarization is a Phase 4 build-order item per ADR-0008.
 
 ### Exit gate
 
 - FR-002/003/004/007 demonstrated on real Model D/PM5 and simulator.
 - 60-minute hardware run meets preliminary latency/durability; process-kill recovery evidence exists.
-- Fresh install/permission denial/repair and signed package pass.
+- Fresh install/permission denial/repair pass on the unsigned ad-hoc package.
 - No account, subscription, external integration, or multiplayer required to complete the row.
 - Design partners can attempt the supported setup without an engineer driving the UI; failures are categorized and feed the delivery Phase 2 estimate.
 
@@ -139,7 +140,7 @@ A signed internal macOS app connects to the PM5, rows a gray-box route, shows li
 - Concept2 Logbook OAuth and approved development writes; delivery status/retry.
 - Friends/block/privacy and coarse presence, without text/voice/UGC.
 - Operations console, support case/diagnostic flow, observability, backup/restore.
-- Direct distribution beta/update channels and staged rollout.
+- Direct distribution beta channels and staged rollout using the unsigned ad-hoc build; the signed Sparkle update channel is a Phase 4 addition per ADR-0008.
 
 ### Exit gate
 
@@ -153,6 +154,7 @@ A signed internal macOS app connects to the PM5, rows a gray-box route, shows li
 
 ### Scope
 
+- Developer ID signing, Hardened Runtime, notarization/stapling, and the signed Sparkle 2 update channel required by [ADR-0006](../adr/0006-macos-distribution.md), introduced here per [ADR-0008](../adr/0008-defer-macos-signing-to-phase-4.md): isolated release credentials, two-person approval, and CDN/feed operations stand up before any public/ranked exposure.
 - Gateway, matchmaker, room worker, room lease/recovery, WSS protocol.
 - Private join-code group row, bounded presence, emotes, spectator role.
 - Synchronized countdown, fixed-distance ranked races, penalties/DNF/DNS.
@@ -170,6 +172,7 @@ Start with private unranked rooms, then opt-in unranked public, then ranked cana
 - Common-start and finish order agree across controlled latency cases and replay.
 - Integrity labels/appeal/sanction policies are reviewed and avoid “hardware proof” claims.
 - Production on-call, event operator, capacity, and kill-switch rehearsals pass.
+- The protected credential-owner Developer ID signing/notarization execution is recorded, and a clean-install/corrupt-feed/rollback Sparkle rehearsal passes, per ADR-0008.
 
 ## Phase 5 — public beta to GA (6–8 weeks)
 
@@ -215,7 +218,7 @@ Each candidate begins with product evidence and a small ADR/threat/privacy/test 
 | BLE | Apple CoreBluetooth | thin Objective-C++ adapter; own Concept2 codec |
 | Identity | managed OIDC/Cognito initially | standard OIDC and internal user mapping |
 | Billing | hosted provider | internal entitlement ledger/provider adapter |
-| Updates | Sparkle 2 + Apple signing/notarization | wrapper and independent signed feed/archive |
+| Updates | Sparkle 2 + Apple signing/notarization, introduced Phase 4 (ADR-0008) | wrapper and independent signed feed/archive |
 | Primary data/cache/queue/object | managed AWS services | PostgreSQL/Redis/SQS/S3 interfaces and Terraform |
 | Realtime race rules | build | core differentiator and trust authority |
 | Product/device/session domain | build | core differentiator and reliability boundary |

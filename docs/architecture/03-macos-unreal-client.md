@@ -17,7 +17,7 @@ Last reviewed: 2026-09-13
 | Primary language | C++20 as supported by the pinned UE toolchain; Objective-C++ only at Apple adapter edges |
 | UI | CommonUI/UMG with C++ view models; keyboard/mouse first, gamepad optional |
 | Local database | SQLite, WAL mode, encrypted secrets excluded |
-| Distribution | Developer ID, Hardened Runtime, notarized DMG, signed Sparkle 2 update channel |
+| Distribution | Developer ID, Hardened Runtime, notarized DMG, signed Sparkle 2 update channel, introduced at Phase 4 (ADR-0008); Phase 0–3 builds are unsigned/ad-hoc |
 
 Epic's UE 5.8 macOS matrix recommends Xcode 26.1.1 and explicitly calls Xcode 26.4 incompatible. Apple says Xcode 26.1.1 runs on Tahoe 26.x. This exact pairing remains pinned until a clean build, package, hardware loop, and soak test approves a replacement. See [platform research](../archive/research/2026-09-12-platform-and-unreal.md).
 

@@ -102,7 +102,7 @@ Run product, device/client, and company-readiness work in parallel, with one int
 
 ### Days 31–60: prove the complete local loop
 
-- Deliver a signed internal build with explicit pairing, one route, live HUD, and durable summary.
+- Deliver an unsigned, ad-hoc-built internal build (ADR-0008) with explicit pairing, one route, live HUD, and durable summary.
 - Test permission denial, another app holding the PM, disconnect, renderer stall, app kill, offline use, and export.
 - Put the build in front of design partners without an engineer driving the UI.
 - Instrument the scorecard with privacy-reviewed events and a manual experiment ledger where automation is premature.

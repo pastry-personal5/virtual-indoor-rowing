@@ -1,6 +1,6 @@
 # ADR-0006: Developer ID distribution with a signed update channel
 
-- Status: Accepted
+- Status: Accepted; distribution model unchanged, introduction timing superseded by [ADR-0008](0008-defer-macos-signing-to-phase-4.md) (unsigned ad-hoc builds through Phase 3, this ADR's pipeline required starting Phase 4)
 - Date: 2026-09-12
 - Owners: Release lead, security lead, product
 
