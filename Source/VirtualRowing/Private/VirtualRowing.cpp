@@ -16,7 +16,11 @@ class FVirtualRowingModule final : public IModuleInterface
 		if (FParse::Param(FCommandLine::Get(), TEXT("ToolchainBluetoothProbe")))
 		{
 			FToolchainBluetoothProbe::Run();
-			FPlatformMisc::RequestExit(false);
+			// Force=true: the probe result is already flushed to disk by Run() above, and this
+			// diagnostic mode must not fall through to normal engine startup (map load, game
+			// window). A soft RequestExit(false) only sets a flag the main loop checks later,
+			// which lets a game window appear first and never reliably reaches that check.
+			FPlatformMisc::RequestExit(true);
 		}
 #endif
 	}

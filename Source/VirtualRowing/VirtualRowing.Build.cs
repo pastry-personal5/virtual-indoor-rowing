@@ -10,6 +10,12 @@ public class VirtualRowing : ModuleRules
 		if (Target.Platform == UnrealTargetPlatform.Mac)
 		{
 			PublicFrameworks.AddRange(new[] { "CoreBluetooth", "Foundation" });
+
+			// The engine's shared PCH is compiled without ARC, so a module compiled with
+			// ARC enabled cannot reuse it; this module is small enough that skipping PCHs
+			// entirely on Mac costs nothing worth trading ARC correctness for.
+			bEnableObjCAutomaticReferenceCounting = true;
+			PCHUsage = PCHUsageMode.NoPCHs;
 		}
 
 		string Revision = Environment.GetEnvironmentVariable("VIR_SOURCE_REVISION") ?? "unknown";

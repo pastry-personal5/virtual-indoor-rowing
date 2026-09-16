@@ -26,6 +26,7 @@ make unreal-package-verify        # inspect the staged Shipping .app only (no si
 make toolchain-bluetooth-probe    # run the bounded CoreBluetooth/TCC diagnostic in the staged app
 make release-sign-notarize        # protected sign/notarize procedure; requires VIR_DEVELOPER_ID_IDENTITY and VIR_NOTARY_KEYCHAIN_PROFILE env vars, never takes credentials as arguments
 make clean            # remove Build/native/ only
+make clean-unreal     # remove Unreal-generated intermediates: Saved/, Intermediate/, Binaries/, DerivedDataCache/, Build/unreal-shipping/
 make clean-logs       # purge Logs/pm5-tui/*.log*
 make clean-metrics    # purge Metrics/pm5-tui/*.jsonl
 ```

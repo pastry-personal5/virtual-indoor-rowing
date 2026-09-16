@@ -437,11 +437,15 @@ def unreal_shipping_command(ue_root: Path, project: Path, archive_dir: Path) -> 
 		"-clientconfig=Shipping",
 		"-build",
 		"-cook",
+		"-pak",
+		"-iostore",
 		"-stage",
 		"-package",
 		"-archive",
 		f"-archivedirectory={archive_dir}",
 		"-specifiedarchitecture=arm64",
+		"-CookCultures=en",
+		"-I18NPreset=English",
 	]
 
 
@@ -702,9 +706,25 @@ def release_sign_notarize() -> int:
 	return run(["spctl", "--assess", "--type", "open", "--context", "context:primary-signature", "--verbose=4", str(dmg)]).returncode
 
 
+UNREAL_INTERMEDIATE_DIRS = (
+	ROOT / "Saved",
+	ROOT / "Intermediate",
+	ROOT / "Binaries",
+	ROOT / "DerivedDataCache",
+	UNREAL_SHIPPING_DIR,
+)
+
+
+def clean_unreal() -> int:
+	for directory in UNREAL_INTERMEDIATE_DIRS:
+		if directory.exists():
+			shutil.rmtree(directory)
+	return 0
+
+
 def main() -> int:
 	parser = argparse.ArgumentParser(description=__doc__)
-	parser.add_argument("command", choices=("doctor", "configure", "build", "test", "format-check", "pm5-tui", "unreal-smoke", "unreal-shipping", "unreal-package-verify", "toolchain-bluetooth-probe", "release-sign-notarize", "hil-pm5", "clean"))
+	parser.add_argument("command", choices=("doctor", "configure", "build", "test", "format-check", "pm5-tui", "unreal-smoke", "unreal-shipping", "unreal-package-verify", "toolchain-bluetooth-probe", "release-sign-notarize", "hil-pm5", "clean", "clean-unreal"))
 	args = parser.parse_args()
 	if args.command == "doctor":
 		return check_doctor()
@@ -734,6 +754,8 @@ def main() -> int:
 		if BUILD_DIR.exists():
 			shutil.rmtree(BUILD_DIR)
 		return 0
+	if args.command == "clean-unreal":
+		return clean_unreal()
 	return 2
 
 

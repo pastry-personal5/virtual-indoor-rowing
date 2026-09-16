@@ -1,4 +1,4 @@
-.PHONY: doctor configure build test format-check pm5-tui unreal-smoke unreal-shipping unreal-package-verify toolchain-bluetooth-probe release-sign-notarize hil-pm5 clean clean-logs clean-metrics clean-all
+.PHONY: doctor configure build test format-check pm5-tui unreal-smoke unreal-shipping unreal-package-verify toolchain-bluetooth-probe release-sign-notarize hil-pm5 clean clean-unreal clean-logs clean-metrics clean-all
 
 # Verify the host machine and installed tools against the pinned M1 baseline.
 doctor:
@@ -51,6 +51,11 @@ hil-pm5:
 # Remove generated native build output.
 clean:
 	python3 Scripts/dev.py clean
+
+# Remove generated Unreal intermediate/output directories: Saved/, Intermediate/,
+# Binaries/, DerivedDataCache/, and Build/unreal-shipping/.
+clean-unreal:
+	python3 Scripts/dev.py clean-unreal
 
 # Purge only generated PM5 TUI logs; preserve Logs/.gitkeep and unrelated files.
 clean-logs:

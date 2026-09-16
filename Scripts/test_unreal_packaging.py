@@ -49,6 +49,13 @@ class UnrealShippingPackagingTests(unittest.TestCase):
 		self.assertIn("-archive", command)
 		self.assertIn("-archivedirectory=/out", command)
 
+	def test_unreal_shipping_command_requests_explicit_pak_iostore_and_culture(self) -> None:
+		command = dev.unreal_shipping_command(Path("/UE"), Path("/repo/VirtualRowing.uproject"), Path("/out"))
+		self.assertIn("-pak", command)
+		self.assertIn("-iostore", command)
+		self.assertIn("-CookCultures=en", command)
+		self.assertIn("-I18NPreset=English", command)
+
 	def test_package_verifier_rejects_missing_app(self) -> None:
 		self.assertEqual(dev.verify_package(self.root / "missing.app", self.versions), [f"missing staged app: {self.root / 'missing.app'}"])
 
