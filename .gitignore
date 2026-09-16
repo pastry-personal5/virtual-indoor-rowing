@@ -13,6 +13,7 @@ Saved/
 !/Build/Mac/Resources/Info.Template.plist
 /Build/Mac/FileOpenOrder/
 /Build/Mac/*.PackageVersionCounter
+/Config/DefaultEngine.ini
 /cmake-build-*/
 /Logs/pm5-tui/*.log
 /Logs/pm5-tui/*.log.*
