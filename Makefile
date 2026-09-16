@@ -1,4 +1,4 @@
-.PHONY: doctor configure build test format-check pm5-tui unreal-smoke hil-pm5 clean clean-logs clean-metrics clean-all
+.PHONY: doctor configure build test format-check pm5-tui unreal-smoke unreal-shipping unreal-package-verify toolchain-bluetooth-probe release-sign-notarize hil-pm5 clean clean-logs clean-metrics clean-all
 
 # Verify the host machine and installed tools against the pinned M1 baseline.
 doctor:
@@ -27,6 +27,22 @@ pm5-tui:
 # Compile the Unreal Editor development target using the approved UE installation.
 unreal-smoke:
 	python3 Scripts/dev.py unreal-smoke
+
+# Build, cook, stage, and package the unsigned arm64 Shipping diagnostic host.
+unreal-shipping:
+	python3 Scripts/dev.py unreal-shipping
+
+# Inspect only the staged package; this does not sign, notarize, or launch it.
+unreal-package-verify:
+	python3 Scripts/dev.py unreal-package-verify
+
+# Explicitly invoke the bounded CoreBluetooth/TCC diagnostic in the staged app.
+toolchain-bluetooth-probe:
+	python3 Scripts/dev.py toolchain-bluetooth-probe
+
+# Protected credential-owner release procedure. Never accepts credentials as arguments.
+release-sign-notarize:
+	python3 Scripts/dev.py release-sign-notarize
 
 # Launch the PM5 diagnostic UI for a user-driven hardware-in-the-loop session.
 hil-pm5:

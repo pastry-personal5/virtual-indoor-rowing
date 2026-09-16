@@ -1,0 +1,28 @@
+name: Unreal Shipping verifier
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  unsigned-shipping:
+    runs-on: [self-hosted, macOS, ARM64]
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify pinned host
+        run: make doctor
+      - name: Build unsigned Shipping package
+        run: make unreal-shipping
+      - name: Verify staged package
+        run: make unreal-package-verify | tee Build/unreal-shipping/package-verification.txt
+      - name: Retain redacted package evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: unreal-shipping-provenance-${{ github.sha }}
+          if-no-files-found: error
+          path: |
+            Build/unreal-shipping/provenance.json
+            Build/unreal-shipping/package-verification.txt

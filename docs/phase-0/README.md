@@ -1,6 +1,6 @@
 # Delivery Phase 0: toolchain and PM5 diagnostic foundation
 
-Status: Complete — bounded diagnostic foundation
+Status: In progress — Milestone 3 Shipping toolchain spike; Milestones 1–2 complete
 Owner: A0 — CTO / Principal Architect  
 Last reviewed: 2026-09-14
 
@@ -53,6 +53,7 @@ This bounded implementation is complete against its diagnostic milestone gates, 
 - Public device and telemetry interfaces.
 - Pinned toolchain manifest and diagnostic commands.
 - Empty Unreal toolchain smoke host, without product behavior.
+- Unsigned Unreal arm64 Shipping build/cook/package verifier and an explicit, redacted Bluetooth-permission diagnostic.
 - Engine-independent C++ types and tests.
 - Concept2 published-protocol codecs required for basic telemetry.
 - CoreBluetooth discovery and session lifecycle.
@@ -69,7 +70,8 @@ This bounded implementation is complete against its diagnostic milestone gates, 
 - Cloud services, accounts, networking, Protobuf cloud contracts, or integrations.
 - Race logic, smoothing, prediction, virtual distance, or scoring.
 - USB support, PM3/PM4 support, and non-Concept2 machines.
-- Developer ID release signing, notarization, Sparkle, and distribution packaging.
+- Gameplay, workout, PM5 discovery/metrics, product persistence, and product UI in the Shipping verifier.
+- Sparkle update, corrupt-feed, and rollback validation; these remain a separate packaging/update spike.
 - Product persistence or upload of raw BLE captures, normalized telemetry, or
   diagnostic JSONL. The local, Git-ignored HIL probe evidence is a diagnostic
   tooling exception governed by the PM5 diagnostics/privacy rules.
@@ -81,7 +83,8 @@ This bounded implementation is complete against its diagnostic milestone gates, 
 3. [Milestone 1 implementation plan](03-milestone-1-implementation-plan.md)
 4. [Evidence report](04-evidence-report.md)
 5. [Milestone 2 remembered-PM5 and TUI implementation](05-milestone-2-tui-relaunch-reconnect.md)
-6. [Delivery Phase 0 changelog](CHANGELOG.md)
+6. [Milestone 3 Unreal Shipping toolchain spike](06-milestone-3-toolchain-shipping.md)
+7. [Delivery Phase 0 changelog](CHANGELOG.md)
 
 ## Diagnostic Milestone 2 follow-on
 

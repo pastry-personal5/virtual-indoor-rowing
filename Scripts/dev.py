@@ -18,6 +18,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 VERSIONS_PATH = ROOT / "Config" / "BuildVersions.json"
 BUILD_DIR = ROOT / "Build" / "native"
+UNREAL_SHIPPING_DIR = ROOT / "Build" / "unreal-shipping"
+UNREAL_ARCHIVE_DIR = UNREAL_SHIPPING_DIR / "archive"
+UNREAL_PROVENANCE_PATH = UNREAL_SHIPPING_DIR / "provenance.json"
+BLUETOOTH_USAGE_DESCRIPTION = "Virtual Rowing uses Bluetooth only when you run the explicit toolchain Bluetooth diagnostic."
 
 
 def load_versions() -> dict:
@@ -396,9 +400,212 @@ def unreal_smoke() -> int:
 	], env=tool_env(versions)).returncode
 
 
+def unreal_shipping_command(ue_root: Path, project: Path, archive_dir: Path) -> list[str]:
+	return [
+		str(ue_root / "Engine" / "Build" / "BatchFiles" / "RunUAT.sh"),
+		"BuildCookRun",
+		f"-project={project}",
+		"-noP4",
+		"-platform=Mac",
+		"-targetplatform=Mac",
+		"-clientconfig=Shipping",
+		"-build",
+		"-cook",
+		"-stage",
+		"-package",
+		"-archive",
+		f"-archivedirectory={archive_dir}",
+		"-specifiedarchitecture=arm64",
+	]
+
+
+def staged_app(archive_dir: Path) -> Path | None:
+	apps = sorted(archive_dir.rglob("VirtualRowing.app")) if archive_dir.is_dir() else []
+	return apps[0] if len(apps) == 1 else None
+
+
+def toolchain_fingerprint(versions: dict) -> str:
+	return ";".join((
+		f"ue-{versions['unreal']['version']}.{versions['unreal']['approved_patch']}",
+		f"xcode-{versions['xcode']['version']}",
+		f"macos-{versions['platform']['minimum_version']}",
+		versions["platform"]["architecture"],
+	))
+
+
+def write_shipping_provenance(versions: dict) -> None:
+	UNREAL_SHIPPING_DIR.mkdir(parents=True, exist_ok=True)
+	UNREAL_PROVENANCE_PATH.write_text(json.dumps({
+		"schema_version": 1,
+		"source_revision": source_revision(),
+		"toolchain_fingerprint": toolchain_fingerprint(versions),
+		"build_versions_sha256": hashlib.sha256(VERSIONS_PATH.read_bytes()).hexdigest(),
+	}, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def unreal_shipping() -> int:
+	versions = load_versions()
+	ue_root = find_unreal(versions)
+	if not ue_root:
+		print("ERROR: Unreal Engine 5.8 was not found; install the approved patch and set UE_ROOT", file=sys.stderr)
+		return 1
+	project = ROOT / "VirtualRowing.uproject"
+	uat = ue_root / "Engine" / "Build" / "BatchFiles" / "RunUAT.sh"
+	if not project.is_file() or not uat.is_file():
+		print("ERROR: Unreal project or RunUAT.sh is missing", file=sys.stderr)
+		return 1
+	write_shipping_provenance(versions)
+	env = tool_env(versions)
+	env["VIR_SOURCE_REVISION"] = source_revision()
+	result = run(unreal_shipping_command(ue_root, project, UNREAL_ARCHIVE_DIR), env=env)
+	if result.returncode:
+		return result.returncode
+	app = staged_app(UNREAL_ARCHIVE_DIR)
+	if not app:
+		print("ERROR: BuildCookRun succeeded but exactly one VirtualRowing.app was not archived", file=sys.stderr)
+		return 1
+	metadata = app / "Contents" / "Resources" / "BuildVersions.json"
+	metadata.parent.mkdir(parents=True, exist_ok=True)
+	shutil.copy2(VERSIONS_PATH, metadata)
+	print(app)
+	return 0
+
+
+def package_binary_paths(app: Path) -> list[Path]:
+	main = app / "Contents" / "MacOS" / "VirtualRowing"
+	plugin_binaries = list(app.rglob("*Concept2PMUnreal*.dylib"))
+	return [main, *plugin_binaries]
+
+
+def binary_architectures(binary: Path) -> set[str] | None:
+	output = capture(["lipo", "-archs", str(binary)])
+	return set(output.split()) if output else None
+
+
+def verify_package(app: Path, versions: dict) -> list[str]:
+	failures: list[str] = []
+	if not app.is_dir():
+		return [f"missing staged app: {app}"]
+	plist = app / "Contents" / "Info.plist"
+	if not plist.is_file():
+		failures.append("missing Info.plist")
+	else:
+		try:
+			import plistlib
+			usage = plistlib.loads(plist.read_bytes()).get("NSBluetoothAlwaysUsageDescription")
+			if usage != BLUETOOTH_USAGE_DESCRIPTION:
+				failures.append("missing or incorrect NSBluetoothAlwaysUsageDescription")
+		except (OSError, ValueError):
+			failures.append("unreadable Info.plist")
+	metadata = app / "Contents" / "Resources" / "BuildVersions.json"
+	try:
+		if json.loads(metadata.read_text(encoding="utf-8")) != versions:
+			failures.append("staged BuildVersions.json does not match Config/BuildVersions.json")
+	except (OSError, json.JSONDecodeError):
+		failures.append("missing or unreadable staged BuildVersions.json")
+	binaries = package_binary_paths(app)
+	if not binaries[0].is_file():
+		failures.append("missing expected executable: Contents/MacOS/VirtualRowing")
+	if len(binaries) < 2:
+		failures.append("missing expected Concept2PM plug-in binary")
+	for binary in binaries:
+		if binary.is_file():
+			arches = binary_architectures(binary)
+			if arches != {versions["platform"]["architecture"]}:
+				failures.append(f"wrong architecture for {binary.name}: {sorted(arches) if arches else 'unreadable'}")
+	return failures
+
+
+def unreal_package_verify() -> int:
+	app = staged_app(UNREAL_ARCHIVE_DIR)
+	if not app:
+		print("ERROR: missing or ambiguous staged VirtualRowing.app; run `make unreal-shipping` first", file=sys.stderr)
+		return 1
+	failures = verify_package(app, load_versions())
+	if failures:
+		for failure in failures:
+			print(f"FAIL {failure}", file=sys.stderr)
+		return 1
+	print(f"OK unsigned Shipping package: {app}")
+	return 0
+
+
+def toolchain_bluetooth_probe() -> int:
+	app = staged_app(UNREAL_ARCHIVE_DIR)
+	if not app:
+		print("ERROR: missing staged VirtualRowing.app; run `make unreal-shipping` first", file=sys.stderr)
+		return 1
+	if verify_package(app, load_versions()):
+		print("ERROR: package verification failed; refusing to launch probe", file=sys.stderr)
+		return 1
+	executable = app / "Contents" / "MacOS" / "VirtualRowing"
+	def probe_results() -> set[Path]:
+		return set(app.rglob("toolchain-bluetooth-probe-*.json"))
+
+	before = probe_results()
+	result = run([str(executable), "-ToolchainBluetoothProbe"], env=tool_env(load_versions()))
+	if result.returncode:
+		return result.returncode
+	after = probe_results()
+	created = sorted(after - before)
+	if len(created) != 1:
+		print("ERROR: expected exactly one redacted Bluetooth probe result", file=sys.stderr)
+		return 1
+	print(created[0])
+	return 0
+
+
+def release_sign_notarize() -> int:
+	identity = os.environ.get("VIR_DEVELOPER_ID_IDENTITY")
+	notary_profile = os.environ.get("VIR_NOTARY_KEYCHAIN_PROFILE")
+	if not identity or not notary_profile:
+		print("ERROR: protected command requires preconfigured VIR_DEVELOPER_ID_IDENTITY and VIR_NOTARY_KEYCHAIN_PROFILE names", file=sys.stderr)
+		return 2
+	if identity == "-" or not re.fullmatch(r"Developer ID Application: .+", identity) or not re.fullmatch(r"[A-Za-z0-9._-]+", notary_profile):
+		print("ERROR: only a Developer ID identity and a Keychain profile name are accepted", file=sys.stderr)
+		return 2
+	app = staged_app(UNREAL_ARCHIVE_DIR)
+	if not app or verify_package(app, load_versions()):
+		print("ERROR: a verified unsigned Shipping package is required", file=sys.stderr)
+		return 1
+	entitlements = ROOT / "Build" / "VirtualRowing.entitlements"
+	if not entitlements.is_file():
+		print("ERROR: hardened-runtime entitlements file is missing", file=sys.stderr)
+		return 1
+	code_paths = []
+	for path in app.rglob("*"):
+		if not path.is_file():
+			continue
+		file_kind = capture(["file", "-b", str(path)]) or ""
+		if "Mach-O" in file_kind:
+			code_paths.append(path)
+	code_paths.sort(key=lambda path: len(path.parts), reverse=True)
+	for path in code_paths:
+		if run(["codesign", "--force", "--sign", identity, "--options", "runtime", "--timestamp", str(path)]).returncode:
+			return 1
+	if run(["codesign", "--force", "--sign", identity, "--options", "runtime", "--timestamp", "--entitlements", str(entitlements), str(app)]).returncode:
+		return 1
+	if run(["codesign", "--verify", "--deep", "--strict", "--verbose=2", str(app)]).returncode:
+		return 1
+	entitlement_text = capture(["codesign", "-d", "--entitlements", ":-", str(app)]) or ""
+	if "get-task-allow" in entitlement_text:
+		print("ERROR: get-task-allow must be absent from Shipping entitlements", file=sys.stderr)
+		return 1
+	dmg = UNREAL_SHIPPING_DIR / "VirtualRowing.dmg"
+	if dmg.exists():
+		dmg.unlink()
+	if run(["hdiutil", "create", "-volname", "VirtualRowing", "-srcfolder", str(app), "-ov", "-format", "UDZO", str(dmg)]).returncode:
+		return 1
+	if run(["xcrun", "notarytool", "submit", str(dmg), "--keychain-profile", notary_profile, "--wait"]).returncode:
+		return 1
+	if run(["xcrun", "stapler", "staple", str(dmg)]).returncode:
+		return 1
+	return run(["spctl", "--assess", "--type", "open", "--context", "context:primary-signature", "--verbose=4", str(dmg)]).returncode
+
+
 def main() -> int:
 	parser = argparse.ArgumentParser(description=__doc__)
-	parser.add_argument("command", choices=("doctor", "configure", "build", "test", "format-check", "pm5-tui", "unreal-smoke", "hil-pm5", "clean"))
+	parser.add_argument("command", choices=("doctor", "configure", "build", "test", "format-check", "pm5-tui", "unreal-smoke", "unreal-shipping", "unreal-package-verify", "toolchain-bluetooth-probe", "release-sign-notarize", "hil-pm5", "clean"))
 	args = parser.parse_args()
 	if args.command == "doctor":
 		return check_doctor()
@@ -416,6 +623,14 @@ def main() -> int:
 		return run_tui(hardware_probe=True)
 	if args.command == "unreal-smoke":
 		return unreal_smoke()
+	if args.command == "unreal-shipping":
+		return unreal_shipping()
+	if args.command == "unreal-package-verify":
+		return unreal_package_verify()
+	if args.command == "toolchain-bluetooth-probe":
+		return toolchain_bluetooth_probe()
+	if args.command == "release-sign-notarize":
+		return release_sign_notarize()
 	if args.command == "clean":
 		if BUILD_DIR.exists():
 			shutil.rmtree(BUILD_DIR)

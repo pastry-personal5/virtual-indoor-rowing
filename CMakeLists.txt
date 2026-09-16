@@ -55,6 +55,10 @@ if(BUILD_TESTING)
 		NAME public_header_dependency_check
 		COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/check_public_header_dependencies.py"
 	)
+	add_test(
+		NAME unreal_shipping_command_and_package_verifier_tests
+		COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/test_unreal_packaging.py"
+	)
 endif()
 
 function(vir_collect_sources out_var directory)

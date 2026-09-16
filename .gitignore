@@ -9,6 +9,7 @@ Saved/
 
 # Native build and IDE state
 /Build/native/
+/Build/unreal-shipping/
 /cmake-build-*/
 /Logs/pm5-tui/*.log
 /Logs/pm5-tui/*.log.*

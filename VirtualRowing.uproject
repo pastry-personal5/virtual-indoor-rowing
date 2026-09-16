@@ -2,7 +2,7 @@
 	"FileVersion": 3,
 	"EngineAssociation": "5.8",
 	"Category": "Tools",
-	"Description": "Minimal UnrealBuildTool smoke host for the Concept2 PM5 adapter.",
+	"Description": "Bounded Unreal Shipping toolchain host; no gameplay or PM5 behavior.",
 	"Plugins": [
 		{
 			"Name": "Concept2PM",

@@ -326,6 +326,20 @@ The report contains aggregate counters only. A failure requiring packet-level di
 | Stroke parser corpus | Checked-in published BLE layouts | Pass | 2026-09-14 KST; `0x0035` force/timing/work/count and `0x0036` power/calorie/projection fields decode at exact 20-byte and published 15/18-byte BLE lengths, including truncation, unapproved 16-byte rejection, and extrema tests. The `.069` HIL probe observed the 15-byte `0x0036` layout; profile v6 admits both tested layouts. |
 | Non-interactive TUI smoke | Scripted synthetic events | Pass | 2026-09-14 KST; unavailable values, identity redaction, telemetry/correction, diagnostic-only samples, timestamped per-stroke record, stale/fault transitions, and structured run records pass. |
 
+## Milestone 3 Shipping-toolchain evidence
+
+All rows below require an immutable revision, a redacted runner class, UTC timestamp, and the recorded toolchain fingerprint. A successful unsigned package is not release-distribution evidence.
+
+| Check | Immutable revision | Result | Redacted evidence |
+|---|---|---|---|
+| Unsigned Shipping build and package verification | Pending | Pending | Record `make unreal-shipping` and `make unreal-package-verify`, app hash, and categorical verifier result. |
+| Self-hosted Apple-silicon CI | Pending | Pending | Record workflow run URL/ID, revision, and retained provenance-manifest hash only. |
+| Bluetooth probe — fresh Allow | Pending | Pending | Record only result state and duration from the schema-v1 result. |
+| Bluetooth probe — Deny | Pending | Pending | Record only result state and duration from the schema-v1 result. |
+| Bluetooth probe — Settings repair then Allow | Pending | Pending | Record only result state and duration from the schema-v1 result. |
+| Normal launch no prompt | Pending | Pending | Record the reset TCC precondition and observed absence of a prompt; do not record a user or device identity. |
+| Developer ID signing, notarization, stapling, and Gatekeeper | Pending — protected credential owner | Pending | Credential owner records immutable revision, app/DMG hashes, notarization ID, hardened-runtime/no-`get-task-allow` result, clean standard-user Gatekeeper result, and fresh-Allow categorical probe result. |
+
 ## Deferred follow-on evidence
 
 | Item | Owner | Resolution required |
