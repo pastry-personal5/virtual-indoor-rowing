@@ -18,6 +18,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           lfs: true
+          submodules: true
       - name: Verify pinned toolchain
         run: make doctor
       - name: Configure native targets
