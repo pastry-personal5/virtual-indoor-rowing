@@ -589,7 +589,7 @@ def toolchain_bluetooth_probe() -> int:
 	if verify_package(app, load_versions()):
 		print("ERROR: package verification failed; refusing to launch probe", file=sys.stderr)
 		return 1
-	executable = app / "Contents" / "MacOS" / "VirtualRowing"
+	executable = package_binary_paths(app)[0]
 	probe_directory = ROOT / "Saved" / "Logs"
 	probe_directory.mkdir(parents=True, exist_ok=True)
 	def probe_results() -> set[Path]:

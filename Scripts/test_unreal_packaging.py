@@ -9,6 +9,7 @@ import plistlib
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 
@@ -131,6 +132,39 @@ class UnrealShippingPackagingTests(unittest.TestCase):
 			"peripheral_identifier": "must-not-appear",
 		}), encoding="utf-8")
 		self.assertEqual(dev.verify_bluetooth_probe_result(result), "unexpected fields")
+
+	def test_toolchain_bluetooth_probe_invokes_shipping_suffixed_executable(self) -> None:
+		archive_dir = self.root / "Build" / "unreal-shipping" / "archive"
+		app = self.make_app(name="VirtualRowing-Mac-Shipping.app")
+		(archive_dir / "Mac").mkdir(parents=True)
+		app.rename(archive_dir / "Mac" / "VirtualRowing-Mac-Shipping.app")
+		app = archive_dir / "Mac" / "VirtualRowing-Mac-Shipping.app"
+		probe_directory = self.root / "Saved" / "Logs"
+		probe_directory.mkdir(parents=True)
+
+		def fake_run(args, **_kwargs):
+			result_path = probe_directory / "toolchain-bluetooth-probe-test.json"
+			result_path.write_text(json.dumps({
+				"schema_version": dev.BLUETOOTH_PROBE_SCHEMA_VERSION,
+				"source_revision": "0123456789ab",
+				"toolchain_fingerprint": "ue-5.8.2;xcode-26.1.1;macos-26.6.2;arm64",
+				"timestamp_utc": "2026-09-16T00:00:00Z",
+				"result_state": "denied",
+				"duration_ms": 2,
+			}), encoding="utf-8")
+			return SimpleNamespace(returncode=0, args=args)
+
+		with patch.object(dev, "ROOT", self.root), \
+			patch.object(dev, "UNREAL_ARCHIVE_DIR", archive_dir), \
+			patch.object(dev, "load_versions", return_value=self.versions), \
+			patch.object(dev, "tool_env", return_value={}), \
+			patch.object(dev, "binary_architectures", return_value={"arm64"}), \
+			patch.object(dev, "plugin_module_linked", return_value=True), \
+			patch.object(dev, "run", side_effect=fake_run) as mock_run:
+			self.assertEqual(dev.toolchain_bluetooth_probe(), 0)
+
+		invoked_executable = mock_run.call_args[0][0][0]
+		self.assertEqual(invoked_executable, str(app / "Contents" / "MacOS" / "VirtualRowing-Mac-Shipping"))
 
 	def test_release_signature_rejects_missing_hardened_runtime(self) -> None:
 		with patch.object(dev, "capture_combined", return_value="flags=0x10000\n"), patch.object(dev, "capture", return_value=""):
