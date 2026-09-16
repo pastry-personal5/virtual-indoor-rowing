@@ -9,8 +9,11 @@
 #include "HAL/FileManager.h"
 #include "HAL/PlatformTime.h"
 #include "Misc/App.h"
+#include "Misc/CommandLine.h"
 #include "Misc/DateTime.h"
 #include "Misc/FileHelper.h"
+#include "Misc/Guid.h"
+#include "Misc/Parse.h"
 #include "Misc/Paths.h"
 
 @interface FToolchainBluetoothProbeDelegate : NSObject <CBCentralManagerDelegate>
@@ -105,7 +108,10 @@ void FToolchainBluetoothProbe::Run()
 		Delegate->Result = TEXT("timeout");
 	}
 	const double DurationSeconds = FPlatformTime::Seconds() - Started;
-	const FString FileName = FString::Printf(TEXT("toolchain-bluetooth-probe-%s.json"), *FDateTime::UtcNow().ToString(TEXT("%Y%m%dT%H%M%SZ")));
+	const FString FileName = FString::Printf(
+		TEXT("toolchain-bluetooth-probe-%s-%s.json"),
+		*FDateTime::UtcNow().ToString(TEXT("%Y%m%dT%H%M%SZ")),
+		*FGuid::NewGuid().ToString(EGuidFormats::Digits));
 	const FString Json = FString::Printf(
 		TEXT("{\n  \"schema_version\": 1,\n  \"source_revision\": \"%s\",\n  \"toolchain_fingerprint\": \"%s\",\n  \"timestamp_utc\": \"%s\",\n  \"result_state\": \"%s\",\n  \"duration_ms\": %lld\n}\n"),
 		*JsonEscape(VIR_SOURCE_REVISION),
@@ -113,7 +119,13 @@ void FToolchainBluetoothProbe::Run()
 		*FDateTime::UtcNow().ToIso8601(),
 		*JsonEscape(Delegate->Result),
 		static_cast<long long>(DurationSeconds * 1000.0));
-	const FString Path = FPaths::Combine(FPaths::ProjectDir(), TEXT("Saved"), TEXT("Logs"), FileName);
+	FString ResultDirectory;
+	FParse::Value(FCommandLine::Get(), TEXT("ToolchainBluetoothProbeResultDir="), ResultDirectory);
+	if (ResultDirectory.IsEmpty())
+	{
+		ResultDirectory = FPaths::ProjectLogDir();
+	}
+	const FString Path = FPaths::Combine(ResultDirectory, FileName);
 	IFileManager::Get().MakeDirectory(*FPaths::GetPath(Path), true);
 	FFileHelper::SaveStringToFile(Json, *Path);
 }

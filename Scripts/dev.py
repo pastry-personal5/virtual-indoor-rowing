@@ -22,6 +22,16 @@ UNREAL_SHIPPING_DIR = ROOT / "Build" / "unreal-shipping"
 UNREAL_ARCHIVE_DIR = UNREAL_SHIPPING_DIR / "archive"
 UNREAL_PROVENANCE_PATH = UNREAL_SHIPPING_DIR / "provenance.json"
 BLUETOOTH_USAGE_DESCRIPTION = "Virtual Rowing uses Bluetooth only when you run the explicit toolchain Bluetooth diagnostic."
+BLUETOOTH_PROBE_SCHEMA_VERSION = 1
+BLUETOOTH_PROBE_RESULT_STATES = frozenset((
+	"authorized_powered_on",
+	"denied",
+	"restricted",
+	"unsupported",
+	"powered_off",
+	"timeout",
+	"corebluetooth_error",
+))
 
 
 def load_versions() -> dict:
@@ -539,11 +549,17 @@ def toolchain_bluetooth_probe() -> int:
 		print("ERROR: package verification failed; refusing to launch probe", file=sys.stderr)
 		return 1
 	executable = app / "Contents" / "MacOS" / "VirtualRowing"
+	probe_directory = ROOT / "Saved" / "Logs"
+	probe_directory.mkdir(parents=True, exist_ok=True)
 	def probe_results() -> set[Path]:
-		return set(app.rglob("toolchain-bluetooth-probe-*.json"))
+		return set(probe_directory.glob("toolchain-bluetooth-probe-*.json"))
 
 	before = probe_results()
-	result = run([str(executable), "-ToolchainBluetoothProbe"], env=tool_env(load_versions()))
+	result = run([
+		str(executable),
+		"-ToolchainBluetoothProbe",
+		f"-ToolchainBluetoothProbeResultDir={probe_directory}",
+	], env=tool_env(load_versions()))
 	if result.returncode:
 		return result.returncode
 	after = probe_results()
@@ -551,8 +567,40 @@ def toolchain_bluetooth_probe() -> int:
 	if len(created) != 1:
 		print("ERROR: expected exactly one redacted Bluetooth probe result", file=sys.stderr)
 		return 1
+	probe_failure = verify_bluetooth_probe_result(created[0])
+	if probe_failure:
+		print(f"ERROR: invalid Bluetooth probe result: {probe_failure}", file=sys.stderr)
+		return 1
 	print(created[0])
 	return 0
+
+
+def verify_bluetooth_probe_result(path: Path) -> str | None:
+	try:
+		payload = json.loads(path.read_text(encoding="utf-8"))
+	except (OSError, json.JSONDecodeError):
+		return "unreadable JSON"
+	expected_fields = {
+		"schema_version",
+		"source_revision",
+		"toolchain_fingerprint",
+		"timestamp_utc",
+		"result_state",
+		"duration_ms",
+	}
+	if set(payload) != expected_fields:
+		return "unexpected fields"
+	if payload["schema_version"] != BLUETOOTH_PROBE_SCHEMA_VERSION:
+		return "unsupported schema version"
+	if payload["result_state"] not in BLUETOOTH_PROBE_RESULT_STATES:
+		return "invalid result state"
+	if not isinstance(payload["duration_ms"], int) or payload["duration_ms"] < 0 or payload["duration_ms"] > 16_000:
+		return "invalid duration"
+	if any(not isinstance(payload[field], str) or not payload[field] for field in (
+		"source_revision", "toolchain_fingerprint", "timestamp_utc", "result_state",
+	)):
+		return "missing required string"
+	return None
 
 
 def release_sign_notarize() -> int:

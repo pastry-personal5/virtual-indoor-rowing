@@ -76,6 +76,31 @@ class UnrealShippingPackagingTests(unittest.TestCase):
 		with patch.object(dev, "binary_architectures", return_value={"arm64"}):
 			self.assertIn("missing expected executable: Contents/MacOS/VirtualRowing", dev.verify_package(app, self.versions))
 
+	def test_bluetooth_probe_result_accepts_exact_redacted_schema(self) -> None:
+		result = self.root / "toolchain-bluetooth-probe.json"
+		result.write_text(json.dumps({
+			"schema_version": 1,
+			"source_revision": "0123456789ab",
+			"toolchain_fingerprint": "ue-5.8.2;xcode-26.1.1;macos-26.6.2;arm64",
+			"timestamp_utc": "2026-09-16T00:00:00Z",
+			"result_state": "denied",
+			"duration_ms": 2,
+		}), encoding="utf-8")
+		self.assertIsNone(dev.verify_bluetooth_probe_result(result))
+
+	def test_bluetooth_probe_result_rejects_unredacted_fields(self) -> None:
+		result = self.root / "toolchain-bluetooth-probe.json"
+		result.write_text(json.dumps({
+			"schema_version": 1,
+			"source_revision": "0123456789ab",
+			"toolchain_fingerprint": "fingerprint",
+			"timestamp_utc": "2026-09-16T00:00:00Z",
+			"result_state": "denied",
+			"duration_ms": 2,
+			"peripheral_identifier": "must-not-appear",
+		}), encoding="utf-8")
+		self.assertEqual(dev.verify_bluetooth_probe_result(result), "unexpected fields")
+
 
 if __name__ == "__main__":
 	unittest.main()
