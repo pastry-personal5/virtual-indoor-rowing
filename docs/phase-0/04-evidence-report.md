@@ -56,7 +56,7 @@ Complete after the repository toolchain commands exist.
 | Simulator integration tests | `dbe71f4f4904-dirty` | Pass | 2026-09-14 KST; deterministic replay integration suite passed under CTest. |
 | C++ formatting and whitespace | `dbe71f4f4904-dirty` | Pass | 2026-09-14 KST; `make format-check` and `git diff --check`. |
 | Empty Unreal Editor target | `dbe71f4f4904-dirty` | Blocked by sandbox | 2026-09-14 KST; UBT launched, then could not create UBA shared memory in `/tmp` or user config under Application Support. No compile result established. |
-| Native GitHub Actions workflow | `dbe71f4f4904-dirty` | Pending | 2026-09-14 KST; public Actions API returned zero runs. The local workflow is untracked and the dirty source changes are not on `origin/main` (`dbe71f4f4904`); no remote CI result exists for this worktree. |
+| Native GitHub Actions workflow | `7c6449a5761c` | Pass | 2026-09-16 UTC; self-hosted runner `vir-m1` registered and online; `M1 native quality gates` run succeeded on `main` (https://github.com/pastry-personal5/virtual-indoor-rowing/actions/runs/35106758204), all steps including `make test` and `make format-check` passed. |
 | Bluetooth usage-description inspection | `dbe71f4f4904-dirty` | Present in built bundle | 2026-09-14 KST; generated `pm5-tui.app/Contents/Info.plist` contains `NSBluetoothAlwaysUsageDescription`. |
 | Development signature/TCC identity | `dbe71f4f4904-dirty` | Ad-hoc signature verifies; TCC cases pending | 2026-09-14 KST; `codesign --verify --deep --strict` passes for the built diagnostic bundle. Fresh approval/denial/settings-repair HIL cases remain pending. |
 
@@ -333,7 +333,7 @@ All rows below require an immutable revision, a redacted runner class, UTC times
 | Check | Immutable revision | Result | Redacted evidence |
 |---|---|---|---|
 | Unsigned Shipping build and package verification | Pending | Pending | Record `make unreal-shipping` and `make unreal-package-verify`, app hash, and categorical verifier result. |
-| Self-hosted Apple-silicon CI | Pending | Pending | Record workflow run URL/ID, revision, and retained provenance-manifest hash only. |
+| Self-hosted Apple-silicon CI | `7c6449a5761c` | Pass | Runner `vir-m1`, self-hosted macOS ARM64. Run https://github.com/pastry-personal5/virtual-indoor-rowing/actions/runs/35106758284 (`Unreal Shipping verifier`) and https://github.com/pastry-personal5/virtual-indoor-rowing/actions/runs/35106758204 (`M1 native quality gates`), both `success`. Retained `provenance.json` sha256 `4464baa8f94f1762c4c7602beffb822ab7662da2472670dfcacc43249c9759ce`; toolchain fingerprint `ue-5.8.2;xcode-26.1.1;macos-26.6.2;arm64`. |
 | Bluetooth probe — fresh Allow | Pending | Pending | Record only result state and duration from the schema-v1 result. |
 | Bluetooth probe — Deny | Pending | Pending | Record only result state and duration from the schema-v1 result. |
 | Bluetooth probe — Settings repair then Allow | Pending | Pending | Record only result state and duration from the schema-v1 result. |
@@ -344,7 +344,7 @@ All rows below require an immutable revision, a redacted runner class, UTC times
 
 | Item | Owner | Resolution required |
 |---|---|---|
-| Published Apple-silicon CI | A7 | The local native suite passes; publish and retain a redacted self-hosted runner result before the next delivery Phase 0 milestone. Confirmed 2026-09-16: no self-hosted runner is registered yet — every `main` push on both workflows sits `queued` indefinitely; this is unregistered setup work, not a flaky runner. |
+| Published Apple-silicon CI | A7 | Resolved 2026-09-16: runner `vir-m1` registered and installed as a launchd service on the reference host; both workflows now run and pass on `main` (see the Milestone 1 toolchain evidence table and the Milestone 3 Shipping-toolchain evidence table above/below). While registering it, found that `make unreal-package-verify` was actually failing on a clean checkout (`Build/Mac/Resources/Info.Template.plist` was never committed) and that `unreal-shipping.yml` piped the verify command through `tee` without `pipefail`, masking the failure as a green job; both fixed at `7c6449a5761c`. |
 | HIL evidence review | A1/A0/A7 | Diagnostic Milestone 2 was closed for bounded scope by owner decision; all six required scenarios are user-reported passes. The 2026-09-14 profile-v6 metrics add a source revision, exact tuple, live-row aggregates, and zero-overflow evidence; a separate artifact records remembered-device relaunch reconnect. Per-scenario comparison readings and stale/link-loss events are not present in these artifacts. Before product release qualification or support expansion, review complete redacted run metadata and resolve the physical multiple-candidate case skipped by user decision; other pending cases in the hardware scenario table remain open. |
 
 ## Exit decision

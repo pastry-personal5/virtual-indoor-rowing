@@ -54,3 +54,16 @@ Owner decisions recorded 2026-09-16:
 - The self-hosted Apple-silicon runner is confirmed not set up yet (not merely offline); A7 owns registering it before this milestone's CI row can move off Pending.
 - `make unreal-shipping` will be run by the owning engineer outside this session, not delegated here.
 - The three TCC probe scenarios and the normal-launch-no-prompt check are scheduled as separate, dedicated follow-on work rather than blocking today's update.
+
+## CI lane registered and green (2026-09-16, later same day)
+
+Runner `vir-m1` (self-hosted, macOS, ARM64) is registered against this repository and running as a launchd service on the reference host, satisfying both `native.yml` and `unreal-shipping.yml`'s label requirements from one machine.
+
+Registering it surfaced two real defects, both now fixed at `7c6449a5761c`:
+
+- `Build/Mac/Resources/Info.Template.plist` (and the sibling `Sandbox.Server.entitlements`/`Sandbox.NoNet.entitlements`) supply the required `NSBluetoothAlwaysUsageDescription` but existed only as untracked files on the reference host. A clean CI checkout packaged an app missing that key; `make unreal-package-verify` correctly failed. Committed the missing files and ignored their generated siblings (`FileOpenOrder/`, `*.PackageVersionCounter`).
+- `unreal-shipping.yml`'s "Verify staged package" step piped `make unreal-package-verify` through `tee` without `pipefail`, so the failing exit code above was swallowed and the job reported `success` regardless. Added `set -o pipefail`.
+- Separately, `native.yml`'s checkout never fetched the `external/ftxui` git submodule, failing `make configure` on a clean runner; fixed with `submodules: true` on the checkout step (`714dcc1`).
+- Added an explicit 60-minute job timeout to `unreal-shipping.yml` (native already had one).
+
+Verified at `7c6449a5761c`: `M1 native quality gates` (https://github.com/pastry-personal5/virtual-indoor-rowing/actions/runs/35106758204) and `Unreal Shipping verifier` (https://github.com/pastry-personal5/virtual-indoor-rowing/actions/runs/35106758284) both ran on `main` and passed for real, including a genuine `OK unsigned Shipping package` from the verify step. This satisfies acceptance-gate item 2 (a self-hosted Apple-silicon CI run on `main` with retained redacted provenance and verifier output). Item 1's local, interactively-run `make unreal-shipping`/`make unreal-package-verify` on the reference host remains the owning engineer's task per the decision above, and the three TCC probe scenarios remain separate follow-on work.
