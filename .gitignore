@@ -10,6 +10,7 @@ Saved/
 # Native build and IDE state
 /Build/native/
 /Build/unreal-shipping/
+!/Build/Mac/Resources/Info.Template.plist
 /Build/Mac/FileOpenOrder/
 /Build/Mac/*.PackageVersionCounter
 /cmake-build-*/
