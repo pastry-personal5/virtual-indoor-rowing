@@ -10,6 +10,7 @@ jobs:
     runs-on: [self-hosted, macOS, ARM64]
     permissions:
       contents: read
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - name: Verify pinned host
@@ -17,7 +18,9 @@ jobs:
       - name: Build unsigned Shipping package
         run: make unreal-shipping
       - name: Verify staged package
-        run: make unreal-package-verify | tee Build/unreal-shipping/package-verification.txt
+        run: |
+          set -o pipefail
+          make unreal-package-verify | tee Build/unreal-shipping/package-verification.txt
       - name: Retain redacted package evidence
         uses: actions/upload-artifact@v4
         with:

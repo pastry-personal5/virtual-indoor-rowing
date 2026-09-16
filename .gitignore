@@ -10,6 +10,8 @@ Saved/
 # Native build and IDE state
 /Build/native/
 /Build/unreal-shipping/
+/Build/Mac/FileOpenOrder/
+/Build/Mac/*.PackageVersionCounter
 /cmake-build-*/
 /Logs/pm5-tui/*.log
 /Logs/pm5-tui/*.log.*
