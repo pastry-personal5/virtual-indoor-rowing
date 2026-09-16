@@ -31,13 +31,11 @@ class UnrealShippingPackagingTests(unittest.TestCase):
 	def tearDown(self) -> None:
 		self.temp.cleanup()
 
-	def make_app(self) -> Path:
-		app = self.root / "VirtualRowing.app"
+	def make_app(self, name: str = "VirtualRowing.app") -> Path:
+		app = self.root / name
 		(app / "Contents" / "MacOS").mkdir(parents=True)
 		(app / "Contents" / "Resources").mkdir(parents=True)
-		(app / "Contents" / "PlugIns").mkdir(parents=True)
-		(app / "Contents" / "MacOS" / "VirtualRowing").write_bytes(b"main")
-		(app / "Contents" / "PlugIns" / "libConcept2PMUnreal.dylib").write_bytes(b"plugin")
+		(app / "Contents" / "MacOS" / app.stem).write_bytes(b"main")
 		(app / "Contents" / "Resources" / "BuildVersions.json").write_text(json.dumps(self.versions), encoding="utf-8")
 		(app / "Contents" / "Info.plist").write_bytes(plistlib.dumps({"NSBluetoothAlwaysUsageDescription": dev.BLUETOOTH_USAGE_DESCRIPTION}))
 		return app
@@ -55,19 +53,19 @@ class UnrealShippingPackagingTests(unittest.TestCase):
 
 	def test_package_verifier_rejects_wrong_architecture(self) -> None:
 		app = self.make_app()
-		with patch.object(dev, "binary_architectures", return_value={"x86_64"}):
+		with patch.object(dev, "binary_architectures", return_value={"x86_64"}), patch.object(dev, "plugin_module_linked", return_value=True):
 			self.assertTrue(any("wrong architecture" in value for value in dev.verify_package(app, self.versions)))
 
 	def test_package_verifier_rejects_missing_bluetooth_usage_description(self) -> None:
 		app = self.make_app()
 		(app / "Contents" / "Info.plist").write_bytes(plistlib.dumps({}))
-		with patch.object(dev, "binary_architectures", return_value={"arm64"}):
+		with patch.object(dev, "binary_architectures", return_value={"arm64"}), patch.object(dev, "plugin_module_linked", return_value=True):
 			self.assertIn("missing or incorrect NSBluetoothAlwaysUsageDescription", dev.verify_package(app, self.versions))
 
 	def test_package_verifier_rejects_mismatched_build_metadata(self) -> None:
 		app = self.make_app()
 		(app / "Contents" / "Resources" / "BuildVersions.json").write_text("{}", encoding="utf-8")
-		with patch.object(dev, "binary_architectures", return_value={"arm64"}):
+		with patch.object(dev, "binary_architectures", return_value={"arm64"}), patch.object(dev, "plugin_module_linked", return_value=True):
 			self.assertIn("staged BuildVersions.json does not match Config/BuildVersions.json", dev.verify_package(app, self.versions))
 
 	def test_package_verifier_rejects_missing_expected_binary(self) -> None:
@@ -75,6 +73,33 @@ class UnrealShippingPackagingTests(unittest.TestCase):
 		(app / "Contents" / "MacOS" / "VirtualRowing").unlink()
 		with patch.object(dev, "binary_architectures", return_value={"arm64"}):
 			self.assertIn("missing expected executable: Contents/MacOS/VirtualRowing", dev.verify_package(app, self.versions))
+
+	def test_package_verifier_rejects_unlinked_plugin_module(self) -> None:
+		app = self.make_app()
+		with patch.object(dev, "binary_architectures", return_value={"arm64"}), patch.object(dev, "plugin_module_linked", return_value=False):
+			self.assertIn(
+				f"Concept2PM plug-in module ({dev.CONCEPT2PM_MODULE_NAME}) is not linked into the Shipping executable",
+				dev.verify_package(app, self.versions),
+			)
+
+	def test_plugin_module_linked_detects_symbol_in_nm_output(self) -> None:
+		with patch.object(dev, "capture", return_value="0000000000000000 t __ZN23FConcept2PMUnrealModuleD1Ev"):
+			self.assertTrue(dev.plugin_module_linked(self.root / "VirtualRowing", dev.CONCEPT2PM_MODULE_NAME))
+
+	def test_plugin_module_linked_rejects_absent_symbol(self) -> None:
+		with patch.object(dev, "capture", return_value="0000000000000000 t _main"):
+			self.assertFalse(dev.plugin_module_linked(self.root / "VirtualRowing", dev.CONCEPT2PM_MODULE_NAME))
+
+	def test_staged_app_finds_shipping_suffixed_bundle_name(self) -> None:
+		archive_dir = self.root / "archive"
+		app = archive_dir / "Mac" / "VirtualRowing-Mac-Shipping.app"
+		(app / "Contents" / "MacOS").mkdir(parents=True)
+		self.assertEqual(dev.staged_app(archive_dir), app)
+
+	def test_package_verifier_accepts_shipping_suffixed_bundle_name(self) -> None:
+		app = self.make_app(name="VirtualRowing-Mac-Shipping.app")
+		with patch.object(dev, "binary_architectures", return_value={"arm64"}), patch.object(dev, "plugin_module_linked", return_value=True):
+			self.assertEqual(dev.verify_package(app, self.versions), [])
 
 	def test_app_bundle_hash_changes_when_bundle_content_changes(self) -> None:
 		app = self.make_app()

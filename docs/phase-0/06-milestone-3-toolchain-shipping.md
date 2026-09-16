@@ -38,3 +38,19 @@ Developer ID signing, notarization, stapling, clean standard-user Gatekeeper ass
 Run the unsigned commands from a clean immutable revision. Copy only the command name, revision, UTC timestamp, toolchain fingerprint, app/DMG SHA-256, categorical verification result, and generated probe-result path into [the evidence report](04-evidence-report.md). Before sharing a probe result, verify it contains only the six schema fields and one of `authorized_powered_on`, `denied`, `restricted`, `unsupported`, `powered_off`, `timeout`, or `corebluetooth_error`.
 
 `make release-sign-notarize` is deferred to Phase 4 per [ADR-0008](../adr/0008-defer-macos-signing-to-phase-4.md). Until then, the credential owner does not run it, and the evidence report records that row as Deferred to Phase 4, not Pending.
+
+## Remaining work (2026-09-16)
+
+Verified against the reference host and this repository's live CI:
+
+- `make doctor` passes on this host (macOS 26.6.2, Xcode 26.1.1, cmake 4.3.2, ninja 1.13.0, Git LFS 3.8.0, Unreal 5.8 changelist 56702186/patch 2 all match `Config/BuildVersions.json`).
+- Native build/tests and `make unreal-smoke` have local evidence of a prior successful run (`Build/native/Testing/Temporary/LastTest.log`, `Binaries/Mac/UnrealEditor.target`), but this has not yet been re-run and copied into [the evidence report](04-evidence-report.md) at an immutable revision.
+- `make unreal-shipping` has never completed on this host — no `Build/unreal-shipping/` output exists — so `make unreal-package-verify` and `make toolchain-bluetooth-probe` cannot run yet either.
+- The self-hosted Apple-silicon CI lane (`.github/workflows/unreal-shipping.yml`, `native.yml`) is not picking up jobs: every run on `main`, including the ADR-0008 commit, is stuck `queued` (oldest observed >7 hours). No runner appears registered/online.
+- The three TCC-reset Bluetooth probe scenarios (fresh Allow, Deny, Settings-repair-then-Allow) and the normal-launch-no-prompt check have not been executed; all corresponding rows in the evidence report are still Pending.
+
+Owner decisions recorded 2026-09-16:
+
+- The self-hosted Apple-silicon runner is confirmed not set up yet (not merely offline); A7 owns registering it before this milestone's CI row can move off Pending.
+- `make unreal-shipping` will be run by the owning engineer outside this session, not delegated here.
+- The three TCC probe scenarios and the normal-launch-no-prompt check are scheduled as separate, dedicated follow-on work rather than blocking today's update.

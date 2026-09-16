@@ -344,7 +344,7 @@ All rows below require an immutable revision, a redacted runner class, UTC times
 
 | Item | Owner | Resolution required |
 |---|---|---|
-| Published Apple-silicon CI | A7 | The local native suite passes; publish and retain a redacted self-hosted runner result before the next delivery Phase 0 milestone. |
+| Published Apple-silicon CI | A7 | The local native suite passes; publish and retain a redacted self-hosted runner result before the next delivery Phase 0 milestone. Confirmed 2026-09-16: no self-hosted runner is registered yet — every `main` push on both workflows sits `queued` indefinitely; this is unregistered setup work, not a flaky runner. |
 | HIL evidence review | A1/A0/A7 | Diagnostic Milestone 2 was closed for bounded scope by owner decision; all six required scenarios are user-reported passes. The 2026-09-14 profile-v6 metrics add a source revision, exact tuple, live-row aggregates, and zero-overflow evidence; a separate artifact records remembered-device relaunch reconnect. Per-scenario comparison readings and stale/link-loss events are not present in these artifacts. Before product release qualification or support expansion, review complete redacted run metadata and resolve the physical multiple-candidate case skipped by user decision; other pending cases in the hardware scenario table remain open. |
 
 ## Exit decision

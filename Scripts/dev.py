@@ -22,6 +22,7 @@ UNREAL_SHIPPING_DIR = ROOT / "Build" / "unreal-shipping"
 UNREAL_ARCHIVE_DIR = UNREAL_SHIPPING_DIR / "archive"
 UNREAL_PROVENANCE_PATH = UNREAL_SHIPPING_DIR / "provenance.json"
 BLUETOOTH_USAGE_DESCRIPTION = "Virtual Rowing uses Bluetooth only when you run the explicit toolchain Bluetooth diagnostic."
+CONCEPT2PM_MODULE_NAME = "Concept2PMUnreal"
 BLUETOOTH_PROBE_SCHEMA_VERSION = 1
 BLUETOOTH_PROBE_RESULT_STATES = frozenset((
 	"authorized_powered_on",
@@ -158,6 +159,10 @@ def check_doctor() -> int:
 		if not versions["xcode"].get("compiler_version") or compiler_version != versions["xcode"]["compiler_version"]:
 			print(f"FAIL Apple clang: required {versions['xcode'].get('compiler_version') or 'recorded approved compiler'}; observed {compiler_version or 'unknown'}")
 			failed = True
+		metal_output = capture_combined(["xcrun", "metal", "--version"], env=env) or ""
+		metal_ok = "Apple metal version" in metal_output
+		print(f"{'OK' if metal_ok else 'FAIL'} Metal Toolchain: required for Shipping shader cook; {'installed' if metal_ok else 'missing — run `xcodebuild -downloadComponent MetalToolchain` (or retry after a few minutes; first use of `metal` can trigger an on-demand download) before `make unreal-shipping`'}")
+		failed |= not metal_ok
 
 	for binary, expected in (("cmake", versions["build_tools"]["cmake"]), ("ninja", versions["build_tools"]["ninja"])):
 		observed = capture([binary, "--version"])
@@ -441,7 +446,7 @@ def unreal_shipping_command(ue_root: Path, project: Path, archive_dir: Path) -> 
 
 
 def staged_app(archive_dir: Path) -> Path | None:
-	apps = sorted(archive_dir.rglob("VirtualRowing.app")) if archive_dir.is_dir() else []
+	apps = sorted(archive_dir.rglob("*.app")) if archive_dir.is_dir() else []
 	return apps[0] if len(apps) == 1 else None
 
 
@@ -483,7 +488,7 @@ def unreal_shipping() -> int:
 		return result.returncode
 	app = staged_app(UNREAL_ARCHIVE_DIR)
 	if not app:
-		print("ERROR: BuildCookRun succeeded but exactly one VirtualRowing.app was not archived", file=sys.stderr)
+		print("ERROR: BuildCookRun succeeded but exactly one staged .app was not archived", file=sys.stderr)
 		return 1
 	metadata = app / "Contents" / "Resources" / "BuildVersions.json"
 	metadata.parent.mkdir(parents=True, exist_ok=True)
@@ -493,9 +498,12 @@ def unreal_shipping() -> int:
 
 
 def package_binary_paths(app: Path) -> list[Path]:
-	main = app / "Contents" / "MacOS" / "VirtualRowing"
-	plugin_binaries = list(app.rglob("*Concept2PMUnreal*.dylib"))
-	return [main, *plugin_binaries]
+	return [app / "Contents" / "MacOS" / app.stem]
+
+
+def plugin_module_linked(main: Path, module_name: str) -> bool:
+	symbols = capture(["nm", str(main)]) or ""
+	return module_name in symbols
 
 
 def binary_architectures(binary: Path) -> set[str] | None:
@@ -546,10 +554,11 @@ def verify_package(app: Path, versions: dict) -> list[str]:
 	except (OSError, json.JSONDecodeError):
 		failures.append("missing or unreadable staged BuildVersions.json")
 	binaries = package_binary_paths(app)
-	if not binaries[0].is_file():
-		failures.append("missing expected executable: Contents/MacOS/VirtualRowing")
-	if len(binaries) < 2:
-		failures.append("missing expected Concept2PM plug-in binary")
+	main = binaries[0]
+	if not main.is_file():
+		failures.append(f"missing expected executable: Contents/MacOS/{app.stem}")
+	elif not plugin_module_linked(main, CONCEPT2PM_MODULE_NAME):
+		failures.append(f"Concept2PM plug-in module ({CONCEPT2PM_MODULE_NAME}) is not linked into the Shipping executable")
 	for binary in binaries:
 		if binary.is_file():
 			arches = binary_architectures(binary)
@@ -561,7 +570,7 @@ def verify_package(app: Path, versions: dict) -> list[str]:
 def unreal_package_verify() -> int:
 	app = staged_app(UNREAL_ARCHIVE_DIR)
 	if not app:
-		print("ERROR: missing or ambiguous staged VirtualRowing.app; run `make unreal-shipping` first", file=sys.stderr)
+		print("ERROR: missing or ambiguous staged .app; run `make unreal-shipping` first", file=sys.stderr)
 		return 1
 	failures = verify_package(app, load_versions())
 	if failures:
@@ -575,7 +584,7 @@ def unreal_package_verify() -> int:
 def toolchain_bluetooth_probe() -> int:
 	app = staged_app(UNREAL_ARCHIVE_DIR)
 	if not app:
-		print("ERROR: missing staged VirtualRowing.app; run `make unreal-shipping` first", file=sys.stderr)
+		print("ERROR: missing staged .app; run `make unreal-shipping` first", file=sys.stderr)
 		return 1
 	if verify_package(app, load_versions()):
 		print("ERROR: package verification failed; refusing to launch probe", file=sys.stderr)
