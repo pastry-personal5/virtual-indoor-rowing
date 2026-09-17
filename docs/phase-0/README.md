@@ -1,6 +1,6 @@
 # Delivery Phase 0: toolchain and PM5 diagnostic foundation
 
-Status: Milestones 1–3 complete; delivery Phase 0 exit gate (docs/architecture/10-delivery-plan.md) not yet evaluated
+Status: Milestones 1–3 complete; Milestone 4 (managed workout, local durability, visual performance spikes) planned; delivery Phase 0 exit gate (docs/architecture/10-delivery-plan.md) not yet evaluated
 Owner: A0 — CTO / Principal Architect  
 Last reviewed: 2026-09-17
 
@@ -61,12 +61,25 @@ This bounded implementation is complete against its diagnostic milestone gates, 
 - Standalone TUI showing live normalized telemetry.
 - Redacted aggregate toolchain and hardware evidence, plus explicit,
   owner-only, bounded raw rowing-telemetry capture in the local HIL probe.
+- Bounded Phase 0 Milestone 4 spike evidence: CSAFE managed-workout configure/read-back
+  diagnostics, a synthetic-sample SQLite WAL kill/recover harness, and a non-shipping
+  visual-performance test level and 6-minute run. See
+  [Milestone 4](07-milestone-4-spikes.md).
 
 ## Out of scope
 
-- Unreal gameplay, maps, rendering, UMG/CommonUI, animation, and route movement.
-- Workout plans, PM programming, or CSAFE control commands.
-- Session creation, SQLite journaling, history, export, or recovery.
+- Unreal gameplay, maps, rendering, UMG/CommonUI, animation, and route movement, except the
+  bounded, non-shipping Phase 0 Milestone 4 visual-performance test level and 6-minute run
+  described in [Milestone 4](07-milestone-4-spikes.md); that carve-out authorizes spike
+  evidence only, never a product content pipeline.
+- Workout plans, PM programming, or CSAFE control commands, except the bounded Phase 0
+  Milestone 4 CSAFE managed-workout configure/read-back diagnostic described in
+  [Milestone 4](07-milestone-4-spikes.md); that carve-out authorizes a diagnostic-only
+  program/verify path, never a product managed-workout feature.
+- Session creation, SQLite journaling, history, export, or recovery, except the bounded Phase 0
+  Milestone 4 synthetic-sample local-durability spike described in
+  [Milestone 4](07-milestone-4-spikes.md); that carve-out authorizes a kill/recover harness
+  using synthetic samples only, never a product session journal.
 - Cloud services, accounts, networking, Protobuf cloud contracts, or integrations.
 - Race logic, smoothing, prediction, virtual distance, or scoring.
 - USB support, PM3/PM4 support, and non-Concept2 machines.
@@ -84,7 +97,8 @@ This bounded implementation is complete against its diagnostic milestone gates, 
 4. [Evidence report](04-evidence-report.md)
 5. [Milestone 2 remembered-PM5 and TUI implementation](05-milestone-2-tui-relaunch-reconnect.md)
 6. [Milestone 3 Unreal Shipping toolchain spike](06-milestone-3-toolchain-shipping.md)
-7. [Delivery Phase 0 changelog](CHANGELOG.md)
+7. [Milestone 4 managed workout, local durability, and visual performance spikes](07-milestone-4-spikes.md)
+8. [Delivery Phase 0 changelog](CHANGELOG.md)
 
 ## Diagnostic Milestone 2 follow-on
 

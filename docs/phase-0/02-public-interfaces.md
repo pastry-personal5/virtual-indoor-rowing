@@ -243,3 +243,17 @@ The exact transport interface may evolve privately as long as the public orderin
 - Removed enum values remain reserved and unknown numeric source values remain diagnosable.
 - Public serialized wire/storage contracts are out of scope; these in-process C++ types must not be copied directly into future Protobuf or database schemas without separate review.
 - `StrokeMetricsObserved` is appended as event-kind value 9; existing event-kind values 0–8 remain unchanged. Metrics-file serialization advances to schema version 3.
+
+## LocalData journal interface (Phase 0 Milestone 4 Spike B contract checkpoint)
+
+Owner-confirmed 2026-09-17. This is `Source/LocalData`'s public contract for the bounded local-durability spike in [Milestone 4](07-milestone-4-spikes.md) — not the product session journal. It depends only on `RowingCore` telemetry types (`FRowingMetricSample`); nothing depends on `LocalData` yet. Schema is limited to `schema_migrations`, `journal_events`, `sample_chunks` (the full `sessions`/`sync_outbox`/`cloud_links` tables from [the macOS/Unreal client architecture](../architecture/03-macos-unreal-client.md) remain planned for a later phase). `sqlite3` types never appear in this header; they stay behind the `Source/LocalData/Private` seam, enforced the same way `Scripts/check_public_header_dependencies.py` already enforces the CoreBluetooth/Unreal/terminal seams.
+
+- `FLocalDataJournalWriter` — owns one SQLite WAL-mode connection; bootstraps `schema_migrations` on first open.
+  - `AppendChunk(FSampleChunk)` — one second's worth of samples, CRC32C-checksummed, committed in its own transaction.
+  - `RecordJournalEvent(FJournalEvent)` — a session lifecycle marker (`Started`/`Completed`/`Interrupted`/`Aborted`), committed in its own transaction.
+  - `StageChunk`/`CommitStagedChunk` and `StageFinalEvent`/`CommitStagedFinalEvent` — diagnostic-only two-phase primitives that let the Milestone 4 Spike B harness (`Tools/durability-spike`) crash the process between a write and its commit, to prove the write never survives a kill at that exact boundary. At most one transaction may be staged at a time.
+  - `Close()` — releases the connection; every prior commit is already durable.
+- `ReadSampleChunks(path, session_id)` — read-back for tests/verification, not part of the crash-recovery path.
+- `ScanAndRecover(path)` — free function returning `FLocalDataRecoveryReport { HighestVerifiedSequence, TruncatedChunkCount, DuplicateChunkCount, RecoveredAfterUncleanExit }`. Validates every `sample_chunks` row's CRC32C in ascending `first_sequence` order, deletes an incomplete/corrupt trailing row rather than the whole session (truncate-incomplete-tail), deletes any row whose sequence range duplicates one already kept (deduplicate-on-reconciliation), and — if the highest-sequence `journal_events` row for a session is not a terminal kind — records a `RecoveredAfterUncleanExit` marker event and sets the report flag. Idempotent: safe to call again on an already-recovered file.
+
+Compatibility: this interface is diagnostic-only and may change without a compatibility note as long as it stays scoped to Milestone 4 Spike B; it is not yet a stable public contract in the sense the rules above describe for the device/telemetry interfaces, since no other module depends on it.

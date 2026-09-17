@@ -5,6 +5,16 @@ project(VirtualRowing LANGUAGES CXX)
 include(CTest)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
+# Phase 0 Milestone 4 Spike B (LocalData durability journal) links the
+# macOS SDK's system SQLite rather than vendoring an amalgamation — the
+# project targets Apple-silicon macOS only per ADR-0001/ADR-0006, and this
+# matches the "stock toolchain" approach already used for Unreal/Xcode.
+find_path(SQLite3_INCLUDE_DIR NAMES sqlite3.h)
+find_library(SQLite3_LIBRARY NAMES sqlite3)
+if(NOT SQLite3_INCLUDE_DIR OR NOT SQLite3_LIBRARY)
+	message(FATAL_ERROR "System SQLite3 (sqlite3.h/libsqlite3) was not found; it ships with the macOS SDK on the ADR-0001 toolchain baseline.")
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -99,6 +109,18 @@ else()
 endif()
 add_library(rowing_device ALIAS RowingDevice)
 
+# Phase 0 Milestone 4 Spike B: bounded local-durability journal spike
+# (docs/phase-0/07-milestone-4-spikes.md). Depends only on RowingCore.
+vir_collect_sources(LOCAL_DATA_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Source/LocalData/Private")
+add_library(LocalData STATIC ${LOCAL_DATA_SOURCES})
+add_library(local_data ALIAS LocalData)
+target_include_directories(LocalData
+	PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/Source/LocalData/Public"
+	PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Source/LocalData/Private" "${SQLite3_INCLUDE_DIR}"
+)
+target_link_libraries(LocalData PUBLIC RowingCore PRIVATE "${SQLite3_LIBRARY}")
+target_compile_features(LocalData PUBLIC cxx_std_20)
+
 set(CONCEPT2_PLUGIN_DIR "${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Concept2PM")
 vir_collect_sources(CONCEPT2_CORE_SOURCES "${CONCEPT2_PLUGIN_DIR}/Source/Concept2PMCore")
 if(CONCEPT2_CORE_SOURCES)
@@ -152,6 +174,15 @@ if(PM5_SIM_SOURCES)
 	target_compile_features(pm5-sim PUBLIC cxx_std_20)
 endif()
 
+# Phase 0 Milestone 4 Spike B kill/recover harness. Not built into the
+# product; matches the Tools/pm5-tui, Tools/pm5-sim pattern.
+vir_collect_sources(DURABILITY_SPIKE_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Tools/durability-spike/src")
+if(DURABILITY_SPIKE_SOURCES AND TARGET pm5-sim)
+	add_executable(durability-spike ${DURABILITY_SPIKE_SOURCES})
+	target_link_libraries(durability-spike PRIVATE LocalData RowingCore pm5-sim)
+	target_compile_features(durability-spike PRIVATE cxx_std_20)
+endif()
+
 if(VIR_BUILD_PM5_TUI)
 	add_subdirectory(external/ftxui)
 	if(APPLE)
@@ -203,6 +234,12 @@ if(VIR_BUILD_TESTS AND BUILD_TESTING)
 		target_link_libraries(rowing_core_tests PRIVATE RowingCore)
 		add_test(NAME rowing_core_tests COMMAND rowing_core_tests)
 	endif()
+	if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Source/LocalData/Tests/LocalDataJournalTests.cpp")
+		add_executable(local_data_tests Source/LocalData/Tests/LocalDataJournalTests.cpp)
+		target_include_directories(local_data_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Source/LocalData/Private" "${SQLite3_INCLUDE_DIR}")
+		target_link_libraries(local_data_tests PRIVATE LocalData "${SQLite3_LIBRARY}")
+		add_test(NAME local_data_tests COMMAND local_data_tests)
+	endif()
 	if(TARGET Concept2PMCore)
 		file(GLOB_RECURSE CONCEPT2_TEST_SOURCES CONFIGURE_DEPENDS
 			"${CONCEPT2_PLUGIN_DIR}/Tests/*.cpp"
@@ -226,6 +263,14 @@ if(VIR_BUILD_TESTS AND BUILD_TESTING)
 			target_link_libraries("${test_target}" PRIVATE pm5-sim)
 			add_test(NAME "${test_target}" COMMAND "${test_target}")
 		endforeach()
+	endif()
+	if(TARGET durability-spike)
+		add_test(
+			NAME durability_spike_kill_recover
+			COMMAND "${Python3_EXECUTABLE}"
+				"${CMAKE_CURRENT_SOURCE_DIR}/Tests/Integration/durability_spike_kill_recover.py"
+				"$<TARGET_FILE:durability-spike>"
+		)
 	endif()
 	if(TARGET pm5-tui)
 		add_test(
@@ -284,7 +329,7 @@ if(VIR_BUILD_TESTS AND BUILD_TESTING)
 endif()
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang|GNU")
-foreach(target RowingCore RowingDevice Concept2PMCore Concept2PMMac pm5-sim)
+foreach(target RowingCore RowingDevice LocalData Concept2PMCore Concept2PMMac pm5-sim durability-spike)
 	if(TARGET "${target}")
 		get_target_property(target_type "${target}" TYPE)
 		if(target_type STREQUAL "INTERFACE_LIBRARY")

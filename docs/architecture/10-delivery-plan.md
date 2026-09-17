@@ -63,7 +63,7 @@ With fewer people, preserve the delivery-phase order and reduce content/social s
 | PM5 BLE | Discover/read/subscribe to real PM5s, 100 ms telemetry for 60 minutes, disconnect/reconnect captures, exact Model D/PM tuples | allowed capability seed and ADR-0002 |
 | Managed workout | Configure/read back one distance, time, and interval workout using only current published CSAFE | launch managed-workout feasibility |
 | Local durability | Append 10 Hz samples to chunked SQLite journal while rendering; kill at write boundaries and recover | journal parameters/ADR-0004 |
-| Visual performance | One representative water route + one detailed boat/avatar at 2560×1600/60 fps for 60 minutes | render feature/content budgets |
+| Visual performance | One representative water route + one detailed boat/avatar at 2560×1600/60 fps for 60 minutes. Phase 0 Milestone 4 (`docs/phase-0/07-milestone-4-spikes.md`, 2026-09-17) records this evidence at a 6-minute proxy duration instead, an explicit owner-directed scope reduction; full 60-minute thermal evidence remains open as later follow-on, not satisfied by that milestone. | render feature/content budgets |
 | Realtime | Two load clients plus Go room loop; 20/10 Hz, time sync, reconnect, deterministic replay/result | ADR-0003 and protocol seed |
 
 Signing/notarization and the Sparkle update pipeline are deferred to Phase 4 per [ADR-0008](../adr/0008-defer-macos-signing-to-phase-4.md); there is no Phase 0 packaging/update spike.

@@ -340,7 +340,20 @@ All rows below require an immutable revision, a redacted runner class, UTC times
 | Normal launch no prompt | Deferred to Phase 4 (ADR-0009) | Deferred | Not a Milestone 3 or Phase 0 requirement. At Phase 4, record the reset TCC precondition and observed absence of a prompt; do not record a user or device identity. |
 | Developer ID signing, notarization, stapling, and Gatekeeper | Deferred to Phase 4 (ADR-0008) | Deferred | Not a Milestone 3 or Phase 0 requirement. At Phase 4, the credential owner records immutable revision, app/DMG hashes, notarization ID, hardened-runtime/no-`get-task-allow` result, clean standard-user Gatekeeper result, and fresh-Allow categorical probe result. |
 
-## Deferred follow-on evidence
+## Milestone 4 Spike B evidence
+
+Local durability (SQLite WAL journal), `Source/LocalData` and `Tools/durability-spike`, per [Milestone 4](07-milestone-4-spikes.md). This is a synthetic-sample spike: no real PM5 and no Unreal runtime are involved, and it never substitutes for required release hardware evidence elsewhere in this repository.
+
+| Check | Immutable revision | Result | Redacted evidence |
+|---|---|---|---|
+| Unit coverage: schema bootstrap, round trip, corrupt-tail truncation, duplicate-range dedup, recovered-after-unclean-exit marking (set and idempotent), staged-final-event rollback | `b64533a13431-dirty` | Pass | 2026-09-17 05:18 UTC on the pinned reference host; `ctest -R local_data_tests` (7/7 scenarios). |
+| Kill/recover — mid-chunk write | `b64533a13431-dirty` | Pass | 2026-09-17 05:18 UTC; `durability-spike` staged a chunk transaction and raised `SIGKILL` on itself before commit; reopen shows the staged chunk absent, all earlier committed chunks intact, and `recovered_after_unclean_exit=true`. |
+| Kill/recover — between chunks | `b64533a13431-dirty` | Pass | 2026-09-17 05:18 UTC; killed in the gap between two independently committed chunk writes; reopen shows no loss beyond the point of death and `recovered_after_unclean_exit=true`. |
+| Kill/recover — during the final-summary transaction | `b64533a13431-dirty` | Pass | 2026-09-17 05:18 UTC; the terminal `Completed` event was staged and the process was killed before its commit; reopen shows every sample chunk intact, the `Completed` event absent, and `recovered_after_unclean_exit=true`. |
+| Recovery idempotency | `b64533a13431-dirty` | Pass | 2026-09-17 05:18 UTC; `ScanAndRecover` run twice against each killed database produces the same report both times and does not duplicate the recovery marker event. |
+| Self-hosted Apple-silicon CI runs the kill/recover suite | Pending | Pending | Registers as an ordinary CTest test (`durability_spike_kill_recover`), so it runs inside the existing `M1 native quality gates` workflow's `make test` step with no separate CI change; not yet observed on a push/PR at the time of this entry. |
+
+
 
 | Item | Owner | Resolution required |
 |---|---|---|

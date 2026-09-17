@@ -75,7 +75,7 @@ PM5 ──BLE──> Concept2PM adapter ──> rowing domain ──> Unreal UI 
 - `RowingDevice` (`Source/RowingDevice`): transport-neutral device contracts and telemetry normalization.
 - `Concept2PM` (`Plugins/Concept2PM`): Objective-C++/CoreBluetooth and PM protocol adapter — Apple/Concept2 types stop here, never leak upward. Owns discovery, identity, capabilities, subscriptions, decoding, control commands, and reconnect policy; emits normalized ordered facts with source time, sequence, provenance, and quality flags. Only validated device facts affect a local workout; a disconnect freezes official input, records the gap, and attempts bounded reconnect — never fabricates meters.
 - `WorkoutRuntime`, `CourseRuntime`, `RaceClient` (planned): workout orchestration, local route presentation, online-race client logic.
-- `LocalData`, `OnlineClient` (planned): async persistence/outbox and control-plane access.
+- `LocalData` (`Source/LocalData`): exists in bounded Phase 0 Milestone 4 Spike B form only — a SQLite WAL-mode append-only journal (`schema_migrations`, `journal_events`, `sample_chunks`), depending only on `RowingCore` telemetry types. The full `sessions`/`sync_outbox`/`cloud_links` schema, encryption, and cloud sync remain planned for a later phase. `OnlineClient` (planned): control-plane access.
 - `RowingUI`, `RowingWorld` (`Source/VirtualRowing`, Unreal-side): UMG/CommonUI, actors, rendering, audio, content. Consume domain snapshots only — never parse devices, persist sessions, or determine race results. `UObject`/Actor/Slate/UMG usage is restricted to the game thread.
 - `Diagnostics` (`Tools/pm5-tui`, `Tools/pm5-sim`): redacted observability and consented support tooling.
 
@@ -87,9 +87,10 @@ PM5 ──BLE──> Concept2PM adapter ──> rowing domain ──> Unreal UI 
 
 | Path | Status | Purpose |
 |---|---|---|
-| `Source/` | exists | Unreal (`VirtualRowing`) and engine-independent (`RowingCore`, `RowingDevice`) C++ modules |
+| `Source/` | exists | Unreal (`VirtualRowing`) and engine-independent (`RowingCore`, `RowingDevice`, `LocalData`) C++ modules |
 | `Plugins/Concept2PM/` | exists | CoreBluetooth and PM protocol adapter |
 | `Tools/pm5-sim/`, `Tools/pm5-tui/` | exists | Simulator/replay fixtures and the PM5 diagnostic TUI |
+| `Tools/durability-spike/` | exists | Phase 0 Milestone 4 Spike B kill/recover harness for the `LocalData` journal |
 | `Tests/` | exists | Contract and integration test fixtures |
 | `docs/` | exists | Specs (`architecture/`), ADRs (`adr/`), phase milestones (`phase-0/`), research (`archive/research/`) |
 | `Contracts/proto/` | planned | Versioned client/cloud contracts |
