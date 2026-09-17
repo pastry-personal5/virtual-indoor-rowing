@@ -16,6 +16,8 @@
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
 
+#include "VirDebugLog.h"
+
 @interface FToolchainBluetoothProbeDelegate : NSObject <CBCentralManagerDelegate>
 {
   @public
@@ -45,6 +47,7 @@
 
 - (void)centralManagerDidUpdateState:(CBCentralManager *)central
 {
+	VirDebugLog(FString::Printf(TEXT("centralManagerDidUpdateState: state=%ld"), (long)central.state));
 	switch (central.state)
 	{
 	case CBManagerStatePoweredOn:
@@ -54,6 +57,7 @@
 			Result = TEXT("authorized_powered_on");
 			[central scanForPeripheralsWithServices:nil options:nil];
 			dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 15 * NSEC_PER_SEC), Queue, ^{
+			  VirDebugLog(TEXT("scan window elapsed, stopping scan and signaling Finished"));
 			  [central stopScan];
 			  dispatch_semaphore_signal(Finished);
 			});
@@ -95,14 +99,20 @@ namespace
 
 void FToolchainBluetoothProbe::Run()
 {
+	VirDebugLog(TEXT("Run() entered"));
 	const double Started = FPlatformTime::Seconds();
 	dispatch_queue_t Queue = dispatch_queue_create("dev.virtualrowing.toolchain-bluetooth-probe", DISPATCH_QUEUE_SERIAL);
 	FToolchainBluetoothProbeDelegate *Delegate = [FToolchainBluetoothProbeDelegate new];
 	Delegate->Queue = Queue;
+	VirDebugLog(TEXT("dispatch_async'ing CBCentralManager alloc"));
 	dispatch_async(Queue, ^{
+	  VirDebugLog(TEXT("dispatch_async block executing: about to alloc CBCentralManager"));
 	  Delegate->Central = [[CBCentralManager alloc] initWithDelegate:Delegate queue:Queue options:nil];
+	  VirDebugLog(TEXT("CBCentralManager alloc/init returned"));
 	});
+	VirDebugLog(TEXT("waiting on semaphore (16s max)"));
 	const long WaitResult = dispatch_semaphore_wait(Delegate->Finished, dispatch_time(DISPATCH_TIME_NOW, 16 * NSEC_PER_SEC));
+	VirDebugLog(FString::Printf(TEXT("semaphore wait returned %ld, Result=%s"), WaitResult, *Delegate->Result));
 	if (WaitResult != 0)
 	{
 		Delegate->Result = TEXT("timeout");
@@ -126,6 +136,9 @@ void FToolchainBluetoothProbe::Run()
 		ResultDirectory = FPaths::ProjectLogDir();
 	}
 	const FString Path = FPaths::Combine(ResultDirectory, FileName);
-	IFileManager::Get().MakeDirectory(*FPaths::GetPath(Path), true);
-	FFileHelper::SaveStringToFile(Json, *Path);
+	VirDebugLog(FString::Printf(TEXT("ResultDirectory=[%s] resolved Path=[%s]"), *ResultDirectory, *Path));
+	const bool bMadeDirectory = IFileManager::Get().MakeDirectory(*FPaths::GetPath(Path), true);
+	VirDebugLog(FString::Printf(TEXT("MakeDirectory(%s)=%s"), *FPaths::GetPath(Path), bMadeDirectory ? TEXT("true") : TEXT("false")));
+	const bool bSaved = FFileHelper::SaveStringToFile(Json, *Path);
+	VirDebugLog(FString::Printf(TEXT("SaveStringToFile(%s)=%s"), *Path, bSaved ? TEXT("true") : TEXT("false")));
 }

@@ -1,4 +1,4 @@
-.PHONY: doctor configure build test format-check pm5-tui unreal-smoke unreal-shipping unreal-package-verify toolchain-bluetooth-probe release-sign-notarize hil-pm5 clean clean-unreal clean-logs clean-metrics clean-all
+.PHONY: doctor configure build test format-check pm5-tui unreal-smoke unreal-shipping unreal-package-verify toolchain-bluetooth-probe toolchain-bluetooth-probe-clean release-sign-notarize hil-pm5 clean clean-unreal clean-logs clean-metrics clean-all
 
 # Verify the host machine and installed tools against the pinned M1 baseline.
 doctor:
@@ -39,6 +39,12 @@ unreal-package-verify:
 # Explicitly invoke the bounded CoreBluetooth/TCC diagnostic in the staged app.
 toolchain-bluetooth-probe:
 	python3 Scripts/dev.py toolchain-bluetooth-probe
+
+# Wipe every Unreal intermediate/output, rebuild+archive+verify from scratch, then run
+# the probe — eliminates any chance of testing a stale .app left over from a prior
+# source edit (see docs/phase-0: the probe never rebuilds the app itself). Slower than
+# `toolchain-bluetooth-probe` alone since it forces a full, uncached BuildCookRun.
+toolchain-bluetooth-probe-clean: doctor clean-unreal unreal-shipping unreal-package-verify toolchain-bluetooth-probe
 
 # Protected credential-owner release procedure. Never accepts credentials as arguments.
 release-sign-notarize:

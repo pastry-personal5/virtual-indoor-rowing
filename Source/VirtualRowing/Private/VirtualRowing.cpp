@@ -1,7 +1,10 @@
 #include "Modules/ModuleManager.h"
 #include "HAL/PlatformMisc.h"
 #include "Misc/CommandLine.h"
+#include "Misc/CoreDelegates.h"
 #include "Misc/Parse.h"
+
+#include "VirDebugLog.h"
 
 #if PLATFORM_MAC
 #include "ToolchainBluetoothProbe.h"
@@ -12,10 +15,19 @@ class FVirtualRowingModule final : public IModuleInterface
   public:
 	virtual void StartupModule() override
 	{
+		// TEMPORARY Milestone 3 probe-invocation diagnostic (2026-09-17): see VirDebugLog.h.
+		VirDebugLog(TEXT("StartupModule entered"));
+		VirDebugLog(FString::Printf(TEXT("CommandLine=[%s]"), FCommandLine::Get()));
+		FCoreDelegates::OnPostEngineInit.AddLambda([]()
+												   { VirDebugLog(TEXT("OnPostEngineInit fired")); });
 #if PLATFORM_MAC
-		if (FParse::Param(FCommandLine::Get(), TEXT("ToolchainBluetoothProbe")))
+		const bool bProbeRequested = FParse::Param(FCommandLine::Get(), TEXT("ToolchainBluetoothProbe"));
+		VirDebugLog(FString::Printf(TEXT("FParse::Param(ToolchainBluetoothProbe)=%s"), bProbeRequested ? TEXT("true") : TEXT("false")));
+		if (bProbeRequested)
 		{
+			VirDebugLog(TEXT("Calling FToolchainBluetoothProbe::Run()"));
 			FToolchainBluetoothProbe::Run();
+			VirDebugLog(TEXT("FToolchainBluetoothProbe::Run() returned; calling RequestExit(true)"));
 			// Force=true: the probe result is already flushed to disk by Run() above, and this
 			// diagnostic mode must not fall through to normal engine startup (map load, game
 			// window). A soft RequestExit(false) only sets a flag the main loop checks later,

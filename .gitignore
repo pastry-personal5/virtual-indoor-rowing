@@ -17,6 +17,7 @@ Saved/
 /cmake-build-*/
 /Logs/pm5-tui/*.log
 /Logs/pm5-tui/*.log.*
+/Logs/vir-startup-debug/
 /Metrics/pm5-tui/*.jsonl
 .DS_Store
 __pycache__/

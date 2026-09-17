@@ -41,6 +41,17 @@ class UnrealShippingPackagingTests(unittest.TestCase):
 		(app / "Contents" / "Info.plist").write_bytes(plistlib.dumps({"NSBluetoothAlwaysUsageDescription": dev.BLUETOOTH_USAGE_DESCRIPTION}))
 		return app
 
+	def test_uproject_declares_virtualrowing_as_a_default_runtime_module(self) -> None:
+		# Without this entry, IProjectManager::LoadModulesForProject() (UE 5.8's
+		# LaunchEngineLoop.cpp -> ProjectManager.cpp) never calls StartupModule() on the
+		# primary game module: IMPLEMENT_PRIMARY_GAME_MODULE only statically registers the
+		# module's factory in a monolithic build, it doesn't request that it be loaded.
+		descriptor = json.loads((dev.ROOT / "VirtualRowing.uproject").read_text(encoding="utf-8"))
+		modules = {module.get("Name"): module for module in descriptor.get("Modules", [])}
+		self.assertIn("VirtualRowing", modules)
+		self.assertEqual(modules["VirtualRowing"].get("Type"), "Runtime")
+		self.assertEqual(modules["VirtualRowing"].get("LoadingPhase"), "Default")
+
 	def test_unreal_shipping_command_requests_arm64_shipping_archive(self) -> None:
 		command = dev.unreal_shipping_command(Path("/UE"), Path("/repo/VirtualRowing.uproject"), Path("/out"))
 		self.assertIn("BuildCookRun", command)
@@ -55,6 +66,39 @@ class UnrealShippingPackagingTests(unittest.TestCase):
 		self.assertIn("-iostore", command)
 		self.assertIn("-CookCultures=en", command)
 		self.assertIn("-I18NPreset=English", command)
+
+	def test_unreal_shipping_embeds_uproject_file_for_staged_project_dir_resolution(self) -> None:
+		# UAT's Mac stage/package step embeds Binaries/ and Content/ under
+		# Contents/UE/<ProjectName>/ but never copies the .uproject file itself there, which
+		# silently prevents IProjectManager::LoadProjectFile() from ever succeeding (see
+		# FGenericPlatformMisc::ProjectDir()'s relative fallback search) and StartupModule()
+		# from ever running on the primary game module.
+		project = self.root / "VirtualRowing.uproject"
+		project.write_text(json.dumps({"FileVersion": 3}), encoding="utf-8")
+		ue_root = self.root / "UE_5.8"
+		(ue_root / "Engine" / "Build" / "BatchFiles").mkdir(parents=True)
+		(ue_root / "Engine" / "Build" / "BatchFiles" / "RunUAT.sh").write_bytes(b"")
+
+		archive_dir = self.root / "archive"
+		app = archive_dir / "Mac" / "VirtualRowing-Mac-Shipping.app"
+		(app / "Contents" / "MacOS").mkdir(parents=True)
+
+		def fake_run(args, **_kwargs):
+			return SimpleNamespace(returncode=0, args=args)
+
+		with patch.object(dev, "ROOT", self.root), \
+			patch.object(dev, "UNREAL_ARCHIVE_DIR", archive_dir), \
+			patch.object(dev, "load_versions", return_value=self.versions), \
+			patch.object(dev, "find_unreal", return_value=ue_root), \
+			patch.object(dev, "tool_env", return_value={}), \
+			patch.object(dev, "source_revision", return_value="deadbeef"), \
+			patch.object(dev, "write_shipping_provenance"), \
+			patch.object(dev, "run", side_effect=fake_run):
+			self.assertEqual(dev.unreal_shipping(), 0)
+
+		embedded = app / "Contents" / "UE" / "VirtualRowing" / "VirtualRowing.uproject"
+		self.assertTrue(embedded.is_file())
+		self.assertEqual(embedded.read_text(encoding="utf-8"), project.read_text(encoding="utf-8"))
 
 	def test_package_verifier_rejects_missing_app(self) -> None:
 		self.assertEqual(dev.verify_package(self.root / "missing.app", self.versions), [f"missing staged app: {self.root / 'missing.app'}"])

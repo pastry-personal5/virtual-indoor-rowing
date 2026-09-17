@@ -497,6 +497,16 @@ def unreal_shipping() -> int:
 	metadata = app / "Contents" / "Resources" / "BuildVersions.json"
 	metadata.parent.mkdir(parents=True, exist_ok=True)
 	shutil.copy2(VERSIONS_PATH, metadata)
+	# UAT's Mac stage/package step embeds Binaries/ and Content/ under
+	# Contents/UE/<ProjectName>/ but never copies the .uproject file itself there. Without
+	# it, FGenericPlatformMisc::ProjectDir()'s fallback search (relative to that exact
+	# embedded location) never finds a project file, IProjectManager::LoadProjectFile()
+	# never succeeds, and the primary game module's StartupModule() never runs — silently,
+	# since the engine's own "could not find a valid project file" log is Warning-level and
+	# UE_LOG is a no-op in this Shipping config. Stage it ourselves.
+	embedded_project = app / "Contents" / "UE" / project.stem / project.name
+	embedded_project.parent.mkdir(parents=True, exist_ok=True)
+	shutil.copy2(project, embedded_project)
 	print(app)
 	return 0
 

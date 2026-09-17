@@ -3,6 +3,13 @@
 	"EngineAssociation": "5.8",
 	"Category": "Tools",
 	"Description": "Bounded Unreal Shipping toolchain host; no gameplay or PM5 behavior.",
+	"Modules": [
+		{
+			"Name": "VirtualRowing",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	],
 	"Plugins": [
 		{
 			"Name": "Concept2PM",
