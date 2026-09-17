@@ -19,6 +19,12 @@ FORBIDDEN_INCLUDE = re.compile(
 	r"(?:unistd|pthread|dispatch|TargetConditionals|mach|sys)(?:/|\.h|\b)"
 	r")"
 )
+# Phase 1 Milestone 1: RowingCore must stay free of the Protobuf/serialization
+# dependency introduced for Contracts/proto/. Matches google/protobuf headers
+# anywhere in the include path, and any generated *.pb.h, wherever it sits.
+FORBIDDEN_INCLUDE_PROTOBUF = re.compile(
+	r'^\s*#\s*include\s*[<"][^">]*(?:google/protobuf|\.pb\.h)[^">]*[>"]'
+)
 FORBIDDEN_TYPES = re.compile(
 	r"\b(?:CB[A-Z][A-Za-z0-9_]*|NSError|NSString|NSData|NSUUID|"
 	r"UObject|AActor|UActorComponent|FString|FName|FText|TArray|TSharedPtr|"
@@ -40,6 +46,10 @@ def check_headers() -> list[str]:
 			if FORBIDDEN_INCLUDE.search(line):
 				issues.append(
 					f"{header.relative_to(ROOT)}:{line_number}: forbidden platform/vendor/engine/terminal include"
+				)
+			if FORBIDDEN_INCLUDE_PROTOBUF.search(line):
+				issues.append(
+					f"{header.relative_to(ROOT)}:{line_number}: forbidden Protobuf/serialization include"
 				)
 			if FORBIDDEN_TYPES.search(line):
 				issues.append(

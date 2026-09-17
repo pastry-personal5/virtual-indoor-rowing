@@ -15,6 +15,12 @@ if(NOT SQLite3_INCLUDE_DIR OR NOT SQLite3_LIBRARY)
 	message(FATAL_ERROR "System SQLite3 (sqlite3.h/libsqlite3) was not found; it ships with the macOS SDK on the ADR-0001 toolchain baseline.")
 endif()
 
+# Phase 1 Milestone 1 (docs/phase-1/01-milestone-1-rowingcore-domain-contract.md)
+# pins the Protobuf toolchain the same way cmake/ninja/git-lfs are pinned in
+# Config/BuildVersions.json — an exact version checked by `make doctor`, not a
+# floating dependency. Install with `brew install protobuf`.
+find_package(Protobuf CONFIG REQUIRED)
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -233,6 +239,36 @@ if(VIR_BUILD_TESTS AND BUILD_TESTING)
 		target_include_directories(rowing_core_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Source/RowingCore/Private")
 		target_link_libraries(rowing_core_tests PRIVATE RowingCore)
 		add_test(NAME rowing_core_tests COMMAND rowing_core_tests)
+	endif()
+	if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Source/RowingCore/Tests/RowingSessionStateMachineTests.cpp")
+		add_executable(rowing_session_state_machine_tests Source/RowingCore/Tests/RowingSessionStateMachineTests.cpp)
+		target_link_libraries(rowing_session_state_machine_tests PRIVATE RowingCore)
+		add_test(NAME rowing_session_state_machine_tests COMMAND rowing_session_state_machine_tests)
+	endif()
+	if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Tests/Contract/RowingSessionContractTests.cpp")
+		# Phase 1 Milestone 1: generated Protobuf contract seed
+		# (Contracts/proto/rowing/v1/session.proto). Deliberately decoupled from
+		# RowingCore in both directions — RowingCore stays free of any
+		# serialization library dependency, and nothing depends on
+		# RowingContracts yet besides this test; a later milestone adds the
+		# domain<->wire mapping once a real consumer exists. Built only here,
+		# not at top level, since a plain `make build` has no consumer for it.
+		set(ROWING_CONTRACTS_PROTO "${CMAKE_CURRENT_SOURCE_DIR}/Contracts/proto/rowing/v1/session.proto")
+		add_library(RowingContracts STATIC)
+		add_library(rowing_contracts ALIAS RowingContracts)
+		target_link_libraries(RowingContracts PUBLIC protobuf::libprotobuf)
+		target_include_directories(RowingContracts PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/generated/contracts")
+		target_compile_features(RowingContracts PUBLIC cxx_std_20)
+		protobuf_generate(
+			TARGET RowingContracts
+			IMPORT_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/Contracts/proto"
+			PROTOS "${ROWING_CONTRACTS_PROTO}"
+			PROTOC_OUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/contracts"
+		)
+
+		add_executable(rowing_session_contract_tests Tests/Contract/RowingSessionContractTests.cpp)
+		target_link_libraries(rowing_session_contract_tests PRIVATE RowingContracts)
+		add_test(NAME rowing_session_contract_tests COMMAND rowing_session_contract_tests)
 	endif()
 	if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Source/LocalData/Tests/LocalDataJournalTests.cpp")
 		add_executable(local_data_tests Source/LocalData/Tests/LocalDataJournalTests.cpp)

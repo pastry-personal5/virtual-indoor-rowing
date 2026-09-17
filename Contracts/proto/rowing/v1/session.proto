@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+// Phase 1 Milestone 1 contract seed
+// (docs/phase-1/01-milestone-1-rowingcore-domain-contract.md). Wire mirror of
+// RowingCore's session-continuity state machine
+// (Source/RowingCore/Public/RowingCore/RowingSession.h) only. It does not yet
+// carry FRowingMetricSample/FRowingStrokeMetrics fields — mapping those to
+// the wire is a separate, later contract review, per that checkpoint doc's
+// "Out of scope" section. Field numbers, once assigned, are never reused.
+
+package rowing.v1;
+
+// Mirrors ERowingSessionState by name, not by raw integer value: proto3
+// requires the *_UNSPECIFIED = 0 sentinel, so every enumerator below is
+// offset by +1 from ERowingSessionState's underlying value. A domain<->wire
+// mapper must switch on names, never static_cast the underlying integer.
+enum SessionState
+{
+	SESSION_STATE_UNSPECIFIED = 0;
+	SESSION_STATE_CREATED = 1;
+	SESSION_STATE_ACTIVE = 2;
+	SESSION_STATE_CONNECTION_LOST = 3;
+	SESSION_STATE_ENDED = 4;
+}
+
+// Mirrors ERowingSessionDisposition by name, not raw integer value (see
+// SessionState above); reuses the vocabulary from the Session record in
+// docs/architecture/06-data-and-protocols.md.
+enum SessionDisposition
+{
+	SESSION_DISPOSITION_UNSPECIFIED = 0;
+	SESSION_DISPOSITION_COMPLETED = 1;
+	SESSION_DISPOSITION_INTERRUPTED = 2;
+	SESSION_DISPOSITION_ABORTED = 3;
+}
+
+// Mirrors ERowingSessionStateReason by name, not raw integer value (see
+// SessionState above).
+enum SessionStateReason
+{
+	SESSION_STATE_REASON_UNSPECIFIED = 0;
+	SESSION_STATE_REASON_SESSION_STARTED = 1;
+	SESSION_STATE_REASON_DEVICE_READY = 2;
+	SESSION_STATE_REASON_LINK_LOST = 3;
+	SESSION_STATE_REASON_LINK_RESTORED = 4;
+	SESSION_STATE_REASON_USER_COMPLETED = 5;
+	SESSION_STATE_REASON_USER_ABORTED = 6;
+	SESSION_STATE_REASON_RECOVERED_AFTER_UNCLEAN_EXIT = 7;
+}
+
+// Wire mirror of FRowingSessionStateChanged, for the future local journal
+// SessionStateChanged event. Not yet produced or consumed by any module.
+message SessionStateChangedEvent
+{
+	// docs/architecture/06-data-and-protocols.md: "every public contract and
+	// stored payload declares a version."
+	uint32 contract_version = 1;
+	// Opaque 128-bit FRowingSessionId, big-endian byte order.
+	bytes session_id = 2;
+	SessionState previous_state = 3;
+	SessionState new_state = 4;
+	SessionStateReason reason = 5;
+	// Present only when new_state == SESSION_STATE_ENDED.
+	SessionDisposition disposition = 6;
+}

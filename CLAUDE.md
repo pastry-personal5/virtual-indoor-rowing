@@ -93,7 +93,7 @@ PM5 ──BLE──> Concept2PM adapter ──> rowing domain ──> Unreal UI 
 | `Tools/durability-spike/` | exists | Phase 0 Milestone 4 Spike B kill/recover harness for the `LocalData` journal |
 | `Tests/` | exists | Contract and integration test fixtures |
 | `docs/` | exists | Specs (`architecture/`), ADRs (`adr/`), phase milestones (`phase-0/`, `phase-1/`), research (`archive/research/`) |
-| `Contracts/proto/` | planned | Versioned client/cloud contracts |
+| `Contracts/proto/` | exists (Phase 1 Milestone 1 seed: `rowing/v1/session.proto` only) | Versioned client/cloud contracts |
 | `Services/` | planned | Go control plane, race service, workers |
 | `Infra/terraform/` | planned | Cloud infrastructure |
 | `Content/` | planned | Unreal assets; large assets use Git LFS |

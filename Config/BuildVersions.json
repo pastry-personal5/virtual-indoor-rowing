@@ -17,7 +17,8 @@
   "build_tools": {
     "cmake": "4.3.2",
     "ninja": "1.13.0",
-    "git_lfs": "3.8.0"
+    "git_lfs": "3.8.0",
+    "protobuf": "36.1"
   },
   "unreal": {
     "version": "5.8",
@@ -26,12 +27,13 @@
     "installation_root": null
   },
   "observed_baseline": {
-    "observed_on": "2026-09-13",
+    "observed_on": "2026-09-17",
     "architecture": "arm64",
     "xcode_version": "26.6",
     "cmake_version": "4.3.2",
     "ninja_version": "1.13.0",
     "git_lfs": "3.8.0",
+    "protobuf_version": "36.1",
     "unreal": "5.8.2 changelist 56702186; Build.version digest ff99fc3dd98e7c7fd2f5700334bc792dfb7baced3828cdee32940bb69581a6a4"
   }
 }

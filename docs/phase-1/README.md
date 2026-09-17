@@ -1,6 +1,6 @@
 # Delivery Phase 1: walking skeleton
 
-Status: Open (per [ADR-0010](../adr/0010-defer-remaining-phase-0-spike-evidence-to-phase-4.md), 2026-09-17); milestones are scoped one at a time, immediately before each one's implementation — none scoped or started yet
+Status: Open (per [ADR-0010](../adr/0010-defer-remaining-phase-0-spike-evidence-to-phase-4.md), 2026-09-17); milestones are scoped one at a time, immediately before each one's implementation — Milestone 1 is scoped and implemented (see [01-milestone-1-rowingcore-domain-contract.md](01-milestone-1-rowingcore-domain-contract.md)); no further milestone scoped or started yet
 Owner: A0 — CTO / Principal Architect
 Last reviewed: 2026-09-17
 
@@ -38,7 +38,7 @@ Milestones have not yet been scoped against this build order — see "Open quest
 - Product `RowingDevice`/`Concept2PM` control path reused from the Phase 0 diagnostic foundation, promoted from diagnostic-only to a stable public contract where Phase 0 marked it diagnostic-only (e.g. the Milestone 4 Spike A workout contract).
 - The full `LocalData` journal/outbox schema (`sessions`, `sync_outbox`, `cloud_links`), building on the Phase 0 Milestone 4 Spike B `schema_migrations`/`journal_events`/`sample_chunks` subset.
 - A minimal Unreal product UI: HUD, gray-box route, boat distance-to-spline, stroke animation — first real `RowingUI`/`RowingWorld` work, not a diagnostic host.
-- A minimal control-plane API and object upload path (`Services/`, `Contracts/proto/` — both currently `planned` in the repository layout table and created only as this phase authorizes them).
+- A minimal control-plane API and object upload path (`Services/` — still `planned` in the repository layout table and created only as this phase authorizes it; `Contracts/proto/` moved to `exists` as of Milestone 1, scoped to the one `rowing/v1/session.proto` file added there).
 - Unsigned ad-hoc build/package/verify for the product app, distinct from the Milestone 3 empty diagnostic Shipping host.
 
 ## Out of scope
@@ -59,6 +59,10 @@ Milestones have not yet been scoped against this build order — see "Open quest
 ## Milestone scoping approach
 
 Owner-confirmed (2026-09-17): Phase 1 milestones are **not** pre-planned as a full breakdown of the seven-step build order above. Each milestone is scoped individually, immediately before its own implementation begins — an A0 contract checkpoint per milestone, the same pattern Phase 0 Milestone 4 used per spike, applied here per milestone instead of committing to a fixed decomposition up front. The build order above is the reference sequence a milestone's scope is drawn from, not a milestone list itself.
+
+## Milestones
+
+- **Milestone 1 — real `RowingCore` session domain + Protobuf contract seed** (build-order step 2): implemented 2026-09-17. See [01-milestone-1-rowingcore-domain-contract.md](01-milestone-1-rowingcore-domain-contract.md) for the contract checkpoint, scope, and verification evidence.
 
 ## Open questions
 

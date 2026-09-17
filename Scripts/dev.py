@@ -164,7 +164,11 @@ def check_doctor() -> int:
 		print(f"{'OK' if metal_ok else 'FAIL'} Metal Toolchain: required for Shipping shader cook; {'installed' if metal_ok else 'missing — run `xcodebuild -downloadComponent MetalToolchain` (or retry after a few minutes; first use of `metal` can trigger an on-demand download) before `make unreal-shipping`'}")
 		failed |= not metal_ok
 
-	for binary, expected in (("cmake", versions["build_tools"]["cmake"]), ("ninja", versions["build_tools"]["ninja"])):
+	for binary, expected in (
+		("cmake", versions["build_tools"]["cmake"]),
+		("ninja", versions["build_tools"]["ninja"]),
+		("protoc", versions["build_tools"]["protobuf"]),
+	):
 		observed = capture([binary, "--version"])
 		failed |= not exact_version(binary, observed, expected)
 
