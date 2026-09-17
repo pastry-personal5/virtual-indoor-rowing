@@ -354,6 +354,10 @@ namespace PM5Tui
 				return "notification_subscription";
 			case EPM5CallbackStage::StatusRateWrite:
 				return "status_rate_write";
+			case EPM5CallbackStage::WorkoutProgramControlWrite:
+				return "workout_program_control_write";
+			case EPM5CallbackStage::WorkoutProgramControlRead:
+				return "workout_program_control_read";
 			}
 			return "unknown";
 		}
@@ -390,6 +394,46 @@ namespace PM5Tui
 				return "connect_requested";
 			case EPM5TuiRunAction::DisconnectRequested:
 				return "disconnect_requested";
+			case EPM5TuiRunAction::ProgramDistanceWorkoutRequested:
+				return "program_distance_workout_requested";
+			case EPM5TuiRunAction::ProgramTimeWorkoutRequested:
+				return "program_time_workout_requested";
+			case EPM5TuiRunAction::ProgramTimeIntervalWorkoutRequested:
+				return "program_time_interval_workout_requested";
+			case EPM5TuiRunAction::AbortWorkoutRequested:
+				return "abort_workout_requested";
+			}
+			return "unknown";
+		}
+
+		const char *ToString(Concept2PM::EDiagnosticWorkoutKind Value)
+		{
+			switch (Value)
+			{
+			case Concept2PM::EDiagnosticWorkoutKind::Distance:
+				return "distance";
+			case Concept2PM::EDiagnosticWorkoutKind::Time:
+				return "time";
+			case Concept2PM::EDiagnosticWorkoutKind::TimeInterval:
+				return "time_interval";
+			}
+			return "unknown";
+		}
+
+		const char *ToString(Concept2PM::EDiagnosticWorkoutProgramRejectReason Value)
+		{
+			switch (Value)
+			{
+			case Concept2PM::EDiagnosticWorkoutProgramRejectReason::MalformedResponse:
+				return "malformed_response";
+			case Concept2PM::EDiagnosticWorkoutProgramRejectReason::PM5Nak:
+				return "pm5_nak";
+			case Concept2PM::EDiagnosticWorkoutProgramRejectReason::WrongCommand:
+				return "wrong_command";
+			case Concept2PM::EDiagnosticWorkoutProgramRejectReason::Timeout:
+				return "timeout";
+			case Concept2PM::EDiagnosticWorkoutProgramRejectReason::Other:
+				return "other";
 			}
 			return "unknown";
 		}
@@ -988,6 +1032,35 @@ namespace PM5Tui
 			Record << std::hex << std::setw(2) << std::setfill('0')
 				   << static_cast<unsigned int>(Byte);
 		Record << std::dec << std::setfill(' ') << "\"}";
+		WriteRecord(Record.str());
+	}
+
+	void FRunMetricsWriter::RecordWorkoutProgramEvent(
+		const FWorkoutProgramEvent &Event)
+	{
+		std::ostringstream Record;
+		Record << "{\"event\":\"workout_program_event\",\"observed_at_utc\":\""
+			   << UtcTimestamp() << "\"";
+		AppendEventMonotonicTimestamp(Record, Event.MonotonicTimestampNs);
+		Record << ",\"verified\":" << (Event.Verified ? "true" : "false")
+			   << ",\"was_abort\":" << (Event.WasAbort ? "true" : "false")
+			   << ",\"requested_kind\":\"" << ToString(Event.RequestedSpec.Kind)
+			   << '\"';
+		AppendOptional(Record, "requested_distance_mm", Event.RequestedSpec.DistanceMm);
+		AppendOptional(Record, "requested_duration_ms", Event.RequestedSpec.DurationMs);
+		AppendOptional(Record, "requested_interval_rest_ms", Event.RequestedSpec.IntervalRestMs);
+		if (Event.Verified)
+		{
+			Record << ",\"readback_type\":\"" << ToString(Event.Readback.Type)
+				   << '\"';
+			AppendOptional(Record, "readback_duration_ms", Event.Readback.DurationMs);
+		}
+		else
+		{
+			Record << ",\"reject_reason\":\"" << ToString(Event.RejectReason)
+				   << '\"';
+		}
+		Record << '}';
 		WriteRecord(Record.str());
 	}
 

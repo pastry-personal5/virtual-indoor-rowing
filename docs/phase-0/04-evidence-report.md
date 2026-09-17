@@ -340,6 +340,20 @@ All rows below require an immutable revision, a redacted runner class, UTC times
 | Normal launch no prompt | Deferred to Phase 4 (ADR-0009) | Deferred | Not a Milestone 3 or Phase 0 requirement. At Phase 4, record the reset TCC precondition and observed absence of a prompt; do not record a user or device identity. |
 | Developer ID signing, notarization, stapling, and Gatekeeper | Deferred to Phase 4 (ADR-0008) | Deferred | Not a Milestone 3 or Phase 0 requirement. At Phase 4, the credential owner records immutable revision, app/DMG hashes, notarization ID, hardened-runtime/no-`get-task-allow` result, clean standard-user Gatekeeper result, and fresh-Allow categorical probe result. |
 
+## Milestone 4 Spike A evidence
+
+Managed workout (CSAFE program/verify and abort), `Plugins/Concept2PM` and `Tools/pm5-tui`, per [Milestone 4](07-milestone-4-spikes.md). Steps 1–3 (contract checkpoint, CSAFE command build/response parse, `pm5-tui`/`make hil-pm5` command wiring) are implemented and unit-tested without a real PM5. Step 4 (real-PM5 acceptance runs) needs the owner-run hardware evidence below; nothing in this section may be marked `Pass` from a simulator or unit-test result alone.
+
+| Check | Immutable revision | Result | Redacted evidence |
+|---|---|---|---|
+| CSAFE command-build/response-parse unit coverage (framing, checksum, byte stuffing, spec validation, Distance/Time/TimeInterval/Abort byte layout against the pinned CSAFE definition's worked examples, program-verify readback decode) | `d1082361e75f-dirty` | Pass | 2026-09-17; `ctest -R concept2_Concept2PMWorkoutProtocolTests` (all scenarios). |
+| `pm5-tui`/`make hil-pm5` command wiring (interactive buttons and `--script` commands gated behind `--hardware-probe`; metrics/log record shape) | `d1082361e75f-dirty` | Pass | 2026-09-17; `ctest -R pm5_tui_metrics_writer_tests` and manual `--script` runs confirm commands are refused without `--hardware-probe` and without a connected `Ready` machine, with no crash. |
+| Real-PM5 acceptance run — distance workout (configure/verify) | Pending | Pending | Run `make hil-pm5`, connect to a real PM5 until `Ready`, issue the Program Distance command (or `--script program-distance`), and confirm the logged `WorkoutProgramEvent` (`Logs/pm5-tui/pm5-tui.log`, `Metrics/pm5-tui/pm5-tui-*.jsonl`) shows `verified=true` with `readback_type` matching the requested `distance` and no `readback_duration_ms` (per the header contract, Distance leaves duration unset). |
+| Real-PM5 acceptance run — time workout (configure/verify) | Pending | Pending | Same procedure with Program Time (`--script program-time`); confirm `readback_type=time` and `readback_duration_ms` matches the requested 1,200,000 ms. |
+| Real-PM5 acceptance run — time-interval workout (configure/verify) | Pending | Pending | Same procedure with Program Interval (`--script program-interval`); confirm `readback_type=time_interval` and `readback_duration_ms` matches the requested 120,000 ms work segment. |
+| Real-PM5 acceptance run — deliberate reject/abort | Pending | Pending | With a program active, issue Abort Workout (`--script abort-workout`); confirm the PM5 and diagnostic session reach a well-defined, observable state — either a `WorkoutProgramEvent` with `verified=false` (if the PM5 NAKs the abort) or a `connection_state_changed` record returning to `Ready` (if the abort succeeds), per the documented contract that abort success is never a synthesized event. |
+| No command outside the published CSAFE specification is ever sent | Pending | Pending | Confirmed by code review of `BuildProgramDiagnosticWorkoutContents`/`BuildAbortDiagnosticWorkoutContents` against the pinned CSAFE definition; real-PM5 confirmation is the four rows above. |
+
 ## Milestone 4 Spike B evidence
 
 Local durability (SQLite WAL journal), `Source/LocalData` and `Tools/durability-spike`, per [Milestone 4](07-milestone-4-spikes.md). This is a synthetic-sample spike: no real PM5 and no Unreal runtime are involved, and it never substitutes for required release hardware evidence elsewhere in this repository.

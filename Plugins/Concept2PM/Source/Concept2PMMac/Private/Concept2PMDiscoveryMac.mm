@@ -364,6 +364,10 @@ class FMacMachine final : public IRowingMachine,
 	bool TryPollPM5ProbePacket(FPM5ProbePacketEvidence &OutEvidence) override;
 	void FinalizePM5ProbeCapture() override;
 	bool TryPollEvent(FRowingMachineEvent &OutEvent) override;
+	FRowingCommandResult
+	ProgramDiagnosticWorkout(const Concept2PM::FDiagnosticWorkoutSpec &Spec) override;
+	FRowingCommandResult AbortDiagnosticWorkout() override;
+	bool TryPollWorkoutProgramEvent(FWorkoutProgramEvent &OutEvent) override;
 	void RecordCallbackFailure(EPM5CallbackStage Stage,
 							   std::uint16_t Characteristic,
 							   NSError *Error);
@@ -377,7 +381,9 @@ class FMacMachine final : public IRowingMachine,
 							   NSError *Error);
 	void OnNotificationState(CBCharacteristic *Characteristic,
 							 NSError *Error);
+	void OnCharacteristicWritten(CBCharacteristic *Characteristic, NSError *Error);
 	void OnStatusRateWritten(CBCharacteristic *Characteristic, NSError *Error);
+	void OnControlCommandWritten(CBCharacteristic *Characteristic, NSError *Error);
 	bool OwnsPeripheral(CBPeripheral *Peripheral) const;
 
   private:
@@ -422,6 +428,13 @@ class FMacMachine final : public IRowingMachine,
 		const Concept2PM::FGeneralStatusFact &General);
 	const Concept2PM::FPM5CharacteristicProfile *
 	FindProfileCharacteristic(std::uint16_t ShortId) const;
+	void SendWorkoutProgramCommand(std::vector<std::uint8_t> Contents,
+								   const Concept2PM::FDiagnosticWorkoutSpec &Spec,
+								   bool IsAbort);
+	void ArmWorkoutProgramTimeout();
+	void EmitWorkoutProgramRejected(
+		Concept2PM::EDiagnosticWorkoutProgramRejectReason Reason);
+	void FinishWorkoutProgramTransaction();
 
 	FMacDiscovery &Discovery;
 	CBCentralManager *Central = nil;
@@ -499,6 +512,20 @@ class FMacMachine final : public IRowingMachine,
 	std::deque<FPM5ProbePacketEvidence> ProbeEvidenceQueue;
 	FPM5ProbeCaptureDiagnostics ProbeCaptureDiagnostics;
 	std::uint64_t ProbePacketSequence = 0;
+
+	// Diagnostic-only managed-workout program/verify and abort transaction
+	// state (Phase 0 Milestone 4 Spike A). Discovered once, lazily, the first
+	// time a workout command is sent; nil until then.
+	CBCharacteristic *ControlReceiveCharacteristic = nil;  // 0x0021, WRITE.
+	CBCharacteristic *ControlTransmitCharacteristic = nil; // 0x0022, READ.
+	bool ControlServiceDiscoveryInFlight = false;
+	std::vector<std::uint8_t> PendingWorkoutProgramContents;
+	Concept2PM::FDiagnosticWorkoutSpec PendingWorkoutProgramSpec;
+	bool PendingWorkoutProgramIsAbort = false;
+	bool WorkoutProgramInFlight = false;
+	std::uint64_t WorkoutProgramGeneration = 0;
+	static constexpr std::uint64_t WorkoutProgramTimeoutMs = 2'000;
+	std::deque<FWorkoutProgramEvent> WorkoutProgramEvents;
 };
 
 @interface VIRPM5CentralDelegate : NSObject <CBCentralManagerDelegate>
@@ -599,7 +626,7 @@ class FMacMachine final : public IRowingMachine,
 {
 	(void)peripheral;
 	if (self.Owner != nullptr)
-		self.Owner->OnStatusRateWritten(characteristic, error);
+		self.Owner->OnCharacteristicWritten(characteristic, error);
 }
 @end
 
@@ -792,6 +819,134 @@ void FMacMachine::FinalizePM5ProbeCapture()
 	}
 }
 
+FRowingCommandResult FMacMachine::ProgramDiagnosticWorkout(
+	const Concept2PM::FDiagnosticWorkoutSpec &Spec)
+{
+	const std::vector<std::uint8_t> Contents =
+		Concept2PM::BuildProgramDiagnosticWorkoutContents(Spec);
+	if (Contents.empty())
+		return {ERowingCommandResultCode::InvalidCurrentState};
+	std::lock_guard<std::mutex> Lock(Mutex);
+	if (State != ERowingConnectionState::Ready || WorkoutProgramInFlight ||
+		ControlServiceDiscoveryInFlight)
+		return {ERowingCommandResultCode::InvalidCurrentState};
+	SendWorkoutProgramCommand(Contents, Spec, /*IsAbort=*/false);
+	return {ERowingCommandResultCode::Accepted};
+}
+
+FRowingCommandResult FMacMachine::AbortDiagnosticWorkout()
+{
+	const std::vector<std::uint8_t> Contents =
+		Concept2PM::BuildAbortDiagnosticWorkoutContents();
+	std::lock_guard<std::mutex> Lock(Mutex);
+	if (State != ERowingConnectionState::Ready || WorkoutProgramInFlight ||
+		ControlServiceDiscoveryInFlight)
+		return {ERowingCommandResultCode::InvalidCurrentState};
+	SendWorkoutProgramCommand(Contents, PendingWorkoutProgramSpec, /*IsAbort=*/true);
+	return {ERowingCommandResultCode::Accepted};
+}
+
+bool FMacMachine::TryPollWorkoutProgramEvent(FWorkoutProgramEvent &OutEvent)
+{
+	std::lock_guard<std::mutex> Lock(Mutex);
+	if (WorkoutProgramEvents.empty())
+		return false;
+	OutEvent = std::move(WorkoutProgramEvents.front());
+	WorkoutProgramEvents.pop_front();
+	return true;
+}
+
+// Caller holds Mutex.
+void FMacMachine::SendWorkoutProgramCommand(
+	std::vector<std::uint8_t> Contents,
+	const Concept2PM::FDiagnosticWorkoutSpec &Spec,
+	bool IsAbort)
+{
+	PendingWorkoutProgramContents = Concept2PM::BuildStandardFrame(Contents);
+	PendingWorkoutProgramSpec = Spec;
+	PendingWorkoutProgramIsAbort = IsAbort;
+	if (PendingWorkoutProgramContents.empty())
+	{
+		EmitWorkoutProgramRejected(
+			Concept2PM::EDiagnosticWorkoutProgramRejectReason::Other);
+		return;
+	}
+	if (ControlReceiveCharacteristic != nil && ControlTransmitCharacteristic != nil)
+	{
+		++WorkoutProgramGeneration;
+		WorkoutProgramInFlight = true;
+		VIRPM5PeripheralDelegate *Delegate =
+			static_cast<VIRPM5PeripheralDelegate *>(PeripheralDelegate);
+		NSData *Value = [NSData dataWithBytes:PendingWorkoutProgramContents.data()
+									   length:PendingWorkoutProgramContents.size()];
+		[Delegate.Peripheral writeValue:Value
+					  forCharacteristic:ControlReceiveCharacteristic
+								   type:CBCharacteristicWriteWithResponse];
+		ArmWorkoutProgramTimeout();
+		return;
+	}
+	// First diagnostic-workout command on this connection: discover the C2 PM
+	// Control service and its receive/transmit characteristics, then send
+	// once OnCharacteristicsDiscovered finds them. WorkoutProgramInFlight
+	// must be set (and a timeout armed) here too, not only once the write
+	// goes out: otherwise a discovery failure has nothing to reject against
+	// (EmitWorkoutProgramRejected's in-flight guard would silently drop it)
+	// and the command would hang forever with no event and no timeout.
+	++WorkoutProgramGeneration;
+	WorkoutProgramInFlight = true;
+	ControlServiceDiscoveryInFlight = true;
+	VIRPM5PeripheralDelegate *Delegate =
+		static_cast<VIRPM5PeripheralDelegate *>(PeripheralDelegate);
+	[Delegate.Peripheral discoverServices:@[
+		[CBUUID UUIDWithString:CharacteristicUuid(Concept2PM::ControlService)]
+	]];
+	ArmWorkoutProgramTimeout();
+}
+
+// Caller holds Mutex.
+void FMacMachine::ArmWorkoutProgramTimeout()
+{
+	const std::uint64_t Generation = WorkoutProgramGeneration;
+	const std::weak_ptr<int> WeakLifetime = LifetimeToken;
+	dispatch_after(
+		dispatch_time(DISPATCH_TIME_NOW,
+					  static_cast<std::int64_t>(WorkoutProgramTimeoutMs) *
+						  NSEC_PER_MSEC),
+		Queue,
+		^{
+		  if (WeakLifetime.expired())
+			  return;
+		  std::lock_guard<std::mutex> Lock(Mutex);
+		  if (!WorkoutProgramInFlight || WorkoutProgramGeneration != Generation)
+			  return;
+		  EmitWorkoutProgramRejected(
+			  Concept2PM::EDiagnosticWorkoutProgramRejectReason::Timeout);
+		});
+}
+
+// Caller holds Mutex.
+void FMacMachine::EmitWorkoutProgramRejected(
+	Concept2PM::EDiagnosticWorkoutProgramRejectReason Reason)
+{
+	if (!WorkoutProgramInFlight)
+		return;
+	FWorkoutProgramEvent Outcome;
+	Outcome.MonotonicTimestampNs = MonotonicNowNs();
+	Outcome.Verified = false;
+	Outcome.RejectReason = Reason;
+	Outcome.RequestedSpec = PendingWorkoutProgramSpec;
+	Outcome.WasAbort = PendingWorkoutProgramIsAbort;
+	WorkoutProgramEvents.push_back(std::move(Outcome));
+	FinishWorkoutProgramTransaction();
+}
+
+// Caller holds Mutex.
+void FMacMachine::FinishWorkoutProgramTransaction()
+{
+	WorkoutProgramInFlight = false;
+	++WorkoutProgramGeneration; // Invalidate any still-pending timeout.
+}
+
 void FMacMachine::RecordCallbackFailure(EPM5CallbackStage Stage,
 										std::uint16_t Characteristic,
 										NSError *Error)
@@ -914,6 +1069,25 @@ void FMacMachine::OnServicesDiscovered(NSError *Error)
 				   ERowingConnectionReason::OperationFailed);
 		return;
 	}
+	if (ControlServiceDiscoveryInFlight)
+	{
+		for (CBService *Service in Delegate.Peripheral.services)
+		{
+			if (!IsUuid(Service.UUID, CharacteristicUuid(Concept2PM::ControlService)))
+				continue;
+			[Delegate.Peripheral
+				discoverCharacteristics:@[
+					[CBUUID UUIDWithString:CharacteristicUuid(Concept2PM::ControlReceive)],
+					[CBUUID UUIDWithString:CharacteristicUuid(Concept2PM::ControlTransmit)],
+				]
+							 forService:Service];
+			return;
+		}
+		ControlServiceDiscoveryInFlight = false;
+		EmitWorkoutProgramRejected(
+			Concept2PM::EDiagnosticWorkoutProgramRejectReason::Other);
+		return;
+	}
 	if (IdentityFinished && ActiveProfile != nullptr &&
 		State == ERowingConnectionState::Subscribing)
 	{
@@ -975,8 +1149,19 @@ void FMacMachine::OnCharacteristicsDiscovered(CBService *Service,
 	std::lock_guard<std::mutex> Lock(Mutex);
 	const bool IsTelemetryService = IsUuid(
 		Service.UUID, @"CE060030-43E5-11E4-916C-0800200C9A66");
+	const bool IsControlService =
+		IsUuid(Service.UUID, CharacteristicUuid(Concept2PM::ControlService));
 	if (Error != nil)
 	{
+		if (IsControlService)
+		{
+			RecordCallbackFailure(
+				EPM5CallbackStage::WorkoutProgramControlWrite, 0, Error);
+			ControlServiceDiscoveryInFlight = false;
+			EmitWorkoutProgramRejected(
+				Concept2PM::EDiagnosticWorkoutProgramRejectReason::Other);
+			return;
+		}
 		RecordCallbackFailure(
 			IsTelemetryService ? EPM5CallbackStage::TelemetryCharacteristicDiscovery
 							   : EPM5CallbackStage::IdentityCharacteristicDiscovery,
@@ -994,6 +1179,34 @@ void FMacMachine::OnCharacteristicsDiscovered(CBService *Service,
 	}
 	VIRPM5PeripheralDelegate *Delegate =
 		static_cast<VIRPM5PeripheralDelegate *>(PeripheralDelegate);
+	if (IsControlService)
+	{
+		ControlServiceDiscoveryInFlight = false;
+		for (CBCharacteristic *Characteristic in Service.characteristics)
+		{
+			if (IsUuid(Characteristic.UUID,
+					   CharacteristicUuid(Concept2PM::ControlReceive)))
+				ControlReceiveCharacteristic = Characteristic;
+			else if (IsUuid(Characteristic.UUID,
+							CharacteristicUuid(Concept2PM::ControlTransmit)))
+				ControlTransmitCharacteristic = Characteristic;
+		}
+		if (ControlReceiveCharacteristic == nil || ControlTransmitCharacteristic == nil)
+		{
+			EmitWorkoutProgramRejected(
+				Concept2PM::EDiagnosticWorkoutProgramRejectReason::Other);
+			return;
+		}
+		++WorkoutProgramGeneration;
+		WorkoutProgramInFlight = true;
+		NSData *Value = [NSData dataWithBytes:PendingWorkoutProgramContents.data()
+									   length:PendingWorkoutProgramContents.size()];
+		[Delegate.Peripheral writeValue:Value
+					  forCharacteristic:ControlReceiveCharacteristic
+								   type:CBCharacteristicWriteWithResponse];
+		ArmWorkoutProgramTimeout();
+		return;
+	}
 	if (IsTelemetryService && ActiveProfile != nullptr)
 	{
 		std::set<std::uint16_t> FoundRequired;
@@ -1084,6 +1297,68 @@ void FMacMachine::OnCharacteristicValue(CBCharacteristic *Characteristic,
 										NSError *Error)
 {
 	std::lock_guard<std::mutex> Lock(Mutex);
+	if (WorkoutProgramInFlight &&
+		IsUuid(Characteristic.UUID, CharacteristicUuid(Concept2PM::ControlTransmit)))
+	{
+		if (Error != nil)
+		{
+			RecordCallbackFailure(EPM5CallbackStage::WorkoutProgramControlRead,
+								  ShortIdFromUuid(Characteristic.UUID),
+								  Error);
+			EmitWorkoutProgramRejected(
+				Concept2PM::EDiagnosticWorkoutProgramRejectReason::Other);
+			return;
+		}
+		const std::uint8_t *Data =
+			static_cast<const std::uint8_t *>(Characteristic.value.bytes);
+		const std::vector<std::uint8_t> Bytes(Data, Data + Characteristic.value.length);
+		const Concept2PM::FCsafeParsedResponse Parsed =
+			Concept2PM::ParseStandardFrameResponse(Bytes);
+		if (!Parsed.FrameWellFormed || !Parsed.ChecksumValid)
+		{
+			EmitWorkoutProgramRejected(
+				Concept2PM::EDiagnosticWorkoutProgramRejectReason::MalformedResponse);
+			return;
+		}
+		if (Parsed.Status.PreviousFrameStatus == Concept2PM::ECsafePreviousFrameStatus::Reject ||
+			Parsed.Status.PreviousFrameStatus == Concept2PM::ECsafePreviousFrameStatus::Bad)
+		{
+			EmitWorkoutProgramRejected(
+				Concept2PM::EDiagnosticWorkoutProgramRejectReason::PM5Nak);
+			return;
+		}
+		if (PendingWorkoutProgramIsAbort)
+		{
+			// A well-formed, non-NAK abort response is success; per the
+			// diagnostic contract, this is never a synthesized success
+			// event — the caller observes the workout ending through the
+			// existing telemetry/ConnectionStateChanged path instead.
+			FinishWorkoutProgramTransaction();
+			return;
+		}
+		const std::optional<Concept2PM::FPM5ProgramReadback> Readback =
+			Concept2PM::ParseProgramVerifyReadback(Parsed);
+		if (!Readback)
+		{
+			// A structural content-parse failure (truncated subcommand,
+			// unrecognized workout-type byte, missing SetWorkoutType) is not
+			// the same thing as WrongCommand's documented meaning — an
+			// echoed-command-bytes-vs-sent-bytes mismatch, which this bounded
+			// spike does not compare. Other's "any other response format or
+			// content anomaly" is the accurate catch-all for this case.
+			EmitWorkoutProgramRejected(
+				Concept2PM::EDiagnosticWorkoutProgramRejectReason::Other);
+			return;
+		}
+		FWorkoutProgramEvent Outcome;
+		Outcome.MonotonicTimestampNs = MonotonicNowNs();
+		Outcome.Verified = true;
+		Outcome.Readback = *Readback;
+		Outcome.RequestedSpec = PendingWorkoutProgramSpec;
+		WorkoutProgramEvents.push_back(std::move(Outcome));
+		FinishWorkoutProgramTransaction();
+		return;
+	}
 	if (IdentityFinished && ActiveProfile != nullptr)
 	{
 		if (Error != nil)
@@ -1174,6 +1449,19 @@ void FMacMachine::OnNotificationState(CBCharacteristic *Characteristic,
 	FinishTelemetryIfReady();
 }
 
+void FMacMachine::OnCharacteristicWritten(CBCharacteristic *Characteristic,
+										  NSError *Error)
+{
+	// The status-rate write and the diagnostic-only control-point write are
+	// independent in-flight writes; route by characteristic short id so one
+	// never mistakenly resolves the other.
+	const std::uint16_t ShortId = ShortIdFromUuid(Characteristic.UUID);
+	if (ShortId == Concept2PM::ControlReceive)
+		OnControlCommandWritten(Characteristic, Error);
+	else
+		OnStatusRateWritten(Characteristic, Error);
+}
+
 void FMacMachine::OnStatusRateWritten(CBCharacteristic *Characteristic,
 									  NSError *Error)
 {
@@ -1199,6 +1487,36 @@ void FMacMachine::OnStatusRateWritten(CBCharacteristic *Characteristic,
 	++StatusRateWriteSuccessCount;
 	StatusRateConfigured = true;
 	FinishTelemetryIfReady();
+}
+
+void FMacMachine::OnControlCommandWritten(CBCharacteristic *Characteristic,
+										  NSError *Error)
+{
+	std::lock_guard<std::mutex> Lock(Mutex);
+	if (!WorkoutProgramInFlight)
+		return;
+	if (Error != nil)
+	{
+		RecordCallbackFailure(EPM5CallbackStage::WorkoutProgramControlWrite,
+							  ShortIdFromUuid(Characteristic.UUID),
+							  Error);
+		EmitWorkoutProgramRejected(
+			Concept2PM::EDiagnosticWorkoutProgramRejectReason::Other);
+		return;
+	}
+	// The write (command) succeeded; the pinned CSAFE definition documents
+	// the transmit characteristic (0x0022) as READ, not Notify/Indicate, so
+	// the response is fetched with an explicit read rather than awaited via
+	// a subscription.
+	VIRPM5PeripheralDelegate *Delegate =
+		static_cast<VIRPM5PeripheralDelegate *>(PeripheralDelegate);
+	if (ControlTransmitCharacteristic == nil)
+	{
+		EmitWorkoutProgramRejected(
+			Concept2PM::EDiagnosticWorkoutProgramRejectReason::Other);
+		return;
+	}
+	[Delegate.Peripheral readValueForCharacteristic:ControlTransmitCharacteristic];
 }
 
 void FMacMachine::FinishTelemetryIfReady()
@@ -1648,6 +1966,14 @@ void FMacMachine::ResetHandshakeState()
 	StatusRateConfigured = false;
 	LastGeneralStatusNs.reset();
 	ReconnectContinuationConfirmed = false;
+	// Characteristic objects from a previous connection are invalid once
+	// disconnected; a diagnostic workout command must rediscover them.
+	ControlReceiveCharacteristic = nil;
+	ControlTransmitCharacteristic = nil;
+	ControlServiceDiscoveryInFlight = false;
+	if (WorkoutProgramInFlight)
+		EmitWorkoutProgramRejected(
+			Concept2PM::EDiagnosticWorkoutProgramRejectReason::Other);
 	std::lock_guard<std::mutex> AcquisitionLock(AcquisitionMutex);
 	AcquisitionQueue.clear();
 }

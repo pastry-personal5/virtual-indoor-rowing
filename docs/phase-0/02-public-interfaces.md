@@ -257,3 +257,48 @@ Owner-confirmed 2026-09-17. This is `Source/LocalData`'s public contract for the
 - `ScanAndRecover(path)` — free function returning `FLocalDataRecoveryReport { HighestVerifiedSequence, TruncatedChunkCount, DuplicateChunkCount, RecoveredAfterUncleanExit }`. Validates every `sample_chunks` row's CRC32C in ascending `first_sequence` order, deletes an incomplete/corrupt trailing row rather than the whole session (truncate-incomplete-tail), deletes any row whose sequence range duplicates one already kept (deduplicate-on-reconciliation), and — if the highest-sequence `journal_events` row for a session is not a terminal kind — records a `RecoveredAfterUncleanExit` marker event and sets the report flag. Idempotent: safe to call again on an already-recovered file.
 
 Compatibility: this interface is diagnostic-only and may change without a compatibility note as long as it stays scoped to Milestone 4 Spike B; it is not yet a stable public contract in the sense the rules above describe for the device/telemetry interfaces, since no other module depends on it.
+
+## Diagnostic managed-workout interface (Phase 0 Milestone 4 Spike A contract checkpoint)
+
+Owner-confirmed 2026-09-17. This is the diagnostic-only program/verify contract for the bounded managed-workout spike in [Milestone 4](07-milestone-4-spikes.md) — not a product managed-workout feature or a `RowingDevice` public control API. It extends the existing `DiagnosticOnly`/`DiagnosticSampleObserved` precedent: reachable only from an already-`Ready` machine under the `make hil-pm5` diagnostic path, using only published Concept2 CSAFE commands, and never consumed by workout, persistence, or ranking logic.
+
+### `EDiagnosticWorkoutKind`
+
+- `Distance`
+- `Time`
+- `TimeInterval`
+
+Implementation note (added once the pinned CSAFE definition's worked examples were available, see `Plugins/Concept2PM/Source/Concept2PMCore/Public/Concept2PMCore/Concept2PMWorkoutProtocol.h`): a distance-based interval kind is not included. The published "Fixed Time Interval"/"Fixed Distance Interval" examples and the PM state-transition appendix both show these as undefined-repeat-count workouts (the PM repeats work/rest until a deliberate terminate), so this bounded spike implements only the time-based interval, which is sufficient for the milestone's "one interval workout" acceptance case.
+
+### `FDiagnosticWorkoutSpec`
+
+| Field | Type | Meaning |
+|---|---|---|
+| `Kind` | `EDiagnosticWorkoutKind` | Which CSAFE program shape to build |
+| `DistanceMm` | optional `uint32` | Required for `Distance` |
+| `DurationMs` | optional `uint32` | Required for `Time`; also the per-work-segment duration for `TimeInterval` |
+| `IntervalRestMs` | optional `uint32` | Required for `TimeInterval` |
+
+Each `Kind` requires a specific combination of the optional fields above (`Distance` and `Time` each require exactly one; `TimeInterval` requires both `DurationMs` and `IntervalRestMs` together); a spec missing a field its `Kind` requires, or carrying a value below the wire format's unit granularity or outside the PM5 parameter limits recorded in the pinned CSAFE definition's Table 19, is rejected before any command is sent (`ValidateDiagnosticWorkoutSpec`).
+
+### Commands
+
+- `ProgramDiagnosticWorkout(FDiagnosticWorkoutSpec)` — builds and sends the CSAFE configure/start transaction for the given spec. Returns `FRowingCommandResult` (`Accepted` or an immediate rejection category); acceptance here means the command was sent, not that the PM5 verified it.
+- `AbortDiagnosticWorkout()` — sends the CSAFE end/abort transaction for a program in progress. Returns `FRowingCommandResult` the same way.
+
+Both commands are non-blocking, consistent with the existing lifecycle contract; outcomes are observed only through the events below.
+
+### Events
+
+| Kind | Payload | Coalescing |
+|---|---|---|
+| `WorkoutProgramVerified` | `FDiagnosticWorkoutSpec` read back from the PM5 (type/duration/state as configured) | Never coalesced |
+| `WorkoutProgramRejected` | stable categorical reason (`MalformedResponse`, `PM5Nak`, `WrongCommand`, `Timeout`, `Other`) plus the rejected `FDiagnosticWorkoutSpec` | Never coalesced |
+
+`WorkoutProgramVerified` is the observable form of the acceptance gate's read-back check: the caller compares its payload against the requested `FDiagnosticWorkoutSpec`. A deliberate abort while a program is active is observed as either `WorkoutProgramRejected` (if the PM5 naks the abort) or a `ConnectionStateChanged` transition back to `Ready` (if the abort succeeds and no program remains active) — never a synthesized success event. As with `FRowingFault`, neither event carries raw CSAFE bytes.
+
+Compatibility: this interface is diagnostic-only and may change without a compatibility note as long as it stays scoped to Milestone 4 Spike A; it is not yet a stable public contract in the sense the rules above describe for the device/telemetry interfaces, since no other module depends on it.
+
+Wire-level implementation status (2026-09-17): `Concept2PM::BuildProgramDiagnosticWorkoutContents`/`BuildAbortDiagnosticWorkoutContents` build the CSAFE command bytes for this contract from the pinned Concept2 PM CSAFE Communication Definition transcribed at `docs/archive/research/2026-09-12-concept2-pm-csafe-communication-definition.md` (its "Proprietary CSAFE Workout Configuration" and "Terminate Workout" sample frames). `Concept2PM::BuildStandardFrame`/`ParseStandardFrameResponse` implement the generic CSAFE standard-frame codec (byte stuffing, XOR checksum) the prose of that document describes. `Plugins/Concept2PM/Tests/Concept2PMWorkoutProtocolTests.cpp` reproduces the Abort and JustRow command bytes against that document's worked examples exactly, and the Distance/Time/TimeInterval command bytes match the same document's opcode/field structure (Distance and Time deliberately set the split-duration field equal to the full workout, using the `*_NOSPLITS` workout-type opcode, rather than reproducing the document's own smaller split-value examples). Two of that transcribed document's own checksum table cells ("Terminate Workout" and "Fixed Time Interval") do not reproduce from their own listed content bytes under the document's own prose-stated XOR algorithm — cross-checked against two other examples (JustRow, Fixed Distance Interval) whose checksums do reproduce exactly, so this is treated as a transcription artifact in those two cells, not an error in the algorithm; `BuildStandardFrame` always computes the checksum programmatically rather than trusting any transcribed digit, so this cannot affect a byte actually sent to a PM5. `Concept2PM::ParseProgramVerifyReadback` parses the echoed command's response *data* into an `FPM5ProgramReadback` (`Type`/`DurationMs`) comparable against the requested `FDiagnosticWorkoutSpec`: it scans `ParseStandardFrameResponse`'s unparsed `ResponseContent` for the echoed `SetWorkoutType`/`SetWorkoutDuration` subcommands and returns `std::nullopt` (never a fabricated success) for a frame that failed checksum validation, a truncated subcommand, or an unrecognized workout-type byte.
+
+`pm5-tui`/`make hil-pm5` command wiring (Spike A work-sequence step 3) is done: `IConcept2PMRunDiagnostics` (`Plugins/Concept2PM/Source/Concept2PMMac/Public/Concept2PMMac/Concept2PMRunDiagnostics.h`) — not `IRowingMachine`, matching this contract's "not a `RowingDevice` public control API" scoping — gained `ProgramDiagnosticWorkout`/`AbortDiagnosticWorkout`/`TryPollWorkoutProgramEvent`. `FMacMachine` (`Concept2PMDiscoveryMac.mm`) implements the real transaction: it lazily discovers the C2 PM Control service (`Concept2PM::ControlService` 0x0020, receive characteristic 0x0021, transmit characteristic 0x0022) the first time a workout command is sent from `Ready`, writes the framed command to the receive characteristic, and — since the pinned CSAFE definition documents the transmit characteristic as READ rather than Notify/Indicate — issues an explicit read for the response rather than awaiting a subscription. A 2-second in-flight timeout guards an unresponsive PM5. `pm5-tui` exposes this as interactive buttons (gated behind `--hardware-probe`, i.e. `make hil-pm5`) and `--script` commands (`program-distance`/`program-time`/`program-interval`/`abort-workout`) using the milestone's canonical example specs (2000 m distance, 20:00 time, 2:00 work/:30 rest interval). Not yet done: the real-PM5 acceptance runs (step 4: one distance, one time, one interval workout, and one deliberate reject/abort), which are owner-run hardware evidence — the CoreBluetooth write/read path above has not been exercised against a real PM5.

@@ -14,6 +14,12 @@
 namespace Concept2PM
 {
 	inline constexpr std::uint16_t DeviceInformationService = 0x0010;
+	// C2 PM Control primary service (diagnostic-only managed-workout spike,
+	// Phase 0 Milestone 4 Spike A). Carries CSAFE command/response frames;
+	// never subscribed to for passive telemetry.
+	inline constexpr std::uint16_t ControlService = 0x0020;
+	inline constexpr std::uint16_t ControlReceive = 0x0021;	 // WRITE: CSAFE command to the PM.
+	inline constexpr std::uint16_t ControlTransmit = 0x0022; // READ: CSAFE response from the PM.
 	inline constexpr std::uint16_t RowingService = 0x0030;
 	inline constexpr std::uint16_t GeneralStatus = 0x0031;
 	inline constexpr std::uint16_t AdditionalStatus1 = 0x0032;

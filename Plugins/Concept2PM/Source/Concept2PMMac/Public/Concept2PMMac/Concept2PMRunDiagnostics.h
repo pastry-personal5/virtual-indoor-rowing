@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Concept2PMCore/Concept2PMProtocol.h"
+#include "Concept2PMCore/Concept2PMWorkoutProtocol.h"
 
 #include <cstdint>
 #include <cstddef>
@@ -16,7 +17,9 @@ enum class EPM5CallbackStage : std::uint8_t
 	IdentityRead,
 	TelemetryValueUpdate,
 	NotificationSubscription,
-	StatusRateWrite
+	StatusRateWrite,
+	WorkoutProgramControlWrite,
+	WorkoutProgramControlRead
 };
 
 enum class EPM5ErrorDomain : std::uint8_t
@@ -109,6 +112,27 @@ struct FPM5RunDiagnostics
 	FPM5ProbeCaptureDiagnostics ProbeCapture;
 };
 
+// One outcome of a diagnostic-only program/verify or abort transaction, per
+// docs/phase-0/02-public-interfaces.md ("Diagnostic managed-workout
+// interface", Phase 0 Milestone 4 Spike A). Never coalesced: each
+// ProgramDiagnosticWorkout/AbortDiagnosticWorkout call produces at most one
+// of these once its transaction resolves (verified, rejected, or timed out).
+struct FWorkoutProgramEvent
+{
+	std::uint64_t MonotonicTimestampNs = 0;
+	// When true, Readback is the PM5's echoed program (comparable against
+	// RequestedSpec); when false, RejectReason explains why no program was
+	// verified and Readback is left at its default value.
+	bool Verified = false;
+	Concept2PM::FPM5ProgramReadback Readback;
+	Concept2PM::EDiagnosticWorkoutProgramRejectReason RejectReason =
+		Concept2PM::EDiagnosticWorkoutProgramRejectReason::Other;
+	Concept2PM::FDiagnosticWorkoutSpec RequestedSpec;
+	// True for the outcome of AbortDiagnosticWorkout(); RequestedSpec is then
+	// the spec that was active (if known) rather than a newly requested one.
+	bool WasAbort = false;
+};
+
 class IConcept2PMRunDiagnostics
 {
   public:
@@ -116,4 +140,15 @@ class IConcept2PMRunDiagnostics
 	virtual FPM5RunDiagnostics GetPM5RunDiagnostics() const = 0;
 	virtual bool TryPollPM5ProbePacket(FPM5ProbePacketEvidence &OutEvidence) = 0;
 	virtual void FinalizePM5ProbeCapture() = 0;
+
+	// Diagnostic-only managed-workout program/verify and abort transactions
+	// (Phase 0 Milestone 4 Spike A). Reachable only from an already-Ready
+	// machine; never consumed by workout, persistence, or ranking logic. Both
+	// commands are non-blocking — acceptance here means the command was sent,
+	// not that the PM5 verified or aborted it; outcomes arrive later through
+	// TryPollWorkoutProgramEvent.
+	virtual FRowingCommandResult
+	ProgramDiagnosticWorkout(const Concept2PM::FDiagnosticWorkoutSpec &Spec) = 0;
+	virtual FRowingCommandResult AbortDiagnosticWorkout() = 0;
+	virtual bool TryPollWorkoutProgramEvent(FWorkoutProgramEvent &OutEvent) = 0;
 };

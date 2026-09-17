@@ -2,6 +2,13 @@
 
 This document records changes to the bounded diagnostic milestones that contribute to delivery Phase 0. It does not assert completion of the delivery Phase 0 exit gate.
 
+## Unreleased
+
+### Added
+
+- **Phase 0 Milestone 4 Spike A:** Wired the diagnostic-only managed-workout program/verify and abort transaction into `pm5-tui` under `make hil-pm5`/`--hardware-probe`, work-sequence step 3 of [Milestone 4](07-milestone-4-spikes.md). Added `ProgramDiagnosticWorkout`/`AbortDiagnosticWorkout`/`TryPollWorkoutProgramEvent` to `IConcept2PMRunDiagnostics` (never `IRowingMachine`, consistent with the contract's "not a `RowingDevice` public control API" scoping) and implemented the real CoreBluetooth path in `FMacMachine`: lazy discovery of the C2 PM Control service (`0x0020`/receive `0x0021`/transmit `0x0022`), a write-then-read transaction (the pinned CSAFE definition documents the transmit characteristic as READ, not Notify/Indicate), a 2-second in-flight timeout (armed from the start of control-service discovery, not only after the write, so a discovery failure is never silently dropped), and PM5 NAK/malformed-response/unrecognized-command rejection paths. Added interactive TUI buttons (Program Distance/Time/Interval, Abort Workout, gated behind `--hardware-probe`) and equivalent `--script` commands (`program-distance`/`program-time`/`program-interval`/`abort-workout`, also gated behind `--hardware-probe`) for scripted coverage without hardware.
+- **Phase 0 Milestone 4 Spike A:** Prepared step 4 (real-PM5 acceptance runs) evidence gathering: every `WorkoutProgramEvent` (verified readback or reject reason, plus the originally requested spec) is now recorded both to the rotating `Logs/pm5-tui/pm5-tui.log` and as a structured `workout_program_event` record in the per-run `Metrics/pm5-tui/*.jsonl`, covered by `pm5_tui_metrics_writer_tests`. Added a "Milestone 4 Spike A evidence" section to [the evidence report](04-evidence-report.md) recording steps 1–3 as unit-tested `Pass` and step 4 as `Pending`, with the exact procedure and log fields the owner checks for each of the four real-PM5 runs. Step 4 itself remains owner-run hardware evidence, not yet recorded.
+
 ## 2026-09-14
 
 - **Phase 0 Milestones 1–2:** Classified the diagnostic packet as a bounded contribution to delivery Phase 0.

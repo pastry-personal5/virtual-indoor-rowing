@@ -117,6 +117,22 @@ int main()
 			0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f};
 		Writer.RecordProbePacket(Evidence);
 		Writer.RecordAction(PM5Tui::EPM5TuiRunAction::ScanStarted);
+		FWorkoutProgramEvent Verified;
+		Verified.MonotonicTimestampNs = 2'000'000'000ULL;
+		Verified.Verified = true;
+		Verified.Readback.Type = Concept2PM::EDiagnosticWorkoutKind::Time;
+		Verified.Readback.DurationMs = 1'200'000;
+		Verified.RequestedSpec.Kind = Concept2PM::EDiagnosticWorkoutKind::Time;
+		Verified.RequestedSpec.DurationMs = 1'200'000;
+		Writer.RecordWorkoutProgramEvent(Verified);
+		FWorkoutProgramEvent Rejected;
+		Rejected.MonotonicTimestampNs = 2'100'000'000ULL;
+		Rejected.Verified = false;
+		Rejected.WasAbort = true;
+		Rejected.RejectReason = Concept2PM::EDiagnosticWorkoutProgramRejectReason::PM5Nak;
+		Rejected.RequestedSpec.Kind = Concept2PM::EDiagnosticWorkoutKind::Distance;
+		Rejected.RequestedSpec.DistanceMm = 2'000'000;
+		Writer.RecordWorkoutProgramEvent(Rejected);
 		Writer.RecordRunStopped(Summary);
 	}
 
@@ -206,6 +222,15 @@ int main()
 	assert(Contents.find("\"stop_reason\":\"run_stopped\"") !=
 		   std::string::npos);
 	assert(Contents.find("\"observed_at_utc\":\"20") != std::string::npos);
+	assert(Contents.find("\"event\":\"workout_program_event\",\"observed_at_utc\":\"") !=
+		   std::string::npos);
+	assert(Contents.find("\"monotonic_timestamp_ns\":2000000000") != std::string::npos);
+	assert(Contents.find(
+			   "\"verified\":true,\"was_abort\":false,\"requested_kind\":\"time\",\"requested_distance_mm\":null,\"requested_duration_ms\":1200000,\"requested_interval_rest_ms\":null,\"readback_type\":\"time\",\"readback_duration_ms\":1200000") !=
+		   std::string::npos);
+	assert(Contents.find(
+			   "\"verified\":false,\"was_abort\":true,\"requested_kind\":\"distance\",\"requested_distance_mm\":2000000,\"requested_duration_ms\":null,\"requested_interval_rest_ms\":null,\"reject_reason\":\"pm5_nak\"") !=
+		   std::string::npos);
 
 	const auto FilePermissions = std::filesystem::status(MetricsPath).permissions();
 	assert((FilePermissions & (std::filesystem::perms::group_all |

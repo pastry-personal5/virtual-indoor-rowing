@@ -287,10 +287,93 @@ namespace
 		return "Unknown";
 	}
 
+	const char *ToString(Concept2PM::EDiagnosticWorkoutKind Value)
+	{
+		switch (Value)
+		{
+		case Concept2PM::EDiagnosticWorkoutKind::Distance:
+			return "Distance";
+		case Concept2PM::EDiagnosticWorkoutKind::Time:
+			return "Time";
+		case Concept2PM::EDiagnosticWorkoutKind::TimeInterval:
+			return "TimeInterval";
+		}
+		return "Unknown";
+	}
+
+	const char *ToString(Concept2PM::EDiagnosticWorkoutProgramRejectReason Value)
+	{
+		switch (Value)
+		{
+		case Concept2PM::EDiagnosticWorkoutProgramRejectReason::MalformedResponse:
+			return "MalformedResponse";
+		case Concept2PM::EDiagnosticWorkoutProgramRejectReason::PM5Nak:
+			return "PM5Nak";
+		case Concept2PM::EDiagnosticWorkoutProgramRejectReason::WrongCommand:
+			return "WrongCommand";
+		case Concept2PM::EDiagnosticWorkoutProgramRejectReason::Timeout:
+			return "Timeout";
+		case Concept2PM::EDiagnosticWorkoutProgramRejectReason::Other:
+			return "Other";
+		}
+		return "Unknown";
+	}
+
 	template <typename T>
 	std::string OptionalValue(const std::optional<T> &Value)
 	{
 		return Value ? std::to_string(*Value) : "—";
+	}
+
+	// The three canonical example specs used by this bounded diagnostic
+	// spike's acceptance gate: one distance workout, one time workout, and
+	// one time-interval workout (docs/phase-0/07-milestone-4-spikes.md,
+	// "Spike A"), matching the published CSAFE worked examples this file's
+	// unit tests already reproduce byte-for-byte.
+	Concept2PM::FDiagnosticWorkoutSpec MakeExampleDistanceWorkoutSpec()
+	{
+		Concept2PM::FDiagnosticWorkoutSpec Spec;
+		Spec.Kind = Concept2PM::EDiagnosticWorkoutKind::Distance;
+		Spec.DistanceMm = 2'000'000; // 2000 m.
+		return Spec;
+	}
+
+	Concept2PM::FDiagnosticWorkoutSpec MakeExampleTimeWorkoutSpec()
+	{
+		Concept2PM::FDiagnosticWorkoutSpec Spec;
+		Spec.Kind = Concept2PM::EDiagnosticWorkoutKind::Time;
+		Spec.DurationMs = 1'200'000; // 20:00.
+		return Spec;
+	}
+
+	Concept2PM::FDiagnosticWorkoutSpec MakeExampleTimeIntervalWorkoutSpec()
+	{
+		Concept2PM::FDiagnosticWorkoutSpec Spec;
+		Spec.Kind = Concept2PM::EDiagnosticWorkoutKind::TimeInterval;
+		Spec.DurationMs = 120'000;	  // 2:00 work.
+		Spec.IntervalRestMs = 30'000; // :30 rest.
+		return Spec;
+	}
+
+	std::string FormatWorkoutProgramEvent(const FWorkoutProgramEvent &Event)
+	{
+		std::ostringstream Text;
+		if (Event.WasAbort)
+		{
+			Text << (Event.Verified ? "Abort verified" : "Abort rejected");
+		}
+		else if (Event.Verified)
+		{
+			Text << "Program verified: " << ToString(Event.Readback.Type);
+			if (Event.Readback.DurationMs)
+				Text << " duration_ms=" << *Event.Readback.DurationMs;
+		}
+		else
+		{
+			Text << "Program rejected: " << ToString(Event.RejectReason)
+				 << " (requested " << ToString(Event.RequestedSpec.Kind) << ")";
+		}
+		return Text.str();
 	}
 
 	std::string FormatQualityFlags(FRowingQualityFlags Flags)
@@ -480,6 +563,37 @@ namespace
 				   "event=TelemetryStale last_sequence=" +
 					   std::to_string(Stale.LastSequence) + " age_ms=" +
 					   std::to_string(Stale.AgeMs));
+	}
+
+	// Full detail (requested spec, and readback or reject reason) is logged
+	// here — not just verified/was_abort — so a real-PM5 acceptance run
+	// (Phase 0 Milestone 4 Spike A step 4) has a durable record in
+	// Logs/pm5-tui/pm5-tui.log to check the read-back type/duration against
+	// the configured request, even in interactive mode where stdout is not
+	// captured.
+	void LogWorkoutProgramEvent(const FWorkoutProgramEvent &Event,
+								PM5Tui::FRotatingFileLogger &Logger)
+	{
+		std::string Message =
+			"event=WorkoutProgramEvent verified=" +
+			std::string(Event.Verified ? "true" : "false") +
+			" was_abort=" + std::string(Event.WasAbort ? "true" : "false") +
+			" requested_kind=" + ToString(Event.RequestedSpec.Kind) +
+			" requested_distance_mm=" + OptionalValue(Event.RequestedSpec.DistanceMm) +
+			" requested_duration_ms=" + OptionalValue(Event.RequestedSpec.DurationMs) +
+			" requested_interval_rest_ms=" +
+			OptionalValue(Event.RequestedSpec.IntervalRestMs);
+		if (Event.Verified)
+		{
+			Message += " readback_type=" + std::string(ToString(Event.Readback.Type)) +
+					   " readback_duration_ms=" + OptionalValue(Event.Readback.DurationMs);
+		}
+		else
+		{
+			Message += " reject_reason=" + std::string(ToString(Event.RejectReason));
+		}
+		Logger.Log(Event.Verified ? PM5Tui::ELogLevel::Info : PM5Tui::ELogLevel::Warning,
+				   Message);
 	}
 
 	void RecordSample(const FRowingMetricSample &Sample, FDisplaySnapshot &Snapshot)
@@ -737,6 +851,13 @@ namespace
 				FPM5ProbePacketEvidence Evidence;
 				while (PM5Diagnostics->TryPollPM5ProbePacket(Evidence))
 					Metrics.RecordProbePacket(Evidence);
+				FWorkoutProgramEvent WorkoutEvent;
+				while (PM5Diagnostics->TryPollWorkoutProgramEvent(WorkoutEvent))
+				{
+					LogWorkoutProgramEvent(WorkoutEvent, Logger);
+					Metrics.RecordWorkoutProgramEvent(WorkoutEvent);
+					std::cout << FormatWorkoutProgramEvent(WorkoutEvent) << '\n';
+				}
 			}
 		}
 	}
@@ -1049,6 +1170,13 @@ namespace
 					FPM5ProbePacketEvidence Evidence;
 					while (PM5Diagnostics->TryPollPM5ProbePacket(Evidence))
 						Metrics.RecordProbePacket(Evidence);
+					FWorkoutProgramEvent WorkoutEvent;
+					while (PM5Diagnostics->TryPollWorkoutProgramEvent(WorkoutEvent))
+					{
+						LogWorkoutProgramEvent(WorkoutEvent, Logger);
+						Metrics.RecordWorkoutProgramEvent(WorkoutEvent);
+						AddHistory(FormatWorkoutProgramEvent(WorkoutEvent));
+					}
 				}
 			}
 		}
@@ -1215,6 +1343,48 @@ namespace
 			AddHistory("Connection requested");
 		}
 
+		// Diagnostic-only managed-workout commands (Phase 0 Milestone 4 Spike
+		// A). Reachable only under --hardware-probe (make hil-pm5), matching
+		// the DiagnosticOnly/DiagnosticSampleObserved precedent's owner-run
+		// real-hardware gating; never a production workout control surface.
+		void ProgramWorkout(const Concept2PM::FDiagnosticWorkoutSpec &Spec,
+							PM5Tui::EPM5TuiRunAction Action)
+		{
+			auto *PM5Diagnostics =
+				Machine ? dynamic_cast<IConcept2PMRunDiagnostics *>(Machine.get())
+						: nullptr;
+			if (!PM5Diagnostics)
+			{
+				Snapshot.LatestIssue =
+					"Connect to a Ready PM5 before programming a diagnostic workout";
+				return;
+			}
+			Metrics.RecordAction(Action);
+			const FRowingCommandResult Result =
+				PM5Diagnostics->ProgramDiagnosticWorkout(Spec);
+			AddHistory(Result.IsAccepted()
+						   ? "Diagnostic workout program requested"
+						   : "Diagnostic workout program rejected: PM5 not Ready");
+		}
+
+		void AbortWorkout()
+		{
+			auto *PM5Diagnostics =
+				Machine ? dynamic_cast<IConcept2PMRunDiagnostics *>(Machine.get())
+						: nullptr;
+			if (!PM5Diagnostics)
+			{
+				Snapshot.LatestIssue =
+					"Connect to a Ready PM5 before aborting a diagnostic workout";
+				return;
+			}
+			Metrics.RecordAction(PM5Tui::EPM5TuiRunAction::AbortWorkoutRequested);
+			const FRowingCommandResult Result = PM5Diagnostics->AbortDiagnosticWorkout();
+			AddHistory(Result.IsAccepted()
+						   ? "Diagnostic workout abort requested"
+						   : "Diagnostic workout abort rejected: PM5 not Ready");
+		}
+
 		void ForgetRememberedMachine()
 		{
 			if (Machine)
@@ -1248,11 +1418,26 @@ namespace
 											  { ForgetRememberedMachine(); });
 			const auto Quit = ftxui::Button("Quit", [&Screen]
 											{ Screen.Exit(); });
+			const auto ProgramDistance = ftxui::Button("Program Distance", [this]
+													   { ProgramWorkout(MakeExampleDistanceWorkoutSpec(), PM5Tui::EPM5TuiRunAction::ProgramDistanceWorkoutRequested); });
+			const auto ProgramTime = ftxui::Button("Program Time", [this]
+												   { ProgramWorkout(MakeExampleTimeWorkoutSpec(), PM5Tui::EPM5TuiRunAction::ProgramTimeWorkoutRequested); });
+			const auto ProgramInterval = ftxui::Button("Program Interval", [this]
+													   { ProgramWorkout(MakeExampleTimeIntervalWorkoutSpec(), PM5Tui::EPM5TuiRunAction::ProgramTimeIntervalWorkoutRequested); });
+			const auto AbortWorkoutButton = ftxui::Button("Abort Workout", [this]
+														  { AbortWorkout(); });
 			const auto Menu = ftxui::Menu(&CandidateLabels, &SelectedCandidate);
-			const auto Actions = ftxui::Container::Vertical({
+			std::vector<ftxui::Component> ActionRows{
 				ftxui::Container::Horizontal({Scan, Stop, Select, ConnectButton, Disconnect}),
-				ftxui::Container::Horizontal({Forget, Quit}),
-			});
+			};
+			// Diagnostic-only managed-workout commands are reachable only
+			// under --hardware-probe (make hil-pm5): a real, owner-run PM5
+			// session, matching the DiagnosticOnly precedent's gating.
+			if (HardwareProbeEnabled)
+				ActionRows.push_back(ftxui::Container::Horizontal(
+					{ProgramDistance, ProgramTime, ProgramInterval, AbortWorkoutButton}));
+			ActionRows.push_back(ftxui::Container::Horizontal({Forget, Quit}));
+			const auto Actions = ftxui::Container::Vertical(ActionRows);
 			const auto Controls = ftxui::Container::Vertical({
 				Actions,
 				Menu,
@@ -1325,7 +1510,11 @@ int main(int argc, char **argv)
 		std::cout << "PM5 Diagnostic\n"
 				  << "Interactive: run without arguments.\n"
 				  << "Hardware probe: --hardware-probe (owner-only bounded raw telemetry capture).\n"
-				  << "Script: --script <status|scan|stop|select N|connect|disconnect|forget|quit>...\n";
+				  << "Script: --script <status|scan|stop|select N|connect|disconnect|"
+				  << "program-distance|program-time|program-interval|abort-workout|forget|quit>...\n"
+				  << "  program-distance/program-time/program-interval/abort-workout are\n"
+				  << "  diagnostic-only managed-workout commands (Phase 0 Milestone 4 Spike A);\n"
+				  << "  they require a connected, Ready PM5.\n";
 		return 0;
 	}
 	if (std::string_view(argv[ArgumentIndex]) != "--script")
@@ -1391,6 +1580,51 @@ int main(int argc, char **argv)
 		{
 			Metrics.RecordAction(PM5Tui::EPM5TuiRunAction::DisconnectRequested);
 			Machine->Disconnect();
+		}
+		else if (Command == "program-distance" || Command == "program-time" ||
+				 Command == "program-interval" || Command == "abort-workout")
+		{
+			// Diagnostic-only managed-workout commands are reachable only
+			// under --hardware-probe (make hil-pm5), matching the
+			// interactive TUI's gating and the DiagnosticOnly precedent's
+			// owner-run real-hardware restriction; never a production
+			// workout control surface.
+			if (!HardwareProbeEnabled)
+			{
+				std::cout << "diagnostic workout commands require --hardware-probe (make hil-pm5)\n";
+				continue;
+			}
+			auto *PM5Diagnostics =
+				Machine ? dynamic_cast<IConcept2PMRunDiagnostics *>(Machine.get())
+						: nullptr;
+			if (!PM5Diagnostics)
+			{
+				std::cout << "no device selected or not connected; use select and connect first\n";
+				continue;
+			}
+			FRowingCommandResult Result;
+			if (Command == "program-distance")
+			{
+				Metrics.RecordAction(PM5Tui::EPM5TuiRunAction::ProgramDistanceWorkoutRequested);
+				Result = PM5Diagnostics->ProgramDiagnosticWorkout(MakeExampleDistanceWorkoutSpec());
+			}
+			else if (Command == "program-time")
+			{
+				Metrics.RecordAction(PM5Tui::EPM5TuiRunAction::ProgramTimeWorkoutRequested);
+				Result = PM5Diagnostics->ProgramDiagnosticWorkout(MakeExampleTimeWorkoutSpec());
+			}
+			else if (Command == "program-interval")
+			{
+				Metrics.RecordAction(PM5Tui::EPM5TuiRunAction::ProgramTimeIntervalWorkoutRequested);
+				Result = PM5Diagnostics->ProgramDiagnosticWorkout(MakeExampleTimeIntervalWorkoutSpec());
+			}
+			else
+			{
+				Metrics.RecordAction(PM5Tui::EPM5TuiRunAction::AbortWorkoutRequested);
+				Result = PM5Diagnostics->AbortDiagnosticWorkout();
+			}
+			std::cout << "workout command " << Command
+					  << (Result.IsAccepted() ? " accepted\n" : " rejected: PM5 not Ready\n");
 		}
 		else if (Command == "forget")
 		{

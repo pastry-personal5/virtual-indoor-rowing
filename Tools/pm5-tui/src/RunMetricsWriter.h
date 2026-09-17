@@ -19,7 +19,11 @@ namespace PM5Tui
 		ScanStopped,
 		CandidateSelected,
 		ConnectRequested,
-		DisconnectRequested
+		DisconnectRequested,
+		ProgramDistanceWorkoutRequested,
+		ProgramTimeWorkoutRequested,
+		ProgramTimeIntervalWorkoutRequested,
+		AbortWorkoutRequested
 	};
 
 	struct FQueueMetricsSummary
@@ -86,6 +90,7 @@ namespace PM5Tui
 		void RecordStrokeMetrics(const FRowingStrokeMetrics &Stroke,
 								 std::uint64_t MonotonicTimestampNs);
 		void RecordProbePacket(const FPM5ProbePacketEvidence &Evidence);
+		void RecordWorkoutProgramEvent(const FWorkoutProgramEvent &Event);
 		void RecordRunStopped(const FRunMetricsSummary &Summary);
 		bool IsAvailable() const;
 		std::filesystem::path CurrentMetricsPath() const;
