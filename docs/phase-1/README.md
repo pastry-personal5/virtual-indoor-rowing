@@ -52,7 +52,7 @@ Milestones have not yet been scoped against this build order — see "Open quest
 ## Exit gate (from the delivery plan)
 
 - FR-002/003/004/007 demonstrated on real Model D/PM5 and simulator.
-- 60-minute hardware run meets preliminary latency/durability; process-kill recovery evidence exists.
+- 6-minute hardware run meets preliminary latency/durability; process-kill recovery evidence exists. Reduced from an originally specified 60 minutes, an explicit owner-directed scope reduction (2026-09-17); see [the delivery plan](../architecture/10-delivery-plan.md#phase-1--walking-skeleton-46-weeks). Full 60-minute latency/durability evidence remains open as later follow-on.
 - No account, subscription, external integration, or multiplayer required to complete the row.
 - Design partners can attempt the supported setup without an engineer driving the UI; failures are categorized and feed the delivery Phase 2 estimate.
 

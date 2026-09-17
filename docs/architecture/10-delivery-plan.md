@@ -107,7 +107,7 @@ An unsigned, ad-hoc-built internal macOS app (per [ADR-0008](../adr/0008-defer-m
 ### Exit gate
 
 - FR-002/003/004/007 demonstrated on real Model D/PM5 and simulator.
-- 60-minute hardware run meets preliminary latency/durability; process-kill recovery evidence exists.
+- 6-minute hardware run meets preliminary latency/durability; process-kill recovery evidence exists. Reduced from an originally specified 60 minutes, an explicit owner-directed scope reduction (2026-09-17), consistent with the same 60-to-6-minute reduction already applied to the Phase 0 Milestone 4 Spike C visual-performance proxy run. Full 60-minute latency/durability evidence remains open as later follow-on, not satisfied by this exit gate.
 - No account, subscription, external integration, or multiplayer required to complete the row.
 - Design partners can attempt the supported setup without an engineer driving the UI; failures are categorized and feed the delivery Phase 2 estimate.
 
