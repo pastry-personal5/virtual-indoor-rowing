@@ -1,6 +1,6 @@
 # Delivery Phase 1: walking skeleton
 
-Status: Open (per [ADR-0010](../adr/0010-defer-remaining-phase-0-spike-evidence-to-phase-4.md), 2026-09-17); no milestone scoped or started yet
+Status: Open (per [ADR-0010](../adr/0010-defer-remaining-phase-0-spike-evidence-to-phase-4.md), 2026-09-17); milestones are scoped one at a time, immediately before each one's implementation — none scoped or started yet
 Owner: A0 — CTO / Principal Architect
 Last reviewed: 2026-09-17
 
@@ -56,9 +56,12 @@ Milestones have not yet been scoped against this build order — see "Open quest
 - No account, subscription, external integration, or multiplayer required to complete the row.
 - Design partners can attempt the supported setup without an engineer driving the UI; failures are categorized and feed the delivery Phase 2 estimate.
 
+## Milestone scoping approach
+
+Owner-confirmed (2026-09-17): Phase 1 milestones are **not** pre-planned as a full breakdown of the seven-step build order above. Each milestone is scoped individually, immediately before its own implementation begins — an A0 contract checkpoint per milestone, the same pattern Phase 0 Milestone 4 used per spike, applied here per milestone instead of committing to a fixed decomposition up front. The build order above is the reference sequence a milestone's scope is drawn from, not a milestone list itself.
+
 ## Open questions
 
-- Milestone breakdown: whether to follow the seven-step build order directly (one milestone per step, or grouped, mirroring how Phase 0 Milestone 4 bundled three spikes) needs an A0 decision before implementation starts on any of it, consistent with the "contract checkpoint" pattern Phase 0 Milestone 4 used.
 - Design-partner recruitment timing within the phase: it is a hard exit-gate condition, not scheduled against the seven build-order steps above.
 
 ## Completion rule
