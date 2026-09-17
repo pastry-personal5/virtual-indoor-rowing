@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is an architecture-first repository. Before editing, read `README.md`, `ARCHITECTURE.md`, the affected spec under `docs/architecture/`, and relevant ADRs in `docs/adr/`. Architecture text using **must**/**shall**, and accepted ADRs, is normative; research under `docs/archive/research/` is dated evidence, not requirements. Accepted ADRs change only through a superseding ADR.
 
-The repo ships a native diagnostic build/test system and an Unreal Shipping-toolchain diagnostic host (`VirtualRowing.uproject`) for delivery Phase 0 (`docs/phase-0/README.md`). Phase 0 Milestones 1–3 (native PM5 diagnostic path, TUI relaunch/reconnect, Unreal Shipping toolchain spike) are all complete. There is no gameplay, workout, persistence, or PM5 product behavior yet — only the diagnostic foundation. Milestone completion never implies a delivery-phase exit gate has passed; gate status lives in `docs/phase-0/README.md` and `docs/architecture/10-delivery-plan.md`, not here.
+The repo ships a native diagnostic build/test system and an Unreal Shipping-toolchain diagnostic host (`VirtualRowing.uproject`) for delivery Phase 0 (`docs/phase-0/README.md`). Phase 0 Milestones 1–3 (native PM5 diagnostic path, TUI relaunch/reconnect, Unreal Shipping toolchain spike) are all complete, and Phase 0 Milestone 4 Spike A (steps 1–3) and Spike B (local durability) are complete. Per [ADR-0010](docs/adr/0010-defer-remaining-phase-0-spike-evidence-to-phase-4.md), the remaining Phase 0 spike work (Spike A step 4 real-PM5 runs, Spike C visual performance, and the realtime spike) is deferred to Phase 4, the revised delivery Phase 0 exit gate is met, and **delivery Phase 1 (walking skeleton) is open**. There is no gameplay, workout, persistence, or PM5 product behavior yet beyond the bounded diagnostic/spike foundation. Milestone completion never implies a delivery-phase exit gate has passed on its own; gate status lives in `docs/phase-0/README.md` and `docs/architecture/10-delivery-plan.md`, not here.
 
 ## Commands
 
@@ -92,7 +92,7 @@ PM5 ──BLE──> Concept2PM adapter ──> rowing domain ──> Unreal UI 
 | `Tools/pm5-sim/`, `Tools/pm5-tui/` | exists | Simulator/replay fixtures and the PM5 diagnostic TUI |
 | `Tools/durability-spike/` | exists | Phase 0 Milestone 4 Spike B kill/recover harness for the `LocalData` journal |
 | `Tests/` | exists | Contract and integration test fixtures |
-| `docs/` | exists | Specs (`architecture/`), ADRs (`adr/`), phase milestones (`phase-0/`), research (`archive/research/`) |
+| `docs/` | exists | Specs (`architecture/`), ADRs (`adr/`), phase milestones (`phase-0/`, `phase-1/`), research (`archive/research/`) |
 | `Contracts/proto/` | planned | Versioned client/cloud contracts |
 | `Services/` | planned | Go control plane, race service, workers |
 | `Infra/terraform/` | planned | Cloud infrastructure |
@@ -121,5 +121,5 @@ Every delivery phase has one or more milestones, named `Phase <N> Milestone <M>`
 ## Useful references
 
 - `docs/architecture/` — numbered specs (00 executive review, 01 product scope … 10 delivery plan), read in numeric order for a detailed decision
-- `docs/adr/` — accepted ADRs (0001 platform/toolchain, 0002 PM5 BLE, 0003 authoritative race service, 0004 offline-first journal, 0005 cloud topology, 0006 macOS distribution, 0007 evidence-gated delivery, 0008 defer signing to Phase 4, 0009 defer Bluetooth TCC scenario matrix to Phase 4)
+- `docs/adr/` — accepted ADRs (0001 platform/toolchain, 0002 PM5 BLE, 0003 authoritative race service, 0004 offline-first journal, 0005 cloud topology, 0006 macOS distribution, 0007 evidence-gated delivery, 0008 defer signing to Phase 4, 0009 defer Bluetooth TCC scenario matrix to Phase 4, 0010 defer remaining Phase 0 spike evidence to Phase 4)
 - `docs/phase-0/` — current bounded diagnostic milestones, their changelog, and exit-gate status

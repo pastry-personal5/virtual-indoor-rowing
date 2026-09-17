@@ -1,6 +1,6 @@
 # Delivery Phase 0: toolchain and PM5 diagnostic foundation
 
-Status: Milestones 1–3 complete; Milestone 4 (managed workout, local durability, visual performance spikes) planned; delivery Phase 0 exit gate (docs/architecture/10-delivery-plan.md) not yet evaluated
+Status: Milestones 1–3 complete. Milestone 4 Spike A (managed workout) complete on steps 1–3, with the real-PM5 acceptance runs deferred to Phase 4; Spike B (local durability) complete; Spike C (visual performance) deferred to Phase 4 in its entirety — see [ADR-0010](../adr/0010-defer-remaining-phase-0-spike-evidence-to-phase-4.md). The realtime spike is likewise deferred to Phase 4. Delivery Phase 0 exit gate (docs/architecture/10-delivery-plan.md) met 2026-09-17 on this revised basis; delivery Phase 1 (walking skeleton) is open.
 Owner: A0 — CTO / Principal Architect  
 Last reviewed: 2026-09-17
 
@@ -12,7 +12,7 @@ The proof of concept is a standalone native terminal UI. It shares the engine-in
 
 ## Relationship to the product delivery plan
 
-This packet contains multiple bounded diagnostic milestones within the evidence work described as delivery Phase 0 in [the phased delivery plan](../architecture/10-delivery-plan.md). Each milestone belongs only to Phase 0. Their completion does not complete the full delivery Phase 0 exit gate and does not begin the delivery Phase 1 walking skeleton.
+This packet contains multiple bounded diagnostic milestones within the evidence work described as delivery Phase 0 in [the phased delivery plan](../architecture/10-delivery-plan.md). Each milestone belongs only to Phase 0. [ADR-0010](../adr/0010-defer-remaining-phase-0-spike-evidence-to-phase-4.md) revises the Phase 0 exit gate to no longer require the remaining Milestone 4 spike work and the realtime spike; on that revised gate, Phase 0 is exited and delivery Phase 1 (walking skeleton) is open. Milestone completion still records only Phase 0 progress — it is the exit-gate evaluation and this ADR, not any single milestone, that closes Phase 0.
 
 Completing these diagnostic milestones proves only:
 
@@ -44,8 +44,9 @@ The diagnostic executable may gather identity evidence from a PM5, but a device 
 | Capability profile | Complete for the diagnostic milestones; follow-on HIL evidence deferred | The exact `.069` tuple reaches `Ready` under development profile version 6. The observed 15-byte optional `0x0036` layout and the published 18-byte layout are both admitted. PM-display comparison and expanded HIL cases remain follow-on work. |
 | Toolchain baseline | Native, Unreal smoke, and Shipping toolchain lanes pass | `make doctor`, configure/build/test, format check, `make unreal-smoke`, `make unreal-shipping`, and `make unreal-package-verify` pass on the pinned host and in self-hosted CI. Sandboxed invocations can still be denied access to UBT's user-state files and are not smoke evidence. The Bluetooth TCC permission-scenario matrix is deferred to Phase 4 per [ADR-0009](../adr/0009-defer-bluetooth-tcc-scenario-matrix-to-phase-4.md). |
 | Product features | Explicitly deferred | The TUI is a diagnostic tool, not a substitute for the delivery Phase 1 walking skeleton. |
+| Managed workout, visual performance, and realtime spike evidence | Deferred to Phase 4 | Per [ADR-0010](../adr/0010-defer-remaining-phase-0-spike-evidence-to-phase-4.md): the real-PM5 managed-workout acceptance runs, the visual-performance spike, and the realtime spike are no longer Phase 0 exit-gate requirements. |
 
-This bounded implementation is complete against its diagnostic milestone gates, not the delivery Phase 0 exit gate. Formal product readiness, published CI, and the deferred hardware cases remain follow-on work; they are not worked around by widening support or weakening requirements.
+This bounded implementation is complete against its diagnostic milestone gates and, per [ADR-0010](../adr/0010-defer-remaining-phase-0-spike-evidence-to-phase-4.md), against the revised delivery Phase 0 exit gate. Formal product readiness, published CI, and the deferred hardware/spike cases remain follow-on work, tracked at the Phase 4 exit gate; they are not worked around by widening support or weakening requirements.
 
 ## In scope
 
@@ -62,20 +63,22 @@ This bounded implementation is complete against its diagnostic milestone gates, 
 - Redacted aggregate toolchain and hardware evidence, plus explicit,
   owner-only, bounded raw rowing-telemetry capture in the local HIL probe.
 - Bounded Phase 0 Milestone 4 spike evidence: CSAFE managed-workout configure/read-back
-  diagnostics, a synthetic-sample SQLite WAL kill/recover harness, and a non-shipping
-  visual-performance test level and 6-minute run. See
+  diagnostics (command build/parse and `pm5-tui` wiring; real-PM5 acceptance runs deferred
+  to Phase 4) and a synthetic-sample SQLite WAL kill/recover harness. See
   [Milestone 4](07-milestone-4-spikes.md).
 
 ## Out of scope
 
-- Unreal gameplay, maps, rendering, UMG/CommonUI, animation, and route movement, except the
-  bounded, non-shipping Phase 0 Milestone 4 visual-performance test level and 6-minute run
-  described in [Milestone 4](07-milestone-4-spikes.md); that carve-out authorizes spike
-  evidence only, never a product content pipeline.
+- Unreal gameplay, maps, rendering, UMG/CommonUI, animation, and route movement. The
+  bounded, non-shipping visual-performance test level and run once planned as Phase 0
+  Milestone 4 Spike C is deferred to Phase 4 in its entirety per
+  [ADR-0010](../adr/0010-defer-remaining-phase-0-spike-evidence-to-phase-4.md); no such
+  carve-out is exercised in Phase 0.
 - Workout plans, PM programming, or CSAFE control commands, except the bounded Phase 0
   Milestone 4 CSAFE managed-workout configure/read-back diagnostic described in
   [Milestone 4](07-milestone-4-spikes.md); that carve-out authorizes a diagnostic-only
-  program/verify path, never a product managed-workout feature.
+  program/verify path, never a product managed-workout feature. The real-PM5 acceptance
+  runs against that diagnostic are deferred to Phase 4 per ADR-0010.
 - Session creation, SQLite journaling, history, export, or recovery, except the bounded Phase 0
   Milestone 4 synthetic-sample local-durability spike described in
   [Milestone 4](07-milestone-4-spikes.md); that carve-out authorizes a kill/recover harness
@@ -112,6 +115,6 @@ physical multiple-candidate test remain follow-on items before support expansion
 
 ## Completion rule
 
-Each milestone is complete only when its required automated checks pass and its required real Model D/PM5 hardware run meets the applicable exit criteria. Documentation, simulator success, or a successful BLE connection alone is not sufficient. Completing these milestones records Phase 0 progress but does not pass the delivery Phase 0 exit gate.
+Each milestone is complete only when its required automated checks pass and its required real Model D/PM5 hardware run meets the applicable exit criteria, except where an accepted ADR (e.g. [ADR-0009](../adr/0009-defer-bluetooth-tcc-scenario-matrix-to-phase-4.md), [ADR-0010](../adr/0010-defer-remaining-phase-0-spike-evidence-to-phase-4.md)) explicitly descopes a hardware run to a later phase. Documentation, simulator success, or a successful BLE connection alone is not sufficient. Completing a milestone records Phase 0 progress; the delivery Phase 0 exit gate is a separate evaluation, recorded in [the evidence report](04-evidence-report.md)'s exit decision table.
 
 Any public-interface change, dependency reversal, or relaxation of the accepted toolchain/PM5 decisions requires A0 review. Merge readiness is reviewed by A8.

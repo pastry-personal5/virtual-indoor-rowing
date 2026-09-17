@@ -342,17 +342,17 @@ All rows below require an immutable revision, a redacted runner class, UTC times
 
 ## Milestone 4 Spike A evidence
 
-Managed workout (CSAFE program/verify and abort), `Plugins/Concept2PM` and `Tools/pm5-tui`, per [Milestone 4](07-milestone-4-spikes.md). Steps 1–3 (contract checkpoint, CSAFE command build/response parse, `pm5-tui`/`make hil-pm5` command wiring) are implemented and unit-tested without a real PM5. Step 4 (real-PM5 acceptance runs) needs the owner-run hardware evidence below; nothing in this section may be marked `Pass` from a simulator or unit-test result alone.
+Managed workout (CSAFE program/verify and abort), `Plugins/Concept2PM` and `Tools/pm5-tui`, per [Milestone 4](07-milestone-4-spikes.md). Steps 1–3 (contract checkpoint, CSAFE command build/response parse, `pm5-tui`/`make hil-pm5` command wiring) are implemented and unit-tested without a real PM5, and this is sufficient to close Spike A for Phase 0 purposes. Step 4 (real-PM5 acceptance runs) is deferred to the Phase 4 exit gate per [ADR-0010](../adr/0010-defer-remaining-phase-0-spike-evidence-to-phase-4.md); nothing in this section may be marked `Pass` from a simulator or unit-test result alone.
 
 | Check | Immutable revision | Result | Redacted evidence |
 |---|---|---|---|
 | CSAFE command-build/response-parse unit coverage (framing, checksum, byte stuffing, spec validation, Distance/Time/TimeInterval/Abort byte layout against the pinned CSAFE definition's worked examples, program-verify readback decode) | `d1082361e75f-dirty` | Pass | 2026-09-17; `ctest -R concept2_Concept2PMWorkoutProtocolTests` (all scenarios). |
 | `pm5-tui`/`make hil-pm5` command wiring (interactive buttons and `--script` commands gated behind `--hardware-probe`; metrics/log record shape) | `d1082361e75f-dirty` | Pass | 2026-09-17; `ctest -R pm5_tui_metrics_writer_tests` and manual `--script` runs confirm commands are refused without `--hardware-probe` and without a connected `Ready` machine, with no crash. |
-| Real-PM5 acceptance run — distance workout (configure/verify) | Pending | Pending | Run `make hil-pm5`, connect to a real PM5 until `Ready`, issue the Program Distance command (or `--script program-distance`), and confirm the logged `WorkoutProgramEvent` (`Logs/pm5-tui/pm5-tui.log`, `Metrics/pm5-tui/pm5-tui-*.jsonl`) shows `verified=true` with `readback_type` matching the requested `distance` and no `readback_duration_ms` (per the header contract, Distance leaves duration unset). |
-| Real-PM5 acceptance run — time workout (configure/verify) | Pending | Pending | Same procedure with Program Time (`--script program-time`); confirm `readback_type=time` and `readback_duration_ms` matches the requested 1,200,000 ms. |
-| Real-PM5 acceptance run — time-interval workout (configure/verify) | Pending | Pending | Same procedure with Program Interval (`--script program-interval`); confirm `readback_type=time_interval` and `readback_duration_ms` matches the requested 120,000 ms work segment. |
-| Real-PM5 acceptance run — deliberate reject/abort | Pending | Pending | With a program active, issue Abort Workout (`--script abort-workout`); confirm the PM5 and diagnostic session reach a well-defined, observable state — either a `WorkoutProgramEvent` with `verified=false` (if the PM5 NAKs the abort) or a `connection_state_changed` record returning to `Ready` (if the abort succeeds), per the documented contract that abort success is never a synthesized event. |
-| No command outside the published CSAFE specification is ever sent | Pending | Pending | Confirmed by code review of `BuildProgramDiagnosticWorkoutContents`/`BuildAbortDiagnosticWorkoutContents` against the pinned CSAFE definition; real-PM5 confirmation is the four rows above. |
+| Real-PM5 acceptance run — distance workout (configure/verify) | Deferred to Phase 4 (ADR-0010) | Deferred | Not a Milestone 4 Spike A or Phase 0 requirement. At Phase 4, run `make hil-pm5`, connect to a real PM5 until `Ready`, issue the Program Distance command (or `--script program-distance`), and confirm the logged `WorkoutProgramEvent` (`Logs/pm5-tui/pm5-tui.log`, `Metrics/pm5-tui/pm5-tui-*.jsonl`) shows `verified=true` with `readback_type` matching the requested `distance` and no `readback_duration_ms` (per the header contract, Distance leaves duration unset). |
+| Real-PM5 acceptance run — time workout (configure/verify) | Deferred to Phase 4 (ADR-0010) | Deferred | Not a Milestone 4 Spike A or Phase 0 requirement. At Phase 4, same procedure with Program Time (`--script program-time`); confirm `readback_type=time` and `readback_duration_ms` matches the requested 1,200,000 ms. |
+| Real-PM5 acceptance run — time-interval workout (configure/verify) | Deferred to Phase 4 (ADR-0010) | Deferred | Not a Milestone 4 Spike A or Phase 0 requirement. At Phase 4, same procedure with Program Interval (`--script program-interval`); confirm `readback_type=time_interval` and `readback_duration_ms` matches the requested 120,000 ms work segment. |
+| Real-PM5 acceptance run — deliberate reject/abort | Deferred to Phase 4 (ADR-0010) | Deferred | Not a Milestone 4 Spike A or Phase 0 requirement. At Phase 4, with a program active, issue Abort Workout (`--script abort-workout`); confirm the PM5 and diagnostic session reach a well-defined, observable state — either a `WorkoutProgramEvent` with `verified=false` (if the PM5 NAKs the abort) or a `connection_state_changed` record returning to `Ready` (if the abort succeeds), per the documented contract that abort success is never a synthesized event. |
+| No command outside the published CSAFE specification is ever sent | Pass (code review); real-PM5 confirmation deferred (ADR-0010) | Pass | Confirmed by code review of `BuildProgramDiagnosticWorkoutContents`/`BuildAbortDiagnosticWorkoutContents` against the pinned CSAFE definition, 2026-09-17. Real-PM5 confirmation is the four deferred rows above. |
 
 ## Milestone 4 Spike B evidence
 
@@ -367,7 +367,22 @@ Local durability (SQLite WAL journal), `Source/LocalData` and `Tools/durability-
 | Recovery idempotency | `b64533a13431-dirty` | Pass | 2026-09-17 05:18 UTC; `ScanAndRecover` run twice against each killed database produces the same report both times and does not duplicate the recovery marker event. |
 | Self-hosted Apple-silicon CI runs the kill/recover suite | Pending | Pending | Registers as an ordinary CTest test (`durability_spike_kill_recover`), so it runs inside the existing `M1 native quality gates` workflow's `make test` step with no separate CI change; not yet observed on a push/PR at the time of this entry. |
 
+## Milestone 4 Spike C evidence
 
+Visual performance, per [Milestone 4](07-milestone-4-spikes.md). Deferred to Phase 4 in its entirety per [ADR-0010](../adr/0010-defer-remaining-phase-0-spike-evidence-to-phase-4.md).
+
+| Check | Immutable revision | Result | Redacted evidence |
+|---|---|---|---|
+| 6-minute proxy run (game/render/GPU p95, sustained 60 fps, thermal state) | Deferred to Phase 4 (ADR-0010) | Deferred | Not attempted in Phase 0; no test level or capture exists. |
+| Full 60-minute thermal run | Deferred to Phase 4 (ADR-0010) | Deferred | Not attempted in Phase 0; this was already open follow-on work even before the deferral. |
+
+## Realtime spike evidence
+
+Per [the delivery plan](../architecture/10-delivery-plan.md), deferred to Phase 4 in its entirety per [ADR-0010](../adr/0010-defer-remaining-phase-0-spike-evidence-to-phase-4.md).
+
+| Check | Immutable revision | Result | Redacted evidence |
+|---|---|---|---|
+| Two load clients plus Go room loop; 20/10 Hz, time sync, reconnect, deterministic replay/result | Deferred to Phase 4 (ADR-0010) | Deferred | Not attempted in Phase 0; folded into Phase 4's realtime buildout rather than a standalone Phase 0 spike. |
 
 | Item | Owner | Resolution required |
 |---|---|---|
@@ -379,8 +394,9 @@ Local durability (SQLite WAL journal), `Source/LocalData` and `Tools/durability-
 | Decision | Date | Evidence reviewed | Approvers | Rationale |
 |---|---|---|---|---|
 | Ready — revised delivery Phase 0 Milestone 1 exit gate met | 2026-09-14 | Native host/test lanes, successful normal-host Unreal smoke, user-confirmed six-minute PM5 workout, and `.069` profile-v6 HIL confirmation | User as A0 and A8 | The bounded diagnostic foundation meets the revised milestone exit gate. Published CI and the omitted manual HIL/TCC scenarios are explicitly deferred follow-on work, not evidence of product readiness. |
+| Ready — revised delivery Phase 0 exit gate met; delivery Phase 1 open | 2026-09-17 | Milestones 1–3 evidence; Milestone 4 Spike A (steps 1–3) and Spike B evidence above; [ADR-0010](../adr/0010-defer-remaining-phase-0-spike-evidence-to-phase-4.md) explicitly descoping Spike A step 4, Spike C, and the realtime spike | User as A0 | Per ADR-0010, the Phase 0 exit gate no longer requires the deferred items. All non-deferred spikes have reproducible evidence, and the design-partner cohort item moves to being a Phase 1 exit-gate condition rather than a Phase 0 one. Delivery Phase 1 (walking skeleton) begins on this decision. |
 
-Use `Ready`, `Not ready`, or `Blocked` only. `Ready` authorizes the next milestone decision; it does not claim completion of the broader delivery Phase 0 or Phase 1 gates.
+Use `Ready`, `Not ready`, or `Blocked` only. `Ready` authorizes the next milestone or phase decision; a milestone-level `Ready` does not by itself claim completion of the broader delivery Phase 0 or Phase 1 gates — the phase-level row above is the phase gate decision itself.
 
 ## Sign-off
 

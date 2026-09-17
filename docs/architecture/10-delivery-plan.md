@@ -61,10 +61,10 @@ With fewer people, preserve the delivery-phase order and reduce content/social s
 |---|---|---|
 | Toolchain | Stock UE 5.8 Shipping app builds with Xcode 26.1.1 on Tahoe 26.6.2, runs arm64 as an unsigned ad-hoc-built bundle, basic Bluetooth authorization/scan works (full TCC-reset scenario matrix deferred to Phase 4 per ADR-0009) | confirm or revise ADR-0001/0006/0008/0009 |
 | PM5 BLE | Discover/read/subscribe to real PM5s, 100 ms telemetry for 60 minutes, disconnect/reconnect captures, exact Model D/PM tuples | allowed capability seed and ADR-0002 |
-| Managed workout | Configure/read back one distance, time, and interval workout using only current published CSAFE | launch managed-workout feasibility |
+| Managed workout | Configure/read back one distance, time, and interval workout using only current published CSAFE. Phase 0 Milestone 4 Spike A implements and unit-tests the CSAFE command build/parse and diagnostic wiring; the real-PM5 acceptance runs against this goal are deferred to Phase 4 per [ADR-0010](../adr/0010-defer-remaining-phase-0-spike-evidence-to-phase-4.md). | launch managed-workout feasibility |
 | Local durability | Append 10 Hz samples to chunked SQLite journal while rendering; kill at write boundaries and recover | journal parameters/ADR-0004 |
-| Visual performance | One representative water route + one detailed boat/avatar at 2560×1600/60 fps for 60 minutes. Phase 0 Milestone 4 (`docs/phase-0/07-milestone-4-spikes.md`, 2026-09-17) records this evidence at a 6-minute proxy duration instead, an explicit owner-directed scope reduction; full 60-minute thermal evidence remains open as later follow-on, not satisfied by that milestone. | render feature/content budgets |
-| Realtime | Two load clients plus Go room loop; 20/10 Hz, time sync, reconnect, deterministic replay/result | ADR-0003 and protocol seed |
+| Visual performance | One representative water route + one detailed boat/avatar at 2560×1600/60 fps for 60 minutes. Deferred to Phase 4 in its entirety per [ADR-0010](../adr/0010-defer-remaining-phase-0-spike-evidence-to-phase-4.md); not attempted in Phase 0. | render feature/content budgets |
+| Realtime | Two load clients plus Go room loop; 20/10 Hz, time sync, reconnect, deterministic replay/result | Deferred to Phase 4 per [ADR-0010](../adr/0010-defer-remaining-phase-0-spike-evidence-to-phase-4.md); folded into Phase 4's realtime buildout rather than a standalone Phase 0 spike. ADR-0003 and protocol seed remain confirmed by architecture, not by this spike's evidence. |
 
 Signing/notarization and the Sparkle update pipeline are deferred to Phase 4 per [ADR-0008](../adr/0008-defer-macos-signing-to-phase-4.md); there is no Phase 0 packaging/update spike.
 
@@ -80,11 +80,13 @@ Signing/notarization and the Sparkle update pipeline are deferred to Phase 4 per
 
 ### Exit gate
 
-- All spikes have reproducible code/reports or an explicit decision to descope.
+- All spikes have reproducible code/reports or an explicit decision to descope. Toolchain and PM5 BLE are evidenced by Phase 0 Milestones 1–3; local durability is evidenced by Milestone 4 Spike B; managed workout's CSAFE command build/parse is evidenced by Milestone 4 Spike A steps 1–3. The managed-workout real-PM5 acceptance runs, the visual-performance spike, and the realtime spike are explicitly descoped from Phase 0 to Phase 4 per [ADR-0010](../adr/0010-defer-remaining-phase-0-spike-evidence-to-phase-4.md).
 - Exact engine/Xcode/macOS/PM tuples are recorded.
 - No unresolved blocker to BLE telemetry or local session durability; per ADR-0008, an unsigned ad-hoc build is sufficient evidence and notarization is not a Phase 0 blocker.
 - Top risks have owners, triggers, and contingency.
-- A compatible design-partner cohort is named, observed first-use evidence exists, and the founders have defined what customer evidence would fund delivery Phases 1 and 2.
+- The founders have defined what customer evidence would fund delivery Phases 1 and 2. Naming a compatible design-partner cohort and gathering observed first-use evidence is not a condition of starting Phase 1 (per ADR-0010); it remains a condition of *closing* Phase 1, per that phase's own exit gate below.
+
+Phase 0 exit gate met 2026-09-17 on this revised basis; see [the evidence report](../phase-0/04-evidence-report.md)'s exit decision table.
 
 ## Phase 1 — walking skeleton (4–6 weeks)
 
@@ -156,6 +158,7 @@ The fresh-install/permission-denial/repair pass is deferred to Phase 4 per [ADR-
 ### Scope
 
 - Developer ID signing, Hardened Runtime, notarization/stapling, and the signed Sparkle 2 update channel required by [ADR-0006](../adr/0006-macos-distribution.md), introduced here per [ADR-0008](../adr/0008-defer-macos-signing-to-phase-4.md): isolated release credentials, two-person approval, and CDN/feed operations stand up before any public/ranked exposure.
+- Real-PM5 managed-workout acceptance runs (Phase 0 Milestone 4 Spike A step 4) and the full 6-minute-and-60-minute visual-performance evidence (Phase 0 Milestone 4 Spike C), both deferred from Phase 0 per [ADR-0010](../adr/0010-defer-remaining-phase-0-spike-evidence-to-phase-4.md).
 - Gateway, matchmaker, room worker, room lease/recovery, WSS protocol.
 - Private join-code group row, bounded presence, emotes, spectator role.
 - Synchronized countdown, fixed-distance ranked races, penalties/DNF/DNS.
@@ -175,6 +178,7 @@ Start with private unranked rooms, then opt-in unranked public, then ranked cana
 - Production on-call, event operator, capacity, and kill-switch rehearsals pass.
 - The protected credential-owner Developer ID signing/notarization execution is recorded, and a clean-install/corrupt-feed/rollback Sparkle rehearsal passes, per ADR-0008.
 - The Bluetooth TCC permission-scenario matrix (fresh Allow after reset, Deny, Settings-repair-then-Allow, normal-launch-no-prompt) is rehearsed against the signed/notarized build, per [ADR-0009](../adr/0009-defer-bluetooth-tcc-scenario-matrix-to-phase-4.md).
+- Real-PM5 managed-workout acceptance runs (distance, time, interval, deliberate reject/abort) pass against the diagnostic CSAFE contract, and the visual-performance spike records both a 6-minute and a full 60-minute run against the frame/thermal budgets in [the macOS/Unreal client architecture](03-macos-unreal-client.md), per [ADR-0010](../adr/0010-defer-remaining-phase-0-spike-evidence-to-phase-4.md).
 
 ## Phase 5 — public beta to GA (6–8 weeks)
 

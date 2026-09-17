@@ -1,6 +1,6 @@
 # Delivery Phase 0 Milestone 4 — managed workout, local durability, and visual performance spikes
 
-Status: Planned
+Status: Spike A complete on steps 1–3 (step 4 deferred to Phase 4); Spike B complete; Spike C deferred to Phase 4 in its entirety. See [ADR-0010](../adr/0010-defer-remaining-phase-0-spike-evidence-to-phase-4.md).
 Owner: A0 — CTO / Principal Architect
 Last reviewed: 2026-09-17
 
@@ -33,6 +33,8 @@ Ties to `FR-005` (structured workouts, `docs/architecture/01-product-scope.md`) 
 
 **Acceptance gate:** for each of the three workout types, the PM5 read-back type/duration/state matches the configured request; the reject/abort path leaves the PM5 and the diagnostic session in a well-defined, observable state; no command outside the published CSAFE specification is ever sent; A0 has approved the diagnostic control contract addition.
 
+**Status (2026-09-17):** work-sequence steps 1–3 are complete — the contract checkpoint, the CSAFE command-build/response-parse implementation (including program-verify readback decoding), and the `pm5-tui`/`make hil-pm5` command wiring are implemented and unit-tested; see [the evidence report](04-evidence-report.md)'s Milestone 4 Spike A table. Step 4 (the real-PM5 acceptance runs against the acceptance gate above) is deferred to the Phase 4 exit gate per [ADR-0010](../adr/0010-defer-remaining-phase-0-spike-evidence-to-phase-4.md); Spike A closes for Phase 0 purposes on steps 1–3 alone.
+
 **Owner:** A1 (`Plugins/Concept2PM`). Contract review: A0.
 
 ## Spike B — Local durability (SQLite WAL journal)
@@ -57,6 +59,8 @@ Ties to `FR-007` and `QA-003` (`docs/architecture/01-product-scope.md`) and [ADR
 
 ## Spike C — Visual performance (6-minute proxy run)
 
+**Deferred to Phase 4 in its entirety, per [ADR-0010](../adr/0010-defer-remaining-phase-0-spike-evidence-to-phase-4.md) (2026-09-17).** Neither the 6-minute proxy run described below nor the delivery plan's original 60-minute duration was attempted in Phase 0; no test level, capture, or evidence-report section exists for this spike. The remainder of this section records the originally planned scope for when Phase 4 picks it up; it is not a description of Phase 0 work performed.
+
 Ties to `FR-006` and `QA-001` (`docs/architecture/01-product-scope.md`) and the frame-budget table in [the macOS/Unreal client architecture](../architecture/03-macos-unreal-client.md) (game thread 4.0 ms p95, render thread 5.0 ms p95, GPU 14.0 ms p95).
 
 **Goal:** one representative water route plus one detailed boat/avatar placeholder, at 2560×1600/60 fps, for a **6-minute** run on the reference M5 Max MacBook Pro.
@@ -79,9 +83,9 @@ Ties to `FR-006` and `QA-001` (`docs/architecture/01-product-scope.md`) and the 
 
 ## Overall acceptance gate
 
-Milestone 4 is complete when each spike's acceptance gate above is met and recorded in [the evidence report](04-evidence-report.md) using the existing status vocabulary (`Pass`, `Pending`, `Deferred`), with source revision, host/hardware class, and timestamp. Missing evidence is recorded as `Pending`, never inferred from a partial run.
+Milestone 4 is complete when each spike's acceptance gate above is met and recorded in [the evidence report](04-evidence-report.md) using the existing status vocabulary (`Pass`, `Pending`, `Deferred`), with source revision, host/hardware class, and timestamp. Missing evidence is recorded as `Pending`, never inferred from a partial run — except where an accepted ADR explicitly reclassifies it as `Deferred`.
 
-Milestone 4's completion does not pass the delivery Phase 0 exit gate, which evaluates all Phase 0 spikes and business/external actions together. After this milestone, the realtime spike remains the only unplanned technical spike, and the business/external actions in `10-delivery-plan.md` remain open.
+**Status (2026-09-17):** Spike A closes on steps 1–3 (step 4 deferred); Spike B is complete; Spike C is deferred to Phase 4 in its entirety. Per [ADR-0010](../adr/0010-defer-remaining-phase-0-spike-evidence-to-phase-4.md), this is sufficient for Milestone 4 to close for delivery Phase 0 purposes: the realtime spike and the business/external actions in `10-delivery-plan.md` are likewise deferred or remain separately open, and the revised Phase 0 exit gate no longer requires them before delivery Phase 1 begins.
 
 ## Risks
 
@@ -94,7 +98,7 @@ Milestone 4's completion does not pass the delivery Phase 0 exit gate, which eva
 
 ## Explicitly out of scope
 
-- Realtime spike (Go race-room loop, load clients, time sync) — separate future milestone.
+- Realtime spike (Go race-room loop, load clients, time sync) — deferred to Phase 4 per [ADR-0010](../adr/0010-defer-remaining-phase-0-spike-evidence-to-phase-4.md).
 - Any product `WorkoutPlan`, session history, export, or content-pipeline feature — these spikes produce evidence only.
-- Full 60-minute visual-performance thermal evidence — left open, not satisfied by this milestone's 6-minute run.
-- Business/external actions (design-partner cohort, Concept2 developer relations, licensing/legal review, launch-market assessment) — unchanged by this milestone.
+- Spike C in full (both the 6-minute proxy and the original 60-minute thermal evidence) — deferred to Phase 4 per ADR-0010, not attempted here.
+- Business/external actions (design-partner cohort, Concept2 developer relations, licensing/legal review, launch-market assessment) — unchanged by this milestone; the design-partner cohort item is no longer a Phase 0 exit-gate condition per ADR-0010, but remains a Phase 1 exit-gate condition.
