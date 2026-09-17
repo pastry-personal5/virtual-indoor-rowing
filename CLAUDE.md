@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is an architecture-first repository. Before editing, read `README.md`, `ARCHITECTURE.md`, the affected spec under `docs/architecture/`, and relevant ADRs in `docs/adr/`. Architecture text using **must**/**shall**, and accepted ADRs, is normative; research under `docs/archive/research/` is dated evidence, not requirements. Accepted ADRs change only through a superseding ADR.
 
-The repo currently ships a native diagnostic build/test system plus an empty Unreal smoke host (`VirtualRowing.uproject`) for the Phase 0 Shipping-toolchain spike (`docs/phase-0/README.md`). There is no gameplay, workout, persistence, or PM5 product behavior yet — only the diagnostic foundation.
+The repo ships a native diagnostic build/test system and an Unreal Shipping-toolchain diagnostic host (`VirtualRowing.uproject`) for delivery Phase 0 (`docs/phase-0/README.md`). Phase 0 Milestones 1–3 (native PM5 diagnostic path, TUI relaunch/reconnect, Unreal Shipping toolchain spike) are all complete. There is no gameplay, workout, persistence, or PM5 product behavior yet — only the diagnostic foundation. Milestone completion never implies a delivery-phase exit gate has passed; gate status lives in `docs/phase-0/README.md` and `docs/architecture/10-delivery-plan.md`, not here.
 
 ## Commands
 
@@ -51,7 +51,7 @@ Before handoff on any change: run `git diff --check` and `git status --short`, t
 
 ## Architecture
 
-### System at a glance
+Full detail lives in `ARCHITECTURE.md` and the numbered specs under `docs/architecture/`. Summary:
 
 ```text
 PM5 ──BLE──> Concept2PM adapter ──> rowing domain ──> Unreal UI / world
@@ -60,9 +60,7 @@ PM5 ──BLE──> Concept2PM adapter ──> rowing domain ──> Unreal UI 
                                       └──> race client ──WSS──> authoritative race room
 ```
 
-The client talks to the control plane over HTTPS and race rooms over WSS. Full topology: `docs/architecture/02-system-architecture.md`.
-
-### Four truths (never collapse these)
+**Four truths (never collapse these):**
 
 | Truth | Authority | Rule |
 |---|---|---|
@@ -71,27 +69,19 @@ The client talks to the control plane over HTTPS and race rooms over WSS. Full t
 | Ranked result | Authoritative race server | Client transforms and Unreal physics never determine rank |
 | On-screen motion | Client presentation | May predict/correct; never official |
 
-### Client module boundaries and dependency direction
-
-Dependencies flow from platform/framework adapters toward domain contracts, never the reverse. Domain code (`RowingCore`) must build and test without Unreal, CoreBluetooth, a network, or a database runtime.
+**Module boundaries** (dependencies flow from platform/framework adapters toward domain contracts, never the reverse; `RowingCore` must build and test without Unreal, CoreBluetooth, a network, or a database runtime):
 
 - `RowingCore` (`Source/RowingCore`): engine-independent C++ domain types and state machines.
 - `RowingDevice` (`Source/RowingDevice`): transport-neutral device contracts and telemetry normalization.
-- `Concept2PM` (`Plugins/Concept2PM`): Objective-C++/CoreBluetooth and PM protocol adapter — Apple/Concept2 types stop here, never leak upward.
+- `Concept2PM` (`Plugins/Concept2PM`): Objective-C++/CoreBluetooth and PM protocol adapter — Apple/Concept2 types stop here, never leak upward. Owns discovery, identity, capabilities, subscriptions, decoding, control commands, and reconnect policy; emits normalized ordered facts with source time, sequence, provenance, and quality flags. Only validated device facts affect a local workout; a disconnect freezes official input, records the gap, and attempts bounded reconnect — never fabricates meters.
 - `WorkoutRuntime`, `CourseRuntime`, `RaceClient` (planned): workout orchestration, local route presentation, online-race client logic.
 - `LocalData`, `OnlineClient` (planned): async persistence/outbox and control-plane access.
-- `RowingUI`, `RowingWorld` (`Source/VirtualRowing`, Unreal-side): UMG/CommonUI, actors, rendering, audio, content. They consume domain snapshots only — never parse devices, persist sessions, or determine race results. `UObject`/Actor/Slate/UMG usage is restricted to the game thread.
+- `RowingUI`, `RowingWorld` (`Source/VirtualRowing`, Unreal-side): UMG/CommonUI, actors, rendering, audio, content. Consume domain snapshots only — never parse devices, persist sessions, or determine race results. `UObject`/Actor/Slate/UMG usage is restricted to the game thread.
 - `Diagnostics` (`Tools/pm5-tui`, `Tools/pm5-sim`): redacted observability and consented support tooling.
 
-The PM5 adapter (`Plugins/Concept2PM`) owns discovery, identity, capabilities, subscriptions, decoding, control commands, and reconnect policy, emitting normalized ordered facts with source time, sequence, provenance, and quality flags. Only validated device facts affect a local workout; a disconnect freezes official input, records the gap, and attempts bounded reconnect — it never fabricates meters.
+**Persistence and contracts (planned, not yet implemented):** SQLite (WAL) holds the local event journal/outbox/preferences; Keychain holds secrets; PostgreSQL holds durable cloud records; object storage holds immutable compressed sample/replay objects; Redis is ephemeral-only (presence, leases, queues, caches). Queue consumers and finalization paths must be idempotent. Protobuf is canonical for real-time/object events (`lower_snake_case` fields, never reuse field numbers); OpenAPI defines control APIs. Version every externally visible protocol/schema before implementation; keep contracts small and backward compatible for the supported client window. Details: `docs/architecture/06-data-and-protocols.md`.
 
-### Persistence and contracts (planned, not yet implemented)
-
-SQLite (WAL) holds the local event journal/outbox/preferences; Keychain holds secrets; PostgreSQL holds durable cloud records; object storage holds immutable compressed sample/replay objects; Redis is ephemeral-only (presence, leases, queues, caches). Queue consumers and finalization paths must be idempotent. Protobuf is canonical for real-time/object events (`lower_snake_case` fields, never reuse field numbers); OpenAPI defines control APIs. Version every externally visible protocol/schema before implementation; keep contracts small and backward compatible for the supported client window. Details: `docs/architecture/06-data-and-protocols.md`.
-
-### Race model
-
-A race room is a deterministic, single-owner event loop: it validates sequenced metric frames against the ruleset/common clock, publishes snapshots, and emits one durable finalization event. It must never let client prediction become an official result; a failed online race leaves the local workout valid, possibly unranked. See ADR-0003.
+**Race model:** a race room is a deterministic, single-owner event loop: it validates sequenced metric frames against the ruleset/common clock, publishes snapshots, and emits one durable finalization event. It must never let client prediction become an official result; a failed online race leaves the local workout valid, possibly unranked. See ADR-0003.
 
 ## Repository layout
 
@@ -111,7 +101,7 @@ These roots are architecture decisions, not suggestions. Do not create structure
 
 ## Delivery phases, milestones, changelogs
 
-Every delivery phase has one or more milestones, named `Phase <N> Milestone <M>`; a milestone belongs to exactly one phase. Milestone delivery history goes in `docs/phase-<N>/CHANGELOG.md` (one changelog per phase, covering all its milestones, `Unreleased` at top, dated/reverse-chronological, grouped Added/Changed/Fixed/Removed/Security). A changelog entry never changes architecture or implies the phase exit gate passed — a milestone gate evaluates only that milestone; the phase exit gate evaluates the combined required outcomes of all its milestones.
+Every delivery phase has one or more milestones, named `Phase <N> Milestone <M>`; a milestone belongs to exactly one phase. Milestone delivery history goes in `docs/phase-<N>/CHANGELOG.md` (one changelog per phase, covering all its milestones, `Unreleased` at top, dated/reverse-chronological, grouped Added/Changed/Fixed/Removed/Security). A changelog entry never changes architecture or implies a phase exit gate passed. Exit-gate criteria live in `docs/architecture/10-delivery-plan.md` and the owning phase's `README.md` — treat those as the source of truth rather than restating gate details here.
 
 ## Engineering rules
 
@@ -125,8 +115,10 @@ Every delivery phase has one or more milestones, named `Phase <N> Milestone <M>`
 
 `make pm5-tui` writes `Logs/pm5-tui/pm5-tui.log` (owner-only, DEBUG threshold, rotates at 1 MiB with 3 backups, Git-ignored) and one owner-only JSONL file per launch under `Metrics/pm5-tui/`. Ordinary runs record normalized/aggregate evidence only — no raw payloads. `make hil-pm5` additionally records bounded rowing-service telemetry payloads, UUID short IDs, parser outcomes, per-characteristic sequence numbers, and monotonic receive timestamps, capped at 65 minutes or 100,000 packets; it never captures identity-characteristic payloads, peripheral identifiers, or PM serial numbers. Treat hardware-probe JSONL as private athlete/device evidence — inspect locally, scrub before using as a fixture, never commit or attach the raw file.
 
+`make toolchain-bluetooth-probe` writes one redacted `Saved/Logs/toolchain-bluetooth-probe-*.json` result per run (schema version, source revision, toolchain fingerprint, timestamp, result state, duration) — no raw BLE data. It requires a verified unsigned Shipping `.app` staged by `make unreal-shipping`.
+
 ## Useful references
 
-- `docs/architecture/` — numbered specs (01 product scope … 10 delivery plan), read in numeric order for a detailed decision
-- `docs/adr/` — accepted ADRs (0001 platform/toolchain, 0002 PM5 BLE, 0003 authoritative race service, 0004 offline-first journal, 0005 cloud topology, 0006 macOS distribution, 0007 evidence-gated delivery, 0008 defer signing to Phase 4)
-- `docs/phase-0/` — current bounded diagnostic milestones and their changelog
+- `docs/architecture/` — numbered specs (00 executive review, 01 product scope … 10 delivery plan), read in numeric order for a detailed decision
+- `docs/adr/` — accepted ADRs (0001 platform/toolchain, 0002 PM5 BLE, 0003 authoritative race service, 0004 offline-first journal, 0005 cloud topology, 0006 macOS distribution, 0007 evidence-gated delivery, 0008 defer signing to Phase 4, 0009 defer Bluetooth TCC scenario matrix to Phase 4)
+- `docs/phase-0/` — current bounded diagnostic milestones, their changelog, and exit-gate status

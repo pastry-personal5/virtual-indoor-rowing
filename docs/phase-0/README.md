@@ -1,8 +1,8 @@
 # Delivery Phase 0: toolchain and PM5 diagnostic foundation
 
-Status: In progress — Milestone 3 Shipping toolchain spike; Milestones 1–2 complete
+Status: Milestones 1–3 complete; delivery Phase 0 exit gate (docs/architecture/10-delivery-plan.md) not yet evaluated
 Owner: A0 — CTO / Principal Architect  
-Last reviewed: 2026-09-14
+Last reviewed: 2026-09-17
 
 ## Purpose
 
@@ -42,7 +42,7 @@ The diagnostic executable may gather identity evidence from a PM5, but a device 
 | Product platform and engine | Resolved | Apple-silicon macOS, stock Unreal 5.8, and the ADR-0001 toolchain baseline apply. |
 | Launch device boundary | Resolved | Model D with PM5 over BLE; the public contract remains hardware-neutral. |
 | Capability profile | Complete for the diagnostic milestones; follow-on HIL evidence deferred | The exact `.069` tuple reaches `Ready` under development profile version 6. The observed 15-byte optional `0x0036` layout and the published 18-byte layout are both admitted. PM-display comparison and expanded HIL cases remain follow-on work. |
-| Toolchain baseline | Native and Unreal smoke lanes pass | `make doctor`, configure/build/test, format check, and `make unreal-smoke` pass on the pinned host. Sandboxed invocations can still be denied access to UBT's user-state files and are not smoke evidence. |
+| Toolchain baseline | Native, Unreal smoke, and Shipping toolchain lanes pass | `make doctor`, configure/build/test, format check, `make unreal-smoke`, `make unreal-shipping`, and `make unreal-package-verify` pass on the pinned host and in self-hosted CI. Sandboxed invocations can still be denied access to UBT's user-state files and are not smoke evidence. The Bluetooth TCC permission-scenario matrix is deferred to Phase 4 per [ADR-0009](../adr/0009-defer-bluetooth-tcc-scenario-matrix-to-phase-4.md). |
 | Product features | Explicitly deferred | The TUI is a diagnostic tool, not a substitute for the delivery Phase 1 walking skeleton. |
 
 This bounded implementation is complete against its diagnostic milestone gates, not the delivery Phase 0 exit gate. Formal product readiness, published CI, and the deferred hardware cases remain follow-on work; they are not worked around by widening support or weakening requirements.

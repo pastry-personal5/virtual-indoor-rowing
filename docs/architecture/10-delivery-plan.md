@@ -59,7 +59,7 @@ With fewer people, preserve the delivery-phase order and reduce content/social s
 
 | Spike | Evidence required | Decision unlocked |
 |---|---|---|
-| Toolchain | Stock UE 5.8 Shipping app builds with Xcode 26.1.1 on Tahoe 26.6.2, runs arm64 as an unsigned ad-hoc-built bundle, Bluetooth permission works | confirm or revise ADR-0001/0006/0008 |
+| Toolchain | Stock UE 5.8 Shipping app builds with Xcode 26.1.1 on Tahoe 26.6.2, runs arm64 as an unsigned ad-hoc-built bundle, basic Bluetooth authorization/scan works (full TCC-reset scenario matrix deferred to Phase 4 per ADR-0009) | confirm or revise ADR-0001/0006/0008/0009 |
 | PM5 BLE | Discover/read/subscribe to real PM5s, 100 ms telemetry for 60 minutes, disconnect/reconnect captures, exact Model D/PM tuples | allowed capability seed and ADR-0002 |
 | Managed workout | Configure/read back one distance, time, and interval workout using only current published CSAFE | launch managed-workout feasibility |
 | Local durability | Append 10 Hz samples to chunked SQLite journal while rendering; kill at write boundaries and recover | journal parameters/ADR-0004 |
@@ -106,9 +106,10 @@ An unsigned, ad-hoc-built internal macOS app (per [ADR-0008](../adr/0008-defer-m
 
 - FR-002/003/004/007 demonstrated on real Model D/PM5 and simulator.
 - 60-minute hardware run meets preliminary latency/durability; process-kill recovery evidence exists.
-- Fresh install/permission denial/repair pass on the unsigned ad-hoc package.
 - No account, subscription, external integration, or multiplayer required to complete the row.
 - Design partners can attempt the supported setup without an engineer driving the UI; failures are categorized and feed the delivery Phase 2 estimate.
+
+The fresh-install/permission-denial/repair pass is deferred to Phase 4 per [ADR-0009](../adr/0009-defer-bluetooth-tcc-scenario-matrix-to-phase-4.md); it is not a Phase 1 exit-gate requirement.
 
 ## Phase 2 — solo alpha and content pipeline (6–10 weeks)
 
@@ -173,6 +174,7 @@ Start with private unranked rooms, then opt-in unranked public, then ranked cana
 - Integrity labels/appeal/sanction policies are reviewed and avoid “hardware proof” claims.
 - Production on-call, event operator, capacity, and kill-switch rehearsals pass.
 - The protected credential-owner Developer ID signing/notarization execution is recorded, and a clean-install/corrupt-feed/rollback Sparkle rehearsal passes, per ADR-0008.
+- The Bluetooth TCC permission-scenario matrix (fresh Allow after reset, Deny, Settings-repair-then-Allow, normal-launch-no-prompt) is rehearsed against the signed/notarized build, per [ADR-0009](../adr/0009-defer-bluetooth-tcc-scenario-matrix-to-phase-4.md).
 
 ## Phase 5 — public beta to GA (6–8 weeks)
 

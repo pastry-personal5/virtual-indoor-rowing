@@ -295,5 +295,5 @@ CI or scheduled verification must continuously assert:
 - A killed client recovers a consistent session from every journal checkpoint boundary.
 - A duplicate upload/finalization/integration job produces one logical outcome.
 - A race replay produces the same accepted distances, penalties, finish order, and result hash.
-- Packaged application passes the Bluetooth permission test from Phase 0; `codesign`, Gatekeeper assessment, notarization, update, and rollback tests apply from Phase 4 (ADR-0008).
+- Packaged application passes basic Bluetooth authorization/scan from Phase 0; the full TCC permission-scenario matrix (fresh Allow, Deny, Settings-repair-then-Allow, no-prompt), `codesign`, Gatekeeper assessment, notarization, update, and rollback tests apply from Phase 4 (ADR-0008, ADR-0009).
 - A representative route meets the thermal frame-time budget on the reference Mac.

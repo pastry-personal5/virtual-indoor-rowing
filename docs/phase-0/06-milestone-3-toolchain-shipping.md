@@ -1,13 +1,13 @@
 # Phase 0 Milestone 3 — Unreal Shipping toolchain spike
 
-Status: In progress  
+Status: Complete (2026-09-17) — unsigned toolchain/CI evidence gate; see [ADR-0009](../adr/0009-defer-bluetooth-tcc-scenario-matrix-to-phase-4.md)
 Owners: A7 build/release, A3 Unreal host, A6 verification  
 Architecture review: A0  
 Integration review: A8
 
 ## Purpose and boundary
 
-This milestone proves the pinned UE 5.8.2, Xcode 26.1.1, and macOS Tahoe 26.6.2 stack can build, cook, stage, package, and run an unsigned, ad-hoc-built arm64 Shipping application that declares Bluetooth use. It is a bounded diagnostic host, not the Phase 1 walking skeleton. Per [ADR-0008](../adr/0008-defer-macos-signing-to-phase-4.md), Developer ID signing and notarization are not part of this milestone; they become a required gate at Phase 4.
+This milestone proves the pinned UE 5.8.2, Xcode 26.1.1, and macOS Tahoe 26.6.2 stack can build, cook, stage, package, and run an unsigned, ad-hoc-built arm64 Shipping application that declares Bluetooth use. It is a bounded diagnostic host, not the Phase 1 walking skeleton. Per [ADR-0008](../adr/0008-defer-macos-signing-to-phase-4.md), Developer ID signing and notarization are not part of this milestone; they become a required gate at Phase 4. Per [ADR-0009](../adr/0009-defer-bluetooth-tcc-scenario-matrix-to-phase-4.md), the human-only TCC-reset permission-scenario matrix is likewise not part of this milestone; it also becomes a required gate at Phase 4.
 
 The host loads the existing `Concept2PM` plug-in solely to prove packaging of the dependency. It does not invoke that plug-in and contains no PM5 discovery, peripheral identifiers, telemetry, gameplay, maps authored by the project, workout logic, persistence, account state, UMG/CommonUI, Sparkle, or product settings. `/Engine/Maps/Entry` is the intentionally empty non-gameplay launch map.
 
@@ -25,9 +25,10 @@ Normal launches do not instantiate CoreBluetooth. Only `-ToolchainBluetoothProbe
 
 Milestone 3 is complete when the unsigned portion passes, at one immutable source revision:
 
-1. `make doctor`, native automated tests, formatting, `make unreal-smoke`, `make unreal-shipping`, and `make unreal-package-verify` passing on the pinned reference host.
-2. A self-hosted Apple-silicon CI run on `main` with retained redacted provenance and verifier output.
-3. Three redacted probe runs after TCC reset: fresh Allow, Deny, and System Settings repair followed by Allow. A normal launch must be observed not to prompt.
+1. `make doctor`, native automated tests, formatting, `make unreal-smoke`, `make unreal-shipping`, and `make unreal-package-verify` passing on the pinned reference host. **Met** at `d4bad0f2aa97` (2026-09-16): see [the evidence report](04-evidence-report.md).
+2. A self-hosted Apple-silicon CI run on `main` with retained redacted provenance and verifier output. **Met** at `7c6449a5761c` (2026-09-16): `M1 native quality gates` and `Unreal Shipping verifier` both ran on `main` and passed, including a genuine `OK unsigned Shipping package` result.
+
+Item 3 as originally scoped here — three redacted probe runs after TCC reset (fresh Allow, Deny, System Settings repair followed by Allow) plus a normal-launch-no-prompt observation — is, per [ADR-0009](../adr/0009-defer-bluetooth-tcc-scenario-matrix-to-phase-4.md), no longer a condition of this milestone. It is rescheduled to the Phase 4 exit gate alongside the ADR-0008 signing/notarization rehearsal. Milestone 3 is therefore complete on items 1 and 2 alone.
 
 Milestone 3's completion does not pass the delivery Phase 0 exit gate, which evaluates all Phase 0 milestones together.
 
@@ -74,4 +75,6 @@ Item 1 is now satisfied. At `d4bad0f2aa97`, on the pinned reference host, in one
 
 One incidental finding: the Editor/Shipping build steps wrote an `AndroidFileServerEditor` default settings block (with a random per-run `SecurityToken`) into tracked `Config/DefaultEngine.ini`. This plugin has no relevance to this Mac-only project; the write-back was reverted before recording evidence so the revision stayed unmodified. Unaddressed follow-up: this will likely recur on the next from-scratch Editor/Shipping build unless the plugin is explicitly disabled in config — not done here since it wasn't asked for and is outside this milestone's scope.
 
-Remaining for Milestone 3: acceptance-gate item 3 only — the three TCC-reset Bluetooth probe scenarios (fresh Allow, Deny, Settings-repair-then-Allow) and the normal-launch-no-prompt check, all human-only (real permission dialogs).
+## Milestone complete (2026-09-17)
+
+Per [ADR-0009](../adr/0009-defer-bluetooth-tcc-scenario-matrix-to-phase-4.md), the previously remaining acceptance-gate item 3 (the three TCC-reset Bluetooth probe scenarios and the normal-launch-no-prompt check, all human-only) is rescheduled to the Phase 4 exit gate rather than left blocking this milestone. Items 1 and 2 were already met (2026-09-16, above), so Milestone 3 is complete. [The evidence report](04-evidence-report.md)'s four corresponding rows are recorded as Deferred to Phase 4, not Pending.
