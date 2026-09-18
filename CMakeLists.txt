@@ -115,6 +115,23 @@ else()
 endif()
 add_library(rowing_device ALIAS RowingDevice)
 
+# Phase 1 Milestones 1 and 3: generated Protobuf contracts
+# (Contracts/proto/rowing/v1/). RowingCore stays free of any serialization
+# dependency; only LocalData's private domain<->wire mapper and tests link this.
+add_library(RowingContracts STATIC)
+add_library(rowing_contracts ALIAS RowingContracts)
+target_link_libraries(RowingContracts PUBLIC protobuf::libprotobuf)
+target_include_directories(RowingContracts PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/generated/contracts")
+target_compile_features(RowingContracts PUBLIC cxx_std_20)
+protobuf_generate(
+	TARGET RowingContracts
+	IMPORT_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/Contracts/proto"
+	PROTOS
+		"${CMAKE_CURRENT_SOURCE_DIR}/Contracts/proto/rowing/v1/session.proto"
+		"${CMAKE_CURRENT_SOURCE_DIR}/Contracts/proto/rowing/v1/telemetry.proto"
+	PROTOC_OUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/contracts"
+)
+
 # Phase 0 Milestone 4 Spike B: bounded local-durability journal spike
 # (docs/phase-0/07-milestone-4-spikes.md). Depends only on RowingCore.
 vir_collect_sources(LOCAL_DATA_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Source/LocalData/Private")
@@ -124,8 +141,24 @@ target_include_directories(LocalData
 	PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/Source/LocalData/Public"
 	PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Source/LocalData/Private" "${SQLite3_INCLUDE_DIR}"
 )
-target_link_libraries(LocalData PUBLIC RowingCore PRIVATE "${SQLite3_LIBRARY}")
+target_link_libraries(LocalData PUBLIC RowingCore PRIVATE "${SQLite3_LIBRARY}" RowingContracts RowingDevice)
 target_compile_features(LocalData PUBLIC cxx_std_20)
+
+# Phase 1 Milestone 3: Apple-only LocalData cipher adapter (CryptoKit AES-256-GCM
+# via a small Swift shim, Keychain-held data key). Mirrors the Concept2PMCore /
+# Concept2PMMac split: LocalData stays free of Apple types and only sees
+# IBlobCipher. CryptoKit's AES.GCM is Swift-only, so the shim is its own
+# Swift-only library exposing a C ABI, linked into the C++ adapter.
+if(APPLE)
+	enable_language(Swift)
+	add_library(LocalDataMacCryptoKitShim STATIC Source/LocalDataMac/Private/AesGcmCryptoKit.swift)
+	add_library(LocalDataMac STATIC Source/LocalDataMac/Private/CryptoKitBlobCipher.cpp)
+	target_include_directories(LocalDataMac PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/Source/LocalDataMac/Public")
+	target_link_libraries(LocalDataMac PUBLIC LocalData PRIVATE LocalDataMacCryptoKitShim "-framework Security" "-framework CoreFoundation")
+	target_compile_features(LocalDataMac PUBLIC cxx_std_20)
+	# Linking the Swift shim would otherwise select swiftc as the archiver.
+	set_target_properties(LocalDataMac PROPERTIES LINKER_LANGUAGE CXX)
+endif()
 
 set(CONCEPT2_PLUGIN_DIR "${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Concept2PM")
 vir_collect_sources(CONCEPT2_CORE_SOURCES "${CONCEPT2_PLUGIN_DIR}/Source/Concept2PMCore")
@@ -246,26 +279,6 @@ if(VIR_BUILD_TESTS AND BUILD_TESTING)
 		add_test(NAME rowing_session_state_machine_tests COMMAND rowing_session_state_machine_tests)
 	endif()
 	if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Tests/Contract/RowingSessionContractTests.cpp")
-		# Phase 1 Milestone 1: generated Protobuf contract seed
-		# (Contracts/proto/rowing/v1/session.proto). Deliberately decoupled from
-		# RowingCore in both directions — RowingCore stays free of any
-		# serialization library dependency, and nothing depends on
-		# RowingContracts yet besides this test; a later milestone adds the
-		# domain<->wire mapping once a real consumer exists. Built only here,
-		# not at top level, since a plain `make build` has no consumer for it.
-		set(ROWING_CONTRACTS_PROTO "${CMAKE_CURRENT_SOURCE_DIR}/Contracts/proto/rowing/v1/session.proto")
-		add_library(RowingContracts STATIC)
-		add_library(rowing_contracts ALIAS RowingContracts)
-		target_link_libraries(RowingContracts PUBLIC protobuf::libprotobuf)
-		target_include_directories(RowingContracts PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/generated/contracts")
-		target_compile_features(RowingContracts PUBLIC cxx_std_20)
-		protobuf_generate(
-			TARGET RowingContracts
-			IMPORT_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/Contracts/proto"
-			PROTOS "${ROWING_CONTRACTS_PROTO}"
-			PROTOC_OUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/contracts"
-		)
-
 		add_executable(rowing_session_contract_tests Tests/Contract/RowingSessionContractTests.cpp)
 		target_link_libraries(rowing_session_contract_tests PRIVATE RowingContracts)
 		add_test(NAME rowing_session_contract_tests COMMAND rowing_session_contract_tests)
@@ -275,6 +288,20 @@ if(VIR_BUILD_TESTS AND BUILD_TESTING)
 		target_include_directories(local_data_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Source/LocalData/Private" "${SQLite3_INCLUDE_DIR}")
 		target_link_libraries(local_data_tests PRIVATE LocalData "${SQLite3_LIBRARY}")
 		add_test(NAME local_data_tests COMMAND local_data_tests)
+	endif()
+	if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Source/LocalData/Tests/TelemetryWireMappingTests.cpp")
+		add_executable(local_data_wire_mapping_tests Source/LocalData/Tests/TelemetryWireMappingTests.cpp)
+		target_include_directories(local_data_wire_mapping_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Source/LocalData/Private")
+		target_link_libraries(local_data_wire_mapping_tests PRIVATE LocalData RowingDevice)
+		add_test(NAME local_data_wire_mapping_tests COMMAND local_data_wire_mapping_tests)
+	endif()
+	if(TARGET LocalDataMac AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Source/LocalDataMac/Tests/CryptoKitBlobCipherTests.cpp")
+		add_executable(local_data_mac_tests Source/LocalDataMac/Tests/CryptoKitBlobCipherTests.cpp)
+		target_link_libraries(local_data_mac_tests PRIVATE LocalDataMac)
+		# The Swift shim makes CMake pick swiftc as the linker driver, which
+		# rejects clang's -Wl,-framework forms; link with the C++ driver instead.
+		set_target_properties(local_data_mac_tests PROPERTIES LINKER_LANGUAGE CXX)
+		add_test(NAME local_data_mac_tests COMMAND local_data_mac_tests)
 	endif()
 	if(TARGET Concept2PMCore)
 		file(GLOB_RECURSE CONCEPT2_TEST_SOURCES CONFIGURE_DEPENDS
@@ -376,7 +403,7 @@ if(VIR_BUILD_TESTS AND BUILD_TESTING)
 endif()
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang|GNU")
-foreach(target RowingCore RowingDevice LocalData Concept2PMCore Concept2PMMac pm5-sim durability-spike)
+foreach(target RowingCore RowingDevice LocalData LocalDataMac Concept2PMCore Concept2PMMac pm5-sim durability-spike)
 	if(TARGET "${target}")
 		get_target_property(target_type "${target}" TYPE)
 		if(target_type STREQUAL "INTERFACE_LIBRARY")

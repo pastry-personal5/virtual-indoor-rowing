@@ -14,6 +14,10 @@ namespace LocalData::Private
 													  : sqlite3_errstr(ResultCode)));
 			}
 		}
+
+		// Concurrent connections (a writer plus read/recovery openers) wait for
+		// each other's short transactions instead of failing with SQLITE_BUSY.
+		constexpr int BusyTimeoutMs = 5000;
 	} // namespace
 
 	void FSqliteStatement::BindInt64(int Index, std::int64_t Value)
@@ -29,6 +33,23 @@ namespace LocalData::Private
 	void FSqliteStatement::BindBlob(int Index, std::string_view Value)
 	{
 		sqlite3_bind_blob(Statement, Index, Value.data(), static_cast<int>(Value.size()), SQLITE_TRANSIENT);
+	}
+
+	void FSqliteStatement::BindNull(int Index)
+	{
+		sqlite3_bind_null(Statement, Index);
+	}
+
+	void FSqliteStatement::BindOptionalText(int Index, const std::optional<std::string> &Value)
+	{
+		if (Value.has_value())
+		{
+			BindText(Index, *Value);
+		}
+		else
+		{
+			BindNull(Index);
+		}
 	}
 
 	bool FSqliteStatement::Step()
@@ -49,6 +70,15 @@ namespace LocalData::Private
 	std::int64_t FSqliteStatement::ColumnInt64(int Index) const
 	{
 		return sqlite3_column_int64(Statement, Index);
+	}
+
+	std::optional<std::string> FSqliteStatement::ColumnOptionalText(int Index) const
+	{
+		if (sqlite3_column_type(Statement, Index) == SQLITE_NULL)
+		{
+			return std::nullopt;
+		}
+		return ColumnText(Index);
 	}
 
 	std::string FSqliteStatement::ColumnText(int Index) const
@@ -82,6 +112,7 @@ namespace LocalData::Private
 			Handle = nullptr;
 			throw FSqliteError("sqlite3_open_v2 failed: " + Message);
 		}
+		sqlite3_busy_timeout(Handle, BusyTimeoutMs);
 		Execute("PRAGMA journal_mode=WAL;");
 		Execute("PRAGMA synchronous=NORMAL;");
 		Execute("PRAGMA foreign_keys=ON;");
@@ -131,5 +162,20 @@ namespace LocalData::Private
 	void FSqliteConnection::Rollback()
 	{
 		Execute("ROLLBACK;");
+	}
+
+	void FSqliteConnection::RollbackNoThrow() noexcept
+	{
+		sqlite3_exec(Handle, "ROLLBACK;", nullptr, nullptr, nullptr);
+	}
+
+	bool FSqliteConnection::IsInTransaction() noexcept
+	{
+		return sqlite3_get_autocommit(Handle) == 0;
+	}
+
+	int FSqliteConnection::ChangedRowCount() noexcept
+	{
+		return sqlite3_changes(Handle);
 	}
 } // namespace LocalData::Private

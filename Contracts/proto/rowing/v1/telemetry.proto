@@ -1,0 +1,97 @@
+syntax = "proto3";
+
+// Phase 1 Milestone 3 contract (docs/phase-1/03-milestone-3-local-data-session-journal.md).
+// Wire mirror of FRowingMetricSample (Source/RowingCore/Public/RowingCore/RowingTelemetry.h)
+// and FRowingMachineInfo (Source/RowingDevice/Public/RowingDevice/RowingMachineTypes.h),
+// used as local journal payloads. Field numbers, once assigned, are never reused.
+// Enums mirror the domain enums by name, not raw integer value: every enumerator
+// is offset by +1 from its domain value because proto3 requires *_UNSPECIFIED = 0.
+// A domain<->wire mapper must switch on names, never static_cast the integer.
+
+package rowing.v1;
+
+enum WorkoutState
+{
+	WORKOUT_STATE_UNSPECIFIED = 0;
+	WORKOUT_STATE_UNKNOWN = 1;
+	WORKOUT_STATE_WAITING_TO_BEGIN = 2;
+	WORKOUT_STATE_ACTIVE = 3;
+	WORKOUT_STATE_PAUSED = 4;
+	WORKOUT_STATE_RESTING = 5;
+	WORKOUT_STATE_COMPLETE = 6;
+	WORKOUT_STATE_TERMINATED = 7;
+}
+
+enum RowingState
+{
+	ROWING_STATE_UNSPECIFIED = 0;
+	ROWING_STATE_UNKNOWN = 1;
+	ROWING_STATE_INACTIVE = 2;
+	ROWING_STATE_ACTIVE = 3;
+}
+
+enum StrokeState
+{
+	STROKE_STATE_UNSPECIFIED = 0;
+	STROKE_STATE_UNKNOWN = 1;
+	STROKE_STATE_WAITING = 2;
+	STROKE_STATE_DRIVE = 3;
+	STROKE_STATE_DWELL = 4;
+	STROKE_STATE_RECOVERY = 5;
+}
+
+enum MachineKind
+{
+	MACHINE_KIND_UNSPECIFIED = 0;
+	MACHINE_KIND_UNKNOWN = 1;
+	MACHINE_KIND_INDOOR_ROWER = 2;
+	MACHINE_KIND_SKI_ERG = 3;
+	MACHINE_KIND_BIKE_ERG = 4;
+}
+
+enum MachineSupportState
+{
+	MACHINE_SUPPORT_STATE_UNSPECIFIED = 0;
+	MACHINE_SUPPORT_STATE_ALLOWED = 1;
+	MACHINE_SUPPORT_STATE_WARN = 2;
+	MACHINE_SUPPORT_STATE_BLOCKED = 3;
+}
+
+// Wire mirror of FRowingMetricSample. Absent optional fields mean the metric
+// was not observed; they are never zero-filled.
+message MetricSampled
+{
+	uint32 contract_version = 1;
+	uint64 sequence = 2;
+	uint64 source_elapsed_ms = 3;
+	uint64 received_monotonic_ns = 4;
+	uint64 distance_mm = 5;
+	optional uint32 speed_mm_per_s = 6;
+	optional uint32 pace_ms_per_500m = 7;
+	optional uint32 stroke_rate_deci_spm = 8;
+	optional uint32 stroke_power_w = 9;
+	optional uint32 average_power_w = 10;
+	optional uint32 calories = 11;
+	optional uint32 heart_rate_bpm = 12;
+	optional uint32 drag_factor = 13;
+	optional uint64 stroke_count = 14;
+	WorkoutState workout_state = 15;
+	RowingState rowing_state = 16;
+	StrokeState stroke_state = 17;
+	uint32 quality_flags = 18;
+}
+
+// Wire mirror of FRowingMachineInfo. Carries no peripheral identifier or PM
+// serial number: FRowingMachineInfo has neither, and none may be added here.
+message DeviceCapabilityObserved
+{
+	uint32 contract_version = 1;
+	string manufacturer = 2;
+	string model = 3;
+	string hardware_version = 4;
+	string firmware_version = 5;
+	MachineKind machine_kind = 6;
+	uint64 supported_metrics = 7;
+	uint32 capability_profile_version = 8;
+	MachineSupportState support_state = 9;
+}

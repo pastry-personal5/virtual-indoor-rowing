@@ -4,7 +4,8 @@
 
 namespace LocalData::Private
 {
-	// Idempotent: creates schema_migrations/journal_events/sample_chunks if
-	// absent and records schema version 1. Safe to call on every open.
+	// Idempotent: applies any missing migration in order. Version 1 creates
+	// journal_events/sample_chunks; version 2 adds the remaining product
+	// tables. Safe to call on every open, including on a Spike B v1 database.
 	void EnsureSchema(FSqliteConnection &Connection);
 } // namespace LocalData::Private
