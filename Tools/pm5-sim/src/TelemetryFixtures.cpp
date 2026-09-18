@@ -208,6 +208,31 @@ namespace pm5_sim
 		return Fixture;
 	}
 
+	namespace
+	{
+		FGoldenTelemetryFixture
+		MakeEndedRowFixture(std::string Name, ERowingWorkoutState FinalWorkoutState)
+		{
+			FGoldenTelemetryFixture Fixture =
+				MakeLinearFixture(std::move(Name), 5000, 11000, 200);
+			FRowingMetricSample &Final = Fixture.Frames.back().Sample;
+			Final.WorkoutState = FinalWorkoutState;
+			Final.RowingState = ERowingState::Inactive;
+			Final.StrokeState = ERowingStrokeState::Waiting;
+			return Fixture;
+		}
+	} // namespace
+
+	FGoldenTelemetryFixture MakeDeviceCompletedFixture()
+	{
+		return MakeEndedRowFixture("device_completed", ERowingWorkoutState::Complete);
+	}
+
+	FGoldenTelemetryFixture MakeDeviceTerminatedFixture()
+	{
+		return MakeEndedRowFixture("device_terminated", ERowingWorkoutState::Terminated);
+	}
+
 	FGoldenTelemetryFixture MakePacketLossFixture()
 	{
 		FGoldenTelemetryFixture Fixture;

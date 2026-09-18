@@ -27,6 +27,12 @@ namespace pm5_sim
 	FGoldenTelemetryFixture MakeIntervalFixture();
 	FGoldenTelemetryFixture MakeAbruptStopFixture();
 	FGoldenTelemetryFixture MakePacketLossFixture();
+	// A short steady row whose final frame reports the device workout state
+	// Complete / Terminated. Synthetic and simulator-only: no real PM5 capture
+	// has confirmed what a Just Row reports at its end
+	// (docs/phase-1/04-milestone-4-workout-runtime.md).
+	FGoldenTelemetryFixture MakeDeviceCompletedFixture();
+	FGoldenTelemetryFixture MakeDeviceTerminatedFixture();
 
 	// Synthetic stroke-by-stroke run of the given duration with randomized
 	// (but plausibly bounded) per-stroke rate, power, and distance.

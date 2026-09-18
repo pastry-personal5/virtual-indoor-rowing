@@ -109,6 +109,50 @@ namespace
 		EXPECT_TRUE(Machine.GetState() == ERowingSessionState::Ended);
 	}
 
+	void rowing_session_active_to_ended_completed_on_device_completed()
+	{
+		FRowingSessionStateMachine Machine(MakeTestSessionId());
+		Machine.TryTransition(ERowingSessionStateReason::SessionStarted);
+		const auto Change = Machine.TryTransition(ERowingSessionStateReason::DeviceCompleted);
+		EXPECT_TRUE(Change.has_value());
+		EXPECT_TRUE(Change->NewState == ERowingSessionState::Ended);
+		EXPECT_TRUE(Change->Disposition == ERowingSessionDisposition::Completed);
+	}
+
+	void rowing_session_active_to_ended_aborted_on_device_terminated()
+	{
+		FRowingSessionStateMachine Machine(MakeTestSessionId());
+		Machine.TryTransition(ERowingSessionStateReason::SessionStarted);
+		const auto Change = Machine.TryTransition(ERowingSessionStateReason::DeviceTerminated);
+		EXPECT_TRUE(Change.has_value());
+		EXPECT_TRUE(Change->NewState == ERowingSessionState::Ended);
+		EXPECT_TRUE(Change->Disposition == ERowingSessionDisposition::Aborted);
+	}
+
+	void rowing_session_connection_lost_to_ended_interrupted_on_reconnect_window_elapsed()
+	{
+		FRowingSessionStateMachine Machine(MakeTestSessionId());
+		Machine.TryTransition(ERowingSessionStateReason::SessionStarted);
+		Machine.TryTransition(ERowingSessionStateReason::LinkLost);
+		const auto Change = Machine.TryTransition(ERowingSessionStateReason::ReconnectWindowElapsed);
+		EXPECT_TRUE(Change.has_value());
+		EXPECT_TRUE(Change->NewState == ERowingSessionState::Ended);
+		EXPECT_TRUE(Change->Disposition == ERowingSessionDisposition::Interrupted);
+	}
+
+	void rowing_session_rejects_device_end_reasons_outside_their_source_state()
+	{
+		FRowingSessionStateMachine Created(MakeTestSessionId());
+		EXPECT_TRUE(!Created.TryTransition(ERowingSessionStateReason::DeviceCompleted).has_value());
+		EXPECT_TRUE(!Created.TryTransition(ERowingSessionStateReason::ReconnectWindowElapsed).has_value());
+		FRowingSessionStateMachine Active(MakeTestSessionId());
+		Active.TryTransition(ERowingSessionStateReason::SessionStarted);
+		EXPECT_TRUE(!Active.TryTransition(ERowingSessionStateReason::ReconnectWindowElapsed).has_value());
+		Active.TryTransition(ERowingSessionStateReason::LinkLost);
+		EXPECT_TRUE(!Active.TryTransition(ERowingSessionStateReason::DeviceCompleted).has_value());
+		EXPECT_TRUE(!Active.TryTransition(ERowingSessionStateReason::DeviceTerminated).has_value());
+	}
+
 	void rowing_session_rejects_active_to_created()
 	{
 		FRowingSessionStateMachine Machine(MakeTestSessionId());
@@ -129,6 +173,10 @@ int main()
 	rowing_session_active_to_ended_completed_on_user_completed();
 	rowing_session_created_to_ended_aborted_on_user_aborted();
 	rowing_session_ended_is_terminal();
+	rowing_session_active_to_ended_completed_on_device_completed();
+	rowing_session_active_to_ended_aborted_on_device_terminated();
+	rowing_session_connection_lost_to_ended_interrupted_on_reconnect_window_elapsed();
+	rowing_session_rejects_device_end_reasons_outside_their_source_state();
 	rowing_session_rejects_active_to_created();
 
 	return Failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;

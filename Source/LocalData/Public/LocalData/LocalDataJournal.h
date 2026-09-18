@@ -3,6 +3,7 @@
 #include "LocalData/BlobCipher.h"
 #include "RowingCore/RowingSession.h"
 #include "RowingCore/RowingTelemetry.h"
+#include "RowingDevice/RowingMachineTypes.h"
 
 #include <cstdint>
 #include <filesystem>
@@ -25,7 +26,12 @@ namespace LocalData
 		Completed,
 		Interrupted,
 		Aborted,
-		RecoveredAfterUncleanExit
+		RecoveredAfterUncleanExit,
+		// Phase 1 Milestone 4: non-terminal facts journaled by WorkoutRuntime.
+		// ScanAndRecover treats any kind other than Completed/Interrupted/
+		// Aborted as non-terminal, so these never mask a missing terminal event.
+		CapabilityObserved,
+		LinkGap
 	};
 
 	struct FJournalEvent
@@ -100,6 +106,15 @@ namespace LocalData
 		// kind); an empty one is stored as-is. There is no journal-event reader
 		// yet, so a future one must apply the same rule.
 		void RecordJournalEvent(const FJournalEvent &Event);
+
+		// Journals the observed machine identity/capabilities as a
+		// CapabilityObserved event whose payload is the rowing.v1
+		// DeviceCapabilityObserved wire message (sealed like any other payload
+		// when a cipher is configured).
+		void RecordCapabilityObserved(const std::string &SessionId,
+									  std::uint64_t Sequence,
+									  std::uint64_t MonotonicNs,
+									  const FRowingMachineInfo &Info);
 
 		// Two-phase primitives, diagnostic-only: they let the Milestone 4
 		// Spike B harness (Tools/durability-spike) crash the process

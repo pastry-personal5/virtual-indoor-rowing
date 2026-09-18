@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+// Phase 1 Milestone 4 contract
+// (docs/phase-1/04-milestone-4-workout-runtime.md). The encoded payload the
+// WorkoutRuntime seals into session_summaries.metrics_blob at session end.
+// Units follow docs/architecture/06-data-and-protocols.md: integer,
+// fixed-scale SI. Optional fields are absent when the device never supplied
+// the metric; a summary never synthesizes a value it did not observe. Field
+// numbers, once assigned, are never reused.
+
+package rowing.v1;
+
+message SessionSummary
+{
+	// docs/architecture/06-data-and-protocols.md: "every public contract and
+	// stored payload declares a version."
+	uint32 contract_version = 1;
+	// Device-reported final distance and source elapsed time, never
+	// interpolated across a gap.
+	uint64 total_distance_mm = 2;
+	uint64 elapsed_ms = 3;
+	uint64 accepted_sample_count = 4;
+	uint64 rejected_sample_count = 5;
+	uint32 gap_count = 6;
+	// Sum of device-reported reconnect gap durations.
+	uint64 total_gap_ms = 7;
+	optional uint32 average_pace_ms_per_500m = 8;
+	optional uint32 average_power_w = 9;
+	optional uint32 average_stroke_rate_deci_spm = 10;
+	optional uint32 max_heart_rate_bpm = 11;
+	optional uint64 stroke_count = 12;
+	optional uint32 calories = 13;
+}

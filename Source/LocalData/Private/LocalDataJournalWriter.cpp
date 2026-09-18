@@ -4,6 +4,7 @@
 #include "LocalData/SampleChunkCodec.h"
 #include "LocalData/Schema.h"
 #include "LocalData/Sqlite.h"
+#include "LocalData/TelemetryWireMapping.h"
 
 #include <array>
 #include <utility>
@@ -30,6 +31,10 @@ namespace LocalData
 				return "Aborted";
 			case EJournalEventKind::RecoveredAfterUncleanExit:
 				return "RecoveredAfterUncleanExit";
+			case EJournalEventKind::CapabilityObserved:
+				return "CapabilityObserved";
+			case EJournalEventKind::LinkGap:
+				return "LinkGap";
 			}
 			return "Unknown";
 		}
@@ -213,6 +218,21 @@ namespace LocalData
 	{
 		Impl->InTransaction([&]
 							{ InsertJournalEvent(Impl->Connection, Event, Impl->Cipher); });
+	}
+
+	void FLocalDataJournalWriter::RecordCapabilityObserved(const std::string &SessionId,
+														   std::uint64_t Sequence,
+														   std::uint64_t MonotonicNs,
+														   const FRowingMachineInfo &Info)
+	{
+		FJournalEvent Event;
+		Event.SessionId = SessionId;
+		Event.Sequence = Sequence;
+		Event.MonotonicNs = MonotonicNs;
+		Event.Kind = EJournalEventKind::CapabilityObserved;
+		Event.PayloadVersion = LocalData::Private::TelemetryContractVersion;
+		Event.PayloadBlob = LocalData::Private::SerializeMachineInfo(Info);
+		RecordJournalEvent(Event);
 	}
 
 	void FLocalDataJournalWriter::StageChunk(const FSampleChunk &Chunk)

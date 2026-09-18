@@ -46,6 +46,11 @@ enum SessionStateReason
 	SESSION_STATE_REASON_USER_COMPLETED = 5;
 	SESSION_STATE_REASON_USER_ABORTED = 6;
 	SESSION_STATE_REASON_RECOVERED_AFTER_UNCLEAN_EXIT = 7;
+	// Phase 1 Milestone 4: device-reported workout end and the runtime's
+	// reconnect window elapsing (docs/phase-1/04-milestone-4-workout-runtime.md).
+	SESSION_STATE_REASON_DEVICE_COMPLETED = 8;
+	SESSION_STATE_REASON_DEVICE_TERMINATED = 9;
+	SESSION_STATE_REASON_RECONNECT_WINDOW_ELAPSED = 10;
 }
 
 // Wire mirror of FRowingSessionStateChanged, for the future local journal
@@ -62,4 +67,18 @@ message SessionStateChangedEvent
 	SessionStateReason reason = 5;
 	// Present only when new_state == SESSION_STATE_ENDED.
 	SessionDisposition disposition = 6;
+}
+
+// Phase 1 Milestone 4: payload of the LinkGap journal event, one per
+// interruption of official device input. Records only what the device or the
+// runtime's own monotonic clock measured; no distance is ever inferred for the
+// gap (docs/phase-1/04-milestone-4-workout-runtime.md).
+message LinkGapRecorded
+{
+	uint32 contract_version = 1;
+	uint64 gap_duration_ms = 2;
+	// True when gap_duration_ms came from the device's ConnectionRestored
+	// fact; false when it is the runtime's own measurement (a stale link that
+	// resumed without a disconnect).
+	bool device_reported = 3;
 }

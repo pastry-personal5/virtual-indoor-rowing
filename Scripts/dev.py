@@ -357,7 +357,7 @@ end run
 		print("NOTE: Terminal window resize was unavailable; continuing at current size.", file=sys.stderr)
 
 
-def run_tui(hardware_probe: bool = False) -> int:
+def run_tui(hardware_probe: bool = False, journal: bool = False) -> int:
 	result = build("pm5-tui")
 	if result:
 		return result
@@ -366,7 +366,7 @@ def run_tui(hardware_probe: bool = False) -> int:
 	if not executable.is_file():
 		print("ERROR: pm5-tui target is not present; check that Tools/pm5-tui/src has its entry point", file=sys.stderr)
 		return 2
-	arguments = ["--hardware-probe"] if hardware_probe else []
+	arguments = (["--hardware-probe"] if hardware_probe else []) + (["--journal"] if journal else [])
 	if launch_tui_in_magnified_wave(executable, arguments):
 		return 0
 	resize_apple_terminal_window_for_tui()
@@ -738,7 +738,7 @@ def clean_unreal() -> int:
 
 def main() -> int:
 	parser = argparse.ArgumentParser(description=__doc__)
-	parser.add_argument("command", choices=("doctor", "configure", "build", "test", "format-check", "pm5-tui", "unreal-smoke", "unreal-shipping", "unreal-package-verify", "toolchain-bluetooth-probe", "release-sign-notarize", "hil-pm5", "clean", "clean-unreal"))
+	parser.add_argument("command", choices=("doctor", "configure", "build", "test", "format-check", "pm5-tui", "unreal-smoke", "unreal-shipping", "unreal-package-verify", "toolchain-bluetooth-probe", "release-sign-notarize", "hil-pm5", "pm5-tui-journal", "clean", "clean-unreal"))
 	args = parser.parse_args()
 	if args.command == "doctor":
 		return check_doctor()
@@ -754,6 +754,8 @@ def main() -> int:
 		return run_tui()
 	if args.command == "hil-pm5":
 		return run_tui(hardware_probe=True)
+	if args.command == "pm5-tui-journal":
+		return run_tui(journal=True)
 	if args.command == "unreal-smoke":
 		return unreal_smoke()
 	if args.command == "unreal-shipping":

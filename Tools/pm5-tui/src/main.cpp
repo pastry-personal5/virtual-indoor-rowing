@@ -1,6 +1,9 @@
 #include "Concept2PMMac/Concept2PMDiscoveryFactory.h"
 #include "RotatingFileLogger.h"
 #include "RunMetricsWriter.h"
+#ifdef VIR_PM5_TUI_JOURNAL
+#include "WorkoutJournalDriver.h"
+#endif
 
 #include <ftxui/component/app.hpp>
 #include <ftxui/component/component.hpp>
@@ -898,7 +901,8 @@ namespace
 	class FInteractiveTui
 	{
 	  public:
-		explicit FInteractiveTui(bool InHardwareProbeEnabled = false)
+		explicit FInteractiveTui(bool InHardwareProbeEnabled = false,
+								 bool InJournalEnabled = false)
 			: HardwareProbeEnabled(InHardwareProbeEnabled),
 			  ProbeConfiguration(
 				  MakeHardwareProbeConfiguration(InHardwareProbeEnabled)),
@@ -914,6 +918,8 @@ namespace
 				Logger.Log(PM5Tui::ELogLevel::Warning,
 						   "event=HardwareProbeStarted raw_telemetry_capture=true owner_only=true");
 			LogMetricsAvailability(Metrics, Logger);
+			if (InJournalEnabled)
+				OpenJournal();
 		}
 
 		int Run()
@@ -933,6 +939,7 @@ namespace
 			if (Machine)
 			{
 				DrainEvents();
+				EndJournalSession();
 				Machine->Disconnect();
 				if (auto *PM5Diagnostics =
 						dynamic_cast<IConcept2PMRunDiagnostics *>(Machine.get()))
@@ -957,6 +964,9 @@ namespace
 		PM5Tui::FRunMetricsWriter Metrics;
 		std::unique_ptr<IConcept2PMDiscovery> Discovery;
 		std::unique_ptr<IRowingMachine> Machine;
+#ifdef VIR_PM5_TUI_JOURNAL
+		std::unique_ptr<PM5Tui::FWorkoutJournalDriver> Journal;
+#endif
 		std::vector<FRowingMachineDescriptor> Candidates;
 		std::vector<std::string> CandidateLabels{"No candidates. Press Scan."};
 		std::vector<std::string> History{"Ready. Press Scan to discover a PM5."};
@@ -1145,6 +1155,64 @@ namespace
 			});
 		}
 
+		static std::uint64_t NowNs()
+		{
+			return static_cast<std::uint64_t>(
+				std::chrono::duration_cast<std::chrono::nanoseconds>(
+					FSteadyClock::now().time_since_epoch())
+					.count());
+		}
+
+		// Opt-in sealed workout journal (--journal, make pm5-tui-journal). Never
+		// touches ordinary runs, and a journal that cannot open leaves the TUI usable.
+		void OpenJournal()
+		{
+#ifdef VIR_PM5_TUI_JOURNAL
+			Journal = std::make_unique<PM5Tui::FWorkoutJournalDriver>("Metrics/pm5-tui/journal");
+			if (!Journal->IsAvailable())
+			{
+				Logger.Log(PM5Tui::ELogLevel::Error, "event=WorkoutJournalUnavailable");
+				AddHistory("Workout journal unavailable: " + Journal->GetError());
+				return;
+			}
+			Logger.Log(PM5Tui::ELogLevel::Info, "event=WorkoutJournalOpened sealed=true owner_only=true");
+			AddHistory("Workout journal open (sealed, owner-only)");
+			if (!Journal->GetRecoveryNote().empty())
+			{
+				Logger.Log(PM5Tui::ELogLevel::Warning, "event=WorkoutJournalRecovered");
+				AddHistory(Journal->GetRecoveryNote());
+			}
+#else
+			AddHistory("Workout journal is not available in this build");
+#endif
+		}
+
+		bool HasJournal() const
+		{
+#ifdef VIR_PM5_TUI_JOURNAL
+			return Journal != nullptr;
+#else
+			return false;
+#endif
+		}
+
+		void LogJournalLines(const std::vector<std::string> &Lines)
+		{
+			for (const std::string &Line : Lines)
+				Logger.Log(PM5Tui::ELogLevel::Info, Line);
+		}
+
+		void EndJournalSession()
+		{
+#ifdef VIR_PM5_TUI_JOURNAL
+			if (Journal)
+			{
+				LogJournalLines(Journal->EndSession(NowNs()));
+				AddHistory("Workout session ended");
+			}
+#endif
+		}
+
 		void DrainEvents()
 		{
 			AdoptRelaunchMachine();
@@ -1160,10 +1228,24 @@ namespace
 					RecordEvent(Event);
 			}
 			AdoptRelaunchMachine();
+#ifdef VIR_PM5_TUI_JOURNAL
+			if (Journal)
+				Journal->SyncMachine(Machine.get(), NowNs());
+#endif
 			if (Machine)
 			{
 				while (Machine->TryPollEvent(Event))
+				{
 					RecordEvent(Event);
+#ifdef VIR_PM5_TUI_JOURNAL
+					if (Journal)
+						Journal->Ingest(Event);
+#endif
+				}
+#ifdef VIR_PM5_TUI_JOURNAL
+				if (Journal)
+					LogJournalLines(Journal->Tick(NowNs()));
+#endif
 				if (auto *PM5Diagnostics =
 						dynamic_cast<IConcept2PMRunDiagnostics *>(Machine.get()))
 				{
@@ -1215,6 +1297,10 @@ namespace
 								   " dropped " +
 								   std::to_string(Diagnostics.AcquisitionQueue->OverflowCount);
 				}
+#ifdef VIR_PM5_TUI_JOURNAL
+				if (Journal)
+					View.Detail += "  •  Journal " + Journal->StatusText();
+#endif
 				if (Diagnostics.EventQueue.OverflowCount != 0 ||
 					(Diagnostics.AcquisitionQueue &&
 					 Diagnostics.AcquisitionQueue->OverflowCount != 0))
@@ -1389,6 +1475,7 @@ namespace
 		{
 			if (Machine)
 			{
+				EndJournalSession();
 				Machine->Disconnect();
 				if (auto *PM5Diagnostics =
 						dynamic_cast<IConcept2PMRunDiagnostics *>(Machine.get()))
@@ -1416,6 +1503,8 @@ namespace
 												  { if (Machine) { Metrics.RecordAction(PM5Tui::EPM5TuiRunAction::DisconnectRequested); Machine->Disconnect(); } });
 			const auto Forget = ftxui::Button("Forget PM5", [this]
 											  { ForgetRememberedMachine(); });
+			const auto EndSessionButton = ftxui::Button("End Session", [this]
+														{ EndJournalSession(); });
 			const auto Quit = ftxui::Button("Quit", [&Screen]
 											{ Screen.Exit(); });
 			const auto ProgramDistance = ftxui::Button("Program Distance", [this]
@@ -1436,6 +1525,8 @@ namespace
 			if (HardwareProbeEnabled)
 				ActionRows.push_back(ftxui::Container::Horizontal(
 					{ProgramDistance, ProgramTime, ProgramInterval, AbortWorkoutButton}));
+			if (HasJournal())
+				ActionRows.push_back(ftxui::Container::Horizontal({EndSessionButton}));
 			ActionRows.push_back(ftxui::Container::Horizontal({Forget, Quit}));
 			const auto Actions = ftxui::Container::Vertical(ActionRows);
 			const auto Controls = ftxui::Container::Vertical({
@@ -1496,20 +1587,27 @@ namespace
 int main(int argc, char **argv)
 {
 	bool HardwareProbeEnabled = false;
+	bool JournalEnabled = false;
 	int ArgumentIndex = 1;
-	if (ArgumentIndex < argc &&
-		std::string_view(argv[ArgumentIndex]) == "--hardware-probe")
+	for (; ArgumentIndex < argc; ++ArgumentIndex)
 	{
-		HardwareProbeEnabled = true;
-		++ArgumentIndex;
+		const std::string_view Argument(argv[ArgumentIndex]);
+		if (Argument == "--hardware-probe")
+			HardwareProbeEnabled = true;
+		else if (Argument == "--journal")
+			JournalEnabled = true;
+		else
+			break;
 	}
 	if (ArgumentIndex >= argc)
-		return FInteractiveTui(HardwareProbeEnabled).Run();
+		return FInteractiveTui(HardwareProbeEnabled, JournalEnabled).Run();
 	if (std::string_view(argv[ArgumentIndex]) == "--help")
 	{
 		std::cout << "PM5 Diagnostic\n"
 				  << "Interactive: run without arguments.\n"
 				  << "Hardware probe: --hardware-probe (owner-only bounded raw telemetry capture).\n"
+				  << "Workout journal: --journal (interactive only; journals rows into a Keychain-sealed, owner-only\n"
+				  << "  database under Metrics/pm5-tui/journal/, which holds athlete data: never commit or share it).\n"
 				  << "Script: --script <status|scan|stop|select N|connect|disconnect|"
 				  << "program-distance|program-time|program-interval|abort-workout|forget|quit>...\n"
 				  << "  program-distance/program-time/program-interval/abort-workout are\n"
@@ -1520,6 +1618,11 @@ int main(int argc, char **argv)
 	if (std::string_view(argv[ArgumentIndex]) != "--script")
 	{
 		std::cerr << "unknown option; run with --help for usage\n";
+		return 2;
+	}
+	if (JournalEnabled)
+	{
+		std::cerr << "--journal is interactive only and cannot be combined with --script\n";
 		return 2;
 	}
 

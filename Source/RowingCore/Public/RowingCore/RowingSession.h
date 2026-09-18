@@ -105,7 +105,13 @@ enum class ERowingSessionStateReason : std::uint8_t
 	LinkRestored,
 	UserCompleted,
 	UserAborted,
-	RecoveredAfterUncleanExit
+	RecoveredAfterUncleanExit,
+	// Phase 1 Milestone 4 (docs/phase-1/04-milestone-4-workout-runtime.md):
+	// device-reported workout end, and the runtime's own reconnect window
+	// elapsing while the link is down. Appended so existing values are stable.
+	DeviceCompleted,
+	DeviceTerminated,
+	ReconnectWindowElapsed
 };
 
 struct FRowingSessionStateChanged
@@ -155,16 +161,16 @@ class FRowingSessionStateMachine final
 		case ERowingSessionState::Active:
 			if (Reason == ERowingSessionStateReason::LinkLost)
 				return Apply(Previous, ERowingSessionState::ConnectionLost, Reason, std::nullopt);
-			if (Reason == ERowingSessionStateReason::UserCompleted)
+			if (Reason == ERowingSessionStateReason::UserCompleted || Reason == ERowingSessionStateReason::DeviceCompleted)
 				return Apply(Previous, ERowingSessionState::Ended, Reason, ERowingSessionDisposition::Completed);
-			if (Reason == ERowingSessionStateReason::UserAborted)
+			if (Reason == ERowingSessionStateReason::UserAborted || Reason == ERowingSessionStateReason::DeviceTerminated)
 				return Apply(Previous, ERowingSessionState::Ended, Reason, ERowingSessionDisposition::Aborted);
 			return std::nullopt;
 
 		case ERowingSessionState::ConnectionLost:
 			if (Reason == ERowingSessionStateReason::LinkRestored)
 				return Apply(Previous, ERowingSessionState::Active, Reason, std::nullopt);
-			if (Reason == ERowingSessionStateReason::RecoveredAfterUncleanExit || Reason == ERowingSessionStateReason::UserAborted)
+			if (Reason == ERowingSessionStateReason::RecoveredAfterUncleanExit || Reason == ERowingSessionStateReason::ReconnectWindowElapsed || Reason == ERowingSessionStateReason::UserAborted)
 				return Apply(Previous, ERowingSessionState::Ended, Reason, ERowingSessionDisposition::Interrupted);
 			return std::nullopt;
 

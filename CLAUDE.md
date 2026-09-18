@@ -20,6 +20,7 @@ make test             # build, then run CTest with failure output enabled
 make format-check     # clang-format --dry-run --Werror over Source/, Plugins/Concept2PM, Tools/, Tests/
 make pm5-tui          # build and launch the interactive PM5 diagnostic TUI
 make hil-pm5          # same TUI, explicitly enabling the bounded hardware-probe capture (user-driven, real PM5 required)
+make pm5-tui-journal  # same TUI with the opt-in Keychain-sealed workout journal (Phase 1 Milestone 4; creates a Keychain item on first run)
 make unreal-smoke     # compile the UnrealEditor Development target (only after `make doctor` passes)
 make unreal-shipping  # BuildCookRun the unsigned arm64 Shipping diagnostic host via RunUAT.sh
 make unreal-package-verify        # inspect the staged Shipping .app only (no sign/notarize/launch)
@@ -74,7 +75,7 @@ PM5 ──BLE──> Concept2PM adapter ──> rowing domain ──> Unreal UI 
 - `RowingCore` (`Source/RowingCore`): engine-independent C++ domain types and state machines.
 - `RowingDevice` (`Source/RowingDevice`): transport-neutral device contracts and telemetry normalization.
 - `Concept2PM` (`Plugins/Concept2PM`): Objective-C++/CoreBluetooth and PM protocol adapter — Apple/Concept2 types stop here, never leak upward. Owns discovery, identity, capabilities, subscriptions, decoding, control commands, and reconnect policy; emits normalized ordered facts with source time, sequence, provenance, and quality flags. Only validated device facts affect a local workout; a disconnect freezes official input, records the gap, and attempts bounded reconnect — never fabricates meters.
-- `WorkoutRuntime`, `CourseRuntime`, `RaceClient` (planned): workout orchestration, local route presentation, online-race client logic.
+- `WorkoutRuntime` (`Source/WorkoutRuntime`, Phase 1 Milestone 4, engine-independent): the Just Row session orchestrator — device events → session state machine → `IJournalSink`/`LocalData` journal, gap handling, and a pull `FWorkoutSnapshot` for the UI. Single-threaded and poll-driven; depends on `RowingCore`/`RowingDevice`/`LocalData`, never Apple or Unreal types. `CourseRuntime`, `RaceClient` (planned): local route presentation, online-race client logic.
 - `LocalData` (`Source/LocalData`): the local session journal — a SQLite WAL-mode store with the full nine-table schema (`schema_migrations`, `sessions`, `journal_events`, `sample_chunks`, `session_summaries`, `sync_outbox`, `cloud_links`, `installed_content`, `paired_devices`), depending on `RowingCore`/`RowingDevice` domain types and the `IBlobCipher` seam. A private mapper converts telemetry/capability domain types to `Contracts/proto/rowing/v1/telemetry.proto`. `sync_outbox`/`cloud_links`/`installed_content`/`paired_devices` have schema only and no writer yet; there is no live device→journal capture loop. `LocalDataMac` (`Source/LocalDataMac`, Apple-only) implements `IBlobCipher` as AES-256-GCM via CryptoKit (a small Swift shim exposing a C ABI) with the data key held in Keychain; Apple types stop there. Cloud sync remains planned. `OnlineClient` (planned): control-plane access.
 - `RowingUI`, `RowingWorld` (`Source/VirtualRowing`, Unreal-side): UMG/CommonUI, actors, rendering, audio, content. Consume domain snapshots only — never parse devices, persist sessions, or determine race results. `UObject`/Actor/Slate/UMG usage is restricted to the game thread.
 - `Diagnostics` (`Tools/pm5-tui`, `Tools/pm5-sim`): redacted observability and consented support tooling.
@@ -87,13 +88,13 @@ PM5 ──BLE──> Concept2PM adapter ──> rowing domain ──> Unreal UI 
 
 | Path | Status | Purpose |
 |---|---|---|
-| `Source/` | exists | Unreal (`VirtualRowing`) and engine-independent (`RowingCore`, `RowingDevice`, `LocalData`, `LocalDataMac`) C++ modules |
+| `Source/` | exists | Unreal (`VirtualRowing`) and engine-independent (`RowingCore`, `RowingDevice`, `LocalData`, `LocalDataMac`, `WorkoutRuntime`) C++ modules |
 | `Plugins/Concept2PM/` | exists | CoreBluetooth and PM protocol adapter |
 | `Tools/pm5-sim/`, `Tools/pm5-tui/` | exists | Simulator/replay fixtures and the PM5 diagnostic TUI |
 | `Tools/durability-spike/` | exists | Phase 0 Milestone 4 Spike B kill/recover harness for the `LocalData` journal |
 | `Tests/` | exists | Contract and integration test fixtures |
 | `docs/` | exists | Specs (`architecture/`), ADRs (`adr/`), phase milestones (`phase-0/`, `phase-1/`), research (`archive/research/`) |
-| `Contracts/proto/` | exists (`rowing/v1/session.proto` from Phase 1 Milestone 1; `rowing/v1/telemetry.proto` from Milestone 3) | Versioned client/cloud contracts |
+| `Contracts/proto/` | exists (`rowing/v1/session.proto` from Phase 1 Milestone 1; `rowing/v1/telemetry.proto` from Milestone 3; `rowing/v1/session_summary.proto` from Milestone 4) | Versioned client/cloud contracts |
 | `Services/` | planned | Go control plane, race service, workers |
 | `Infra/terraform/` | planned | Cloud infrastructure |
 | `Content/` | planned | Unreal assets; large assets use Git LFS |
@@ -115,6 +116,8 @@ Every delivery phase has one or more milestones, named `Phase <N> Milestone <M>`
 ### PM5 TUI logs and metrics
 
 `make pm5-tui` writes `Logs/pm5-tui/pm5-tui.log` (owner-only, DEBUG threshold, rotates at 1 MiB with 3 backups, Git-ignored) and one owner-only JSONL file per launch under `Metrics/pm5-tui/`. Ordinary runs record normalized/aggregate evidence only — no raw payloads. `make hil-pm5` additionally records bounded rowing-service telemetry payloads, UUID short IDs, parser outcomes, per-characteristic sequence numbers, and monotonic receive timestamps, capped at 65 minutes or 100,000 packets; it never captures identity-characteristic payloads, peripheral identifiers, or PM serial numbers. Treat hardware-probe JSONL as private athlete/device evidence — inspect locally, scrub before using as a fixture, never commit or attach the raw file.
+
+`make pm5-tui-journal` (`--journal`) journals rows through `WorkoutRuntime` into a Keychain-sealed SQLite database at `Metrics/pm5-tui/journal/` (owner-only directory, Git-ignored). It holds athlete data: treat it as private evidence, never commit or attach it; logs record aggregate session state only.
 
 `make toolchain-bluetooth-probe` writes one redacted `Saved/Logs/toolchain-bluetooth-probe-*.json` result per run (schema version, source revision, toolchain fingerprint, timestamp, result state, duration) — no raw BLE data. It requires a verified unsigned Shipping `.app` staged by `make unreal-shipping`.
 

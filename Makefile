@@ -1,4 +1,4 @@
-.PHONY: doctor configure build test format-check pm5-tui unreal-smoke unreal-shipping unreal-package-verify toolchain-bluetooth-probe toolchain-bluetooth-probe-clean release-sign-notarize hil-pm5 clean clean-unreal clean-logs clean-metrics clean-all
+.PHONY: doctor configure build test format-check pm5-tui unreal-smoke unreal-shipping unreal-package-verify toolchain-bluetooth-probe toolchain-bluetooth-probe-clean release-sign-notarize hil-pm5 pm5-tui-journal clean clean-unreal clean-logs clean-metrics clean-all
 
 # Verify the host machine and installed tools against the pinned M1 baseline.
 doctor:
@@ -53,6 +53,11 @@ release-sign-notarize:
 # Launch the PM5 diagnostic UI for a user-driven hardware-in-the-loop session.
 hil-pm5:
 	python3 Scripts/dev.py hil-pm5
+
+# Launch the PM5 diagnostic UI with the opt-in Keychain-sealed workout journal
+# (Phase 1 Milestone 4). The journal holds athlete data; keep it local.
+pm5-tui-journal:
+	python3 Scripts/dev.py pm5-tui-journal
 
 # Remove generated native build output.
 clean:

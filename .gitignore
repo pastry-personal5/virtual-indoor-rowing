@@ -19,6 +19,7 @@ Saved/
 /Logs/pm5-tui/*.log.*
 /Logs/vir-startup-debug/
 /Metrics/pm5-tui/*.jsonl
+/Metrics/pm5-tui/journal/
 .DS_Store
 __pycache__/
 *.py[cod]

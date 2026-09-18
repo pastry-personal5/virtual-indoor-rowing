@@ -129,6 +129,7 @@ protobuf_generate(
 	PROTOS
 		"${CMAKE_CURRENT_SOURCE_DIR}/Contracts/proto/rowing/v1/session.proto"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Contracts/proto/rowing/v1/telemetry.proto"
+		"${CMAKE_CURRENT_SOURCE_DIR}/Contracts/proto/rowing/v1/session_summary.proto"
 	PROTOC_OUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/contracts"
 )
 
@@ -141,7 +142,7 @@ target_include_directories(LocalData
 	PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/Source/LocalData/Public"
 	PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Source/LocalData/Private" "${SQLite3_INCLUDE_DIR}"
 )
-target_link_libraries(LocalData PUBLIC RowingCore PRIVATE "${SQLite3_LIBRARY}" RowingContracts RowingDevice)
+target_link_libraries(LocalData PUBLIC RowingCore RowingDevice PRIVATE "${SQLite3_LIBRARY}" RowingContracts)
 target_compile_features(LocalData PUBLIC cxx_std_20)
 
 # Phase 1 Milestone 3: Apple-only LocalData cipher adapter (CryptoKit AES-256-GCM
@@ -205,6 +206,19 @@ if(CONCEPT2_CORE_SOURCES)
 	endif()
 endif()
 
+# Phase 1 Milestone 4: engine-independent Just Row session orchestrator
+# (docs/phase-1/04-milestone-4-workout-runtime.md). Depends on RowingCore,
+# RowingDevice, and LocalData; its private wire mapper links RowingContracts.
+vir_collect_sources(WORKOUT_RUNTIME_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Source/WorkoutRuntime/Private")
+add_library(WorkoutRuntime STATIC ${WORKOUT_RUNTIME_SOURCES})
+add_library(workout_runtime ALIAS WorkoutRuntime)
+target_include_directories(WorkoutRuntime
+	PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/Source/WorkoutRuntime/Public"
+	PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Source/WorkoutRuntime/Private"
+)
+target_link_libraries(WorkoutRuntime PUBLIC RowingCore RowingDevice LocalData PRIVATE RowingContracts)
+target_compile_features(WorkoutRuntime PUBLIC cxx_std_20)
+
 vir_collect_sources(PM5_SIM_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Tools/pm5-sim/src")
 if(PM5_SIM_SOURCES)
 	add_library(pm5-sim STATIC ${PM5_SIM_SOURCES})
@@ -258,6 +272,15 @@ if(VIR_BUILD_PM5_TUI)
 		if(TARGET Concept2PMMac)
 			target_link_libraries(pm5-tui PRIVATE Concept2PMMac)
 		endif()
+		# Phase 1 Milestone 4: opt-in sealed workout journal (--journal). Needs
+		# the Apple-only Keychain/CryptoKit cipher, so it exists only where
+		# LocalDataMac does.
+		if(TARGET LocalDataMac)
+			target_link_libraries(pm5-tui PRIVATE WorkoutRuntime LocalDataMac)
+			target_compile_definitions(pm5-tui PRIVATE VIR_PM5_TUI_JOURNAL=1)
+			# The Swift shim would otherwise select swiftc as the linker driver.
+			set_target_properties(pm5-tui PROPERTIES LINKER_LANGUAGE CXX)
+		endif()
 		if(TARGET pm5-sim)
 			target_link_libraries(pm5-tui PRIVATE pm5-sim)
 		endif()
@@ -302,6 +325,12 @@ if(VIR_BUILD_TESTS AND BUILD_TESTING)
 		# rejects clang's -Wl,-framework forms; link with the C++ driver instead.
 		set_target_properties(local_data_mac_tests PROPERTIES LINKER_LANGUAGE CXX)
 		add_test(NAME local_data_mac_tests COMMAND local_data_mac_tests)
+	endif()
+	if(TARGET pm5-sim AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Source/WorkoutRuntime/Tests/WorkoutSessionTests.cpp")
+		add_executable(workout_runtime_tests Source/WorkoutRuntime/Tests/WorkoutSessionTests.cpp)
+		target_include_directories(workout_runtime_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Source/WorkoutRuntime/Private")
+		target_link_libraries(workout_runtime_tests PRIVATE WorkoutRuntime RowingContracts pm5-sim)
+		add_test(NAME workout_runtime_tests COMMAND workout_runtime_tests)
 	endif()
 	if(TARGET Concept2PMCore)
 		file(GLOB_RECURSE CONCEPT2_TEST_SOURCES CONFIGURE_DEPENDS
