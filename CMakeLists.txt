@@ -289,6 +289,17 @@ if(VIR_BUILD_TESTS AND BUILD_TESTING)
 			add_test(NAME "${test_target}" COMMAND "${test_target}")
 		endforeach()
 	endif()
+	if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Tests/Contract/pm5_reviewed_profile_tests.cpp" AND TARGET Concept2PMCore)
+		# Phase 1 Milestone 2: exercises the actual generated, reviewed
+		# non-diagnostic profile set (Config/PM5Capabilities.json via
+		# pm5_capability_profiles) rather than a synthetic one, so it needs
+		# the generated header's include dir and build dependency.
+		add_executable(pm5_reviewed_profile_tests Tests/Contract/pm5_reviewed_profile_tests.cpp)
+		target_link_libraries(pm5_reviewed_profile_tests PRIVATE Concept2PMCore)
+		target_include_directories(pm5_reviewed_profile_tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+		add_dependencies(pm5_reviewed_profile_tests pm5_capability_profiles)
+		add_test(NAME pm5_reviewed_profile_tests COMMAND pm5_reviewed_profile_tests)
+	endif()
 	if(TARGET pm5-sim)
 		foreach(test_source IN ITEMS
 			Tests/Contract/pm5_sim_contract_tests.cpp

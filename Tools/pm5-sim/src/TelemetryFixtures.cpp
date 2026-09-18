@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <optional>
+#include <random>
+#include <string>
 #include <utility>
 
 namespace pm5_sim
@@ -235,6 +237,106 @@ namespace pm5_sim
 						  ERowingStrokeState::Recovery,
 						  ToRowingQualityFlags(ERowingQualityFlag::SourceGap)));
 		}
+		return Fixture;
+	}
+
+	FGoldenTelemetryFixture MakeRandomStrokeFixture(std::uint64_t DurationMinutes,
+													std::uint32_t Seed)
+	{
+		const std::uint64_t TotalDurationMs = DurationMinutes * 60000ULL;
+		if (TotalDurationMs == 0)
+			return MakeNoRowingFixture(0);
+
+		struct FStroke
+		{
+			std::uint64_t StartMs = 0;
+			std::uint64_t DurationMs = 0;
+			std::uint64_t DriveDurationMs = 0;
+			std::uint64_t StartDistanceMm = 0;
+			std::uint64_t DistanceMm = 0;
+			std::uint32_t StrokeRateDeciSpm = 0;
+			std::uint32_t PowerW = 0;
+		};
+
+		std::mt19937 Rng(Seed);
+		std::uniform_int_distribution<std::uint32_t> StrokeRateDist(180, 320);		  // 18.0-32.0 spm
+		std::uniform_int_distribution<std::uint32_t> PowerDist(120, 220);			  // watts
+		std::uniform_int_distribution<std::uint32_t> StrokeDistanceDist(8000, 11000); // mm/stroke
+		std::uniform_real_distribution<double> DriveFractionDist(0.33, 0.45);
+
+		std::vector<FStroke> Strokes;
+		std::uint64_t ElapsedMs = 0;
+		std::uint64_t CumulativeDistanceMm = 0;
+		while (ElapsedMs < TotalDurationMs)
+		{
+			FStroke Stroke;
+			Stroke.StrokeRateDeciSpm = StrokeRateDist(Rng);
+			Stroke.PowerW = PowerDist(Rng);
+			Stroke.DurationMs = 600000ULL / Stroke.StrokeRateDeciSpm;
+			Stroke.DriveDurationMs = static_cast<std::uint64_t>(
+				static_cast<double>(Stroke.DurationMs) * DriveFractionDist(Rng));
+			Stroke.StartMs = ElapsedMs;
+			Stroke.StartDistanceMm = CumulativeDistanceMm;
+			Stroke.DistanceMm = StrokeDistanceDist(Rng);
+			CumulativeDistanceMm += Stroke.DistanceMm;
+			Strokes.push_back(Stroke);
+			ElapsedMs += Stroke.DurationMs;
+		}
+
+		FGoldenTelemetryFixture Fixture;
+		Fixture.Name = "random_stroke_" + std::to_string(DurationMinutes) + "min_seed" +
+					   std::to_string(Seed);
+		Fixture.DurationMs = TotalDurationMs;
+
+		std::size_t CurrentStrokeIndex = 0;
+		for (std::uint64_t TimeMs = 0; TimeMs <= TotalDurationMs;
+			 TimeMs += FrameIntervalMs)
+		{
+			while (CurrentStrokeIndex + 1 < Strokes.size() &&
+				   TimeMs >= Strokes[CurrentStrokeIndex].StartMs +
+								 Strokes[CurrentStrokeIndex].DurationMs)
+			{
+				++CurrentStrokeIndex;
+			}
+			const FStroke &Stroke = Strokes[CurrentStrokeIndex];
+			const std::uint64_t TimeIntoStroke =
+				TimeMs > Stroke.StartMs ? TimeMs - Stroke.StartMs : 0;
+			const std::uint64_t ClampedTimeIntoStroke =
+				std::min(TimeIntoStroke, Stroke.DurationMs);
+			const std::uint64_t DistanceMm =
+				Stroke.StartDistanceMm +
+				Stroke.DistanceMm * ClampedTimeIntoStroke /
+					std::max<std::uint64_t>(Stroke.DurationMs, 1);
+			const bool InDrive = ClampedTimeIntoStroke < Stroke.DriveDurationMs;
+
+			FRowingMetricSample Sample;
+			Sample.SourceElapsedMs = TimeMs;
+			Sample.DistanceMm = DistanceMm;
+			Sample.SpeedMmPerS =
+				TimeMs == 0
+					? std::nullopt
+					: std::optional<std::uint32_t>(static_cast<std::uint32_t>(
+						  Stroke.DistanceMm * 1000 / Stroke.DurationMs));
+			if (Sample.SpeedMmPerS && *Sample.SpeedMmPerS != 0)
+				Sample.PaceMsPer500M = 500000000U / *Sample.SpeedMmPerS;
+			Sample.WorkoutState = ERowingWorkoutState::Active;
+			Sample.RowingState =
+				TimeMs == 0 ? ERowingState::Inactive : ERowingState::Active;
+			Sample.StrokeState = TimeMs == 0 ? ERowingStrokeState::Waiting
+											 : (InDrive ? ERowingStrokeState::Drive
+														: ERowingStrokeState::Recovery);
+			Sample.StrokeRateDeciSpm = TimeMs == 0
+										   ? std::nullopt
+										   : std::optional<std::uint32_t>(
+												 Stroke.StrokeRateDeciSpm);
+			Sample.AveragePowerW =
+				TimeMs == 0 ? std::nullopt
+							: std::optional<std::uint32_t>(Stroke.PowerW);
+			Sample.StrokeCount = std::optional<std::uint64_t>(CurrentStrokeIndex);
+			Fixture.Frames.push_back(
+				FReplayTelemetryFrame{TimeMs * 1000000ULL, std::move(Sample)});
+		}
+		Fixture.FinalDistanceMm = Fixture.Frames.back().Sample.DistanceMm;
 		return Fixture;
 	}
 } // namespace pm5_sim

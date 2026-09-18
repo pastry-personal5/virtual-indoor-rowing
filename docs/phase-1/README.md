@@ -1,8 +1,8 @@
 # Delivery Phase 1: walking skeleton
 
-Status: Open (per [ADR-0010](../adr/0010-defer-remaining-phase-0-spike-evidence-to-phase-4.md), 2026-09-17); milestones are scoped one at a time, immediately before each one's implementation — Milestone 1 is scoped and implemented (see [01-milestone-1-rowingcore-domain-contract.md](01-milestone-1-rowingcore-domain-contract.md)); no further milestone scoped or started yet
+Status: Open (per [ADR-0010](../adr/0010-defer-remaining-phase-0-spike-evidence-to-phase-4.md), 2026-09-17); milestones are scoped one at a time, immediately before each one's implementation — Milestone 1 is scoped and implemented (see [01-milestone-1-rowingcore-domain-contract.md](01-milestone-1-rowingcore-domain-contract.md)); Milestone 2 is scoped and implemented, real-PM5 confirmation outstanding (see [02-milestone-2-device-capability-handshake.md](02-milestone-2-device-capability-handshake.md))
 Owner: A0 — CTO / Principal Architect
-Last reviewed: 2026-09-17
+Last reviewed: 2026-09-18
 
 ## Purpose
 
@@ -14,7 +14,7 @@ This packet will contain one or more bounded milestones within [delivery Phase 1
 
 Phase 0 exited on 2026-09-17 per [ADR-0010](../adr/0010-defer-remaining-phase-0-spike-evidence-to-phase-4.md): Milestones 1–3, Milestone 4 Spike A (steps 1–3), and Milestone 4 Spike B provided the retained evidence; Milestone 4 Spike A step 4, Spike C, and the realtime spike were explicitly descoped to the Phase 4 exit gate rather than blocking Phase 1's start.
 
-That ADR also moved the design-partner cohort item off the Phase 0 exit gate and onto this phase's exit gate, where the delivery plan already independently required it (see "Exit gate" below). Recruiting and observing that cohort is therefore load-bearing Phase 1 work, not a follow-on.
+That ADR also moved the design-partner cohort item off the Phase 0 exit gate and onto this phase's exit gate. [ADR-0011](../adr/0011-defer-design-partner-cohort-to-phase-4.md) subsequently deferred it again, to Phase 4's exit gate, because recruitment is not feasible on the current timeline. Recruiting and observing that cohort is therefore not required to close this phase.
 
 ## Deliverable
 
@@ -54,7 +54,8 @@ Milestones have not yet been scoped against this build order — see "Open quest
 - FR-002/003/004/007 demonstrated on real Model D/PM5 and simulator.
 - 6-minute hardware run meets preliminary latency/durability; process-kill recovery evidence exists. Reduced from an originally specified 60 minutes, an explicit owner-directed scope reduction (2026-09-17); see [the delivery plan](../architecture/10-delivery-plan.md#phase-1--walking-skeleton-46-weeks). Full 60-minute latency/durability evidence remains open as later follow-on.
 - No account, subscription, external integration, or multiplayer required to complete the row.
-- Design partners can attempt the supported setup without an engineer driving the UI; failures are categorized and feed the delivery Phase 2 estimate.
+
+The design-partner cohort ("design partners can attempt the supported setup without an engineer driving the UI; failures are categorized") is deferred to Phase 4's exit gate per [ADR-0011](../adr/0011-defer-design-partner-cohort-to-phase-4.md); it is not a Phase 1 exit-gate requirement.
 
 ## Milestone scoping approach
 
@@ -63,10 +64,11 @@ Owner-confirmed (2026-09-17): Phase 1 milestones are **not** pre-planned as a fu
 ## Milestones
 
 - **Milestone 1 — real `RowingCore` session domain + Protobuf contract seed** (build-order step 2): implemented 2026-09-17. See [01-milestone-1-rowingcore-domain-contract.md](01-milestone-1-rowingcore-domain-contract.md) for the contract checkpoint, scope, and verification evidence.
+- **Milestone 2 — product `RowingDevice`/`Concept2PM` capability handshake** (build-order step 3): scoped and implemented 2026-09-18. The reviewed, non-diagnostic product profile and its factory wiring turned out to already exist from Phase 0 (`Concept2PM::GetGeneratedPM5CapabilityProfiles()`, generated from `Config/PM5Capabilities.json`, already resolved by `CreateConcept2PMDiscovery()`) — the milestone's implementation work narrowed to adding acceptance/rejection tests against that real profile set (`Tests/Contract/pm5_reviewed_profile_tests.cpp`) and correcting the milestone doc's premise. Managed-workout (CSAFE) control stays diagnostic-only and telemetry wire mapping is deferred to Milestone 3. Real-PM5 confirmation run is owner-run and outstanding. See [02-milestone-2-device-capability-handshake.md](02-milestone-2-device-capability-handshake.md).
 
 ## Open questions
 
-- Design-partner recruitment timing within the phase: it is a hard exit-gate condition, not scheduled against the seven build-order steps above.
+None currently open.
 
 ## Completion rule
 

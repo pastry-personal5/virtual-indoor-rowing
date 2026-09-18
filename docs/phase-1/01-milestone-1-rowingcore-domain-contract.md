@@ -56,7 +56,7 @@ This is the first milestone scoped under [delivery Phase 1](../architecture/10-d
 
 ## Owner action required (outside this milestone's code)
 
-The self-hosted CI runner (`vir-m1`, `.github/workflows/native.yml`) runs `make doctor`/`make build`/`make test` on a persistent provisioned machine, not an ephemeral one. `make doctor` will require the pinned `protoc`/`libprotobuf` version once this milestone lands. **The owner must install `protobuf 36.1` (`brew install protobuf`, which also pulls in `abseil 20260817.0`) on `vir-m1` before or immediately after this merges**, or CI goes red on the toolchain-verification step for every subsequent PR, not just this one. This is infrastructure outside the working copy and outside this milestone's implementation.
+Done. The self-hosted CI runner (`vir-m1`, `.github/workflows/native.yml`) had `protobuf 36.1` installed before this milestone merged: run [35233522666](https://github.com/pastry-personal5/virtual-indoor-rowing/actions/runs/35233522666) (2026-09-17T14:26Z, commit `4502285`) shows `make doctor` passing with `OK protoc: required 36.1; observed libprotoc 36.1`, and every subsequent `main` push has stayed green.
 
 ## Compatibility
 

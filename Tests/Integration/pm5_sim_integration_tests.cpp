@@ -175,11 +175,50 @@ namespace
 		Check(PacketLoss.SawSourceGap,
 			  "resumed packet-loss fixture preserves source-gap quality");
 	}
+
+	void random_stroke_run_is_seeded_deterministic_and_duration_scales()
+	{
+		CheckDeterministicGolden(pm5_sim::MakeRandomStrokeFixture(5, 42));
+		CheckDeterministicGolden(pm5_sim::MakeRandomStrokeFixture(1, 7));
+
+		const auto FiveMinutes = pm5_sim::MakeRandomStrokeFixture(5, 42);
+		Check(FiveMinutes.DurationMs == 5ULL * 60000ULL,
+			  "random-stroke fixture duration matches the requested minutes");
+		Check(!FiveMinutes.Frames.empty() &&
+				  FiveMinutes.Frames.back().Sample.SourceElapsedMs ==
+					  FiveMinutes.DurationMs,
+			  "random-stroke fixture's final frame reaches the requested duration");
+
+		bool SawDrive = false;
+		bool SawRecovery = false;
+		std::uint64_t PreviousDistanceMm = 0;
+		for (const auto &Frame : FiveMinutes.Frames)
+		{
+			Check(Frame.Sample.DistanceMm >= PreviousDistanceMm,
+				  "random-stroke fixture never synthesizes backwards distance");
+			PreviousDistanceMm = Frame.Sample.DistanceMm;
+			SawDrive |= Frame.Sample.StrokeState == ERowingStrokeState::Drive;
+			SawRecovery |=
+				Frame.Sample.StrokeState == ERowingStrokeState::Recovery;
+		}
+		Check(SawDrive && SawRecovery,
+			  "random-stroke fixture cycles through drive and recovery");
+
+		const auto SameSeedAgain = pm5_sim::MakeRandomStrokeFixture(5, 42);
+		Check(SameSeedAgain.Frames.size() == FiveMinutes.Frames.size() &&
+				  SameSeedAgain.FinalDistanceMm == FiveMinutes.FinalDistanceMm,
+			  "random-stroke fixture is reproducible for the same seed");
+
+		const auto DifferentSeed = pm5_sim::MakeRandomStrokeFixture(5, 43);
+		Check(DifferentSeed.FinalDistanceMm != FiveMinutes.FinalDistanceMm,
+			  "random-stroke fixture varies with a different seed");
+	}
 } // namespace
 
 int main()
 {
 	golden_workouts_and_fault_replays();
+	random_stroke_run_is_seeded_deterministic_and_duration_scales();
 	if (Failures != 0)
 	{
 		std::cerr << Failures << " integration assertion(s) failed\n";

@@ -28,5 +28,14 @@ namespace pm5_sim
 	FGoldenTelemetryFixture MakeAbruptStopFixture();
 	FGoldenTelemetryFixture MakePacketLossFixture();
 
+	// Synthetic stroke-by-stroke run of the given duration with randomized
+	// (but plausibly bounded) per-stroke rate, power, and distance.
+	// Deterministic per Seed — same Seed and DurationMinutes always produce
+	// an identical fixture, consistent with this file's other fixtures
+	// being generated deterministically from synthetic integer targets.
+	FGoldenTelemetryFixture
+	MakeRandomStrokeFixture(std::uint64_t DurationMinutes,
+							std::uint32_t Seed = 1);
+
 	FMockMachineScenario MakeSyntheticIndoorRowerScenario();
 } // namespace pm5_sim

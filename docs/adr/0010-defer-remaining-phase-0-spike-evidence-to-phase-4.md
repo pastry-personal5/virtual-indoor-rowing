@@ -1,6 +1,6 @@
 # ADR-0010: Defer remaining Phase 0 spike evidence to Phase 4 and open delivery Phase 1
 
-- Status: Accepted
+- Status: Accepted (the design-partner cohort disposition below is superseded by [ADR-0011](0011-defer-design-partner-cohort-to-phase-4.md); all other decisions in this ADR remain in force)
 - Date: 2026-09-17
 - Owners: CTO / Principal Architect (A0)
 

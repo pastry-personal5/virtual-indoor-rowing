@@ -84,7 +84,7 @@ Signing/notarization and the Sparkle update pipeline are deferred to Phase 4 per
 - Exact engine/Xcode/macOS/PM tuples are recorded.
 - No unresolved blocker to BLE telemetry or local session durability; per ADR-0008, an unsigned ad-hoc build is sufficient evidence and notarization is not a Phase 0 blocker.
 - Top risks have owners, triggers, and contingency.
-- The founders have defined what customer evidence would fund delivery Phases 1 and 2. Naming a compatible design-partner cohort and gathering observed first-use evidence is not a condition of starting Phase 1 (per ADR-0010); it remains a condition of *closing* Phase 1, per that phase's own exit gate below.
+- The founders have defined what customer evidence would fund delivery Phases 1 and 2. Naming a compatible design-partner cohort and gathering observed first-use evidence is not a condition of starting Phase 1 (per ADR-0010); it is deferred to Phase 4's exit gate, per [ADR-0011](../adr/0011-defer-design-partner-cohort-to-phase-4.md).
 
 Phase 0 exit gate met 2026-09-17 on this revised basis; see [the evidence report](../phase-0/04-evidence-report.md)'s exit decision table.
 
@@ -109,9 +109,8 @@ An unsigned, ad-hoc-built internal macOS app (per [ADR-0008](../adr/0008-defer-m
 - FR-002/003/004/007 demonstrated on real Model D/PM5 and simulator.
 - 6-minute hardware run meets preliminary latency/durability; process-kill recovery evidence exists. Reduced from an originally specified 60 minutes, an explicit owner-directed scope reduction (2026-09-17), consistent with the same 60-to-6-minute reduction already applied to the Phase 0 Milestone 4 Spike C visual-performance proxy run. Full 60-minute latency/durability evidence remains open as later follow-on, not satisfied by this exit gate.
 - No account, subscription, external integration, or multiplayer required to complete the row.
-- Design partners can attempt the supported setup without an engineer driving the UI; failures are categorized and feed the delivery Phase 2 estimate.
 
-The fresh-install/permission-denial/repair pass is deferred to Phase 4 per [ADR-0009](../adr/0009-defer-bluetooth-tcc-scenario-matrix-to-phase-4.md); it is not a Phase 1 exit-gate requirement.
+The fresh-install/permission-denial/repair pass is deferred to Phase 4 per [ADR-0009](../adr/0009-defer-bluetooth-tcc-scenario-matrix-to-phase-4.md); it is not a Phase 1 exit-gate requirement. The design-partner cohort ("design partners can attempt the supported setup without an engineer driving the UI; failures are categorized") is likewise deferred to Phase 4 per [ADR-0011](../adr/0011-defer-design-partner-cohort-to-phase-4.md); it is not a Phase 1 exit-gate requirement.
 
 ## Phase 2 — solo alpha and content pipeline (6–10 weeks)
 
@@ -159,6 +158,7 @@ The fresh-install/permission-denial/repair pass is deferred to Phase 4 per [ADR-
 
 - Developer ID signing, Hardened Runtime, notarization/stapling, and the signed Sparkle 2 update channel required by [ADR-0006](../adr/0006-macos-distribution.md), introduced here per [ADR-0008](../adr/0008-defer-macos-signing-to-phase-4.md): isolated release credentials, two-person approval, and CDN/feed operations stand up before any public/ranked exposure.
 - Real-PM5 managed-workout acceptance runs (Phase 0 Milestone 4 Spike A step 4) and the full 6-minute-and-60-minute visual-performance evidence (Phase 0 Milestone 4 Spike C), both deferred from Phase 0 per [ADR-0010](../adr/0010-defer-remaining-phase-0-spike-evidence-to-phase-4.md).
+- Named design-partner cohort recruitment and observed first-use setup evidence, deferred from Phase 1 per [ADR-0011](../adr/0011-defer-design-partner-cohort-to-phase-4.md).
 - Gateway, matchmaker, room worker, room lease/recovery, WSS protocol.
 - Private join-code group row, bounded presence, emotes, spectator role.
 - Synchronized countdown, fixed-distance ranked races, penalties/DNF/DNS.
@@ -179,6 +179,7 @@ Start with private unranked rooms, then opt-in unranked public, then ranked cana
 - The protected credential-owner Developer ID signing/notarization execution is recorded, and a clean-install/corrupt-feed/rollback Sparkle rehearsal passes, per ADR-0008.
 - The Bluetooth TCC permission-scenario matrix (fresh Allow after reset, Deny, Settings-repair-then-Allow, normal-launch-no-prompt) is rehearsed against the signed/notarized build, per [ADR-0009](../adr/0009-defer-bluetooth-tcc-scenario-matrix-to-phase-4.md).
 - Real-PM5 managed-workout acceptance runs (distance, time, interval, deliberate reject/abort) pass against the diagnostic CSAFE contract, and the visual-performance spike records both a 6-minute and a full 60-minute run against the frame/thermal budgets in [the macOS/Unreal client architecture](03-macos-unreal-client.md), per [ADR-0010](../adr/0010-defer-remaining-phase-0-spike-evidence-to-phase-4.md).
+- Named design partners can attempt the supported setup without an engineer driving the UI; failures are categorized, per [ADR-0011](../adr/0011-defer-design-partner-cohort-to-phase-4.md).
 
 ## Phase 5 — public beta to GA (6–8 weeks)
 

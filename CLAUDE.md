@@ -121,5 +121,5 @@ Every delivery phase has one or more milestones, named `Phase <N> Milestone <M>`
 ## Useful references
 
 - `docs/architecture/` — numbered specs (00 executive review, 01 product scope … 10 delivery plan), read in numeric order for a detailed decision
-- `docs/adr/` — accepted ADRs (0001 platform/toolchain, 0002 PM5 BLE, 0003 authoritative race service, 0004 offline-first journal, 0005 cloud topology, 0006 macOS distribution, 0007 evidence-gated delivery, 0008 defer signing to Phase 4, 0009 defer Bluetooth TCC scenario matrix to Phase 4, 0010 defer remaining Phase 0 spike evidence to Phase 4)
+- `docs/adr/` — accepted ADRs (0001 platform/toolchain, 0002 PM5 BLE, 0003 authoritative race service, 0004 offline-first journal, 0005 cloud topology, 0006 macOS distribution, 0007 evidence-gated delivery, 0008 defer signing to Phase 4, 0009 defer Bluetooth TCC scenario matrix to Phase 4, 0010 defer remaining Phase 0 spike evidence to Phase 4, 0011 defer design-partner cohort to Phase 4)
 - `docs/phase-0/` — current bounded diagnostic milestones, their changelog, and exit-gate status

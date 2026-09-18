@@ -6,6 +6,14 @@ This document records changes to the milestones that contribute to delivery Phas
 
 ### Added
 
+- Scoped and implemented Phase 1 Milestone 2 (build-order step 3: "PM simulator, protocol codec, CoreBluetooth adapter, capability handshake"). Owner-confirmed scoping (2026-09-18): promote the existing Phase 0 diagnostic-grade `IRowingMachine`/`Concept2PMDiscoveryMac`/`Tools/pm5-sim` foundation rather than build a parallel implementation; defer telemetry/capability Protobuf wire mapping to Milestone 3; keep CSAFE managed-workout control diagnostic-only (Phase 2 territory). During implementation, found the reviewed non-diagnostic product profile and its factory wiring already existed from Phase 0 (`Concept2PM::GetGeneratedPM5CapabilityProfiles()`), so the milestone's actual code change narrowed to a new `pm5_reviewed_profile_tests` CTest target (`Tests/Contract/pm5_reviewed_profile_tests.cpp`) exercising acceptance/rejection against the real generated profile set. Real-PM5 confirmation run remains outstanding (owner-run). See [02-milestone-2-device-capability-handshake.md](02-milestone-2-device-capability-handshake.md).
+
+### Changed
+
+- Deferred the design-partner cohort from Phase 1's exit gate to Phase 4's, per [ADR-0011](../adr/0011-defer-design-partner-cohort-to-phase-4.md): named-partner recruitment is not feasible on the current timeline, so it can no longer be a hard condition of closing Phase 1. Updated in [the delivery plan](../architecture/10-delivery-plan.md) and this packet's README; ADR-0010's design-partner disposition is superseded accordingly.
+
+### Added
+
 - Opened delivery Phase 1 packet (`docs/phase-1/README.md`) per [ADR-0010](../adr/0010-defer-remaining-phase-0-spike-evidence-to-phase-4.md), following delivery Phase 0's revised exit gate. No milestone scoped or started yet.
 - Phase 1 Milestone 1 (build-order step 2): a real, non-diagnostic `RowingCore` session-continuity domain (`FRowingSessionId` UUIDv7, `ERowingSessionState`/`ERowingSessionDisposition`/`ERowingSessionStateReason`, `FRowingSessionStateMachine`) and its Protobuf contract seed (`Contracts/proto/rowing/v1/session.proto`, `SessionStateChangedEvent`). New behavioral tests: `rowing_session_state_machine_tests`, `rowing_session_contract_tests`. See [01-milestone-1-rowingcore-domain-contract.md](01-milestone-1-rowingcore-domain-contract.md).
 - Pinned the Protobuf toolchain (`protobuf 36.1`) in `Config/BuildVersions.json` and `make doctor`, matching the existing `cmake`/`ninja`/`git_lfs` exact-version pattern. `protobuf 36.1` was installed via `brew install protobuf`, which also pulled in `abseil 20260817.0` as a transitive dependency; abseil itself is not independently pinned or checked by `make doctor`. New CMake target `RowingContracts` generates and builds the Protobuf contract code; nothing depends on it yet.
