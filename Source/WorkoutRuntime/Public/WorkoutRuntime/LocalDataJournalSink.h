@@ -2,6 +2,10 @@
 
 #include "WorkoutRuntime/JournalSink.h"
 
+#include <cstdint>
+#include <map>
+#include <string>
+
 // IJournalSink over the product LocalData journal. The writer is not owned and
 // must outlive the sink. Summaries require the writer to have been given a
 // cipher; without one WriteSummary throws and the runtime counts a journal error.
@@ -22,5 +26,6 @@ class FLocalDataJournalSink final : public IJournalSink
 
   private:
 	LocalData::FLocalDataJournalWriter &Writer;
-	std::uint32_t NextSummaryRevision = 1;
+	// Revisions are per session: the revision is part of the sealed associated data.
+	std::map<std::string, std::uint32_t> NextSummaryRevision;
 };

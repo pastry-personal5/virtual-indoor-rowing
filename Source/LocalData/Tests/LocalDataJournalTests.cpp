@@ -606,6 +606,32 @@ namespace
 		RemoveDatabase(Path);
 	}
 
+	void local_data_abandoned_stage_does_not_wedge_later_writes()
+	{
+		const auto Path = MakeTempDatabasePath(__func__);
+		FFakeCipher Cipher;
+		const FRowingSessionId Id = MakeSessionId(6);
+		LocalData::FLocalDataJournalWriter Writer(Path, &Cipher);
+		Writer.CreateSession(MakeSessionRecord(Id));
+		LocalData::FSessionSummary Summary;
+		Summary.Id = Id;
+		Summary.MetricsPayload = "abandoned";
+		Writer.StageSessionSummary(Summary);
+		// A second stage is refused while the first is open.
+		EXPECT_TRUE(ThrowsAny([&]
+							  { Writer.StageSessionSummary(Summary); }));
+		Writer.AbandonStaged();
+		Writer.AbandonStaged();
+		EXPECT_TRUE(!LocalData::ReadLatestSessionSummary(Path, Id, Cipher).has_value());
+
+		Summary.MetricsPayload = "kept";
+		Writer.StageSessionSummary(Summary);
+		Writer.CommitStagedSessionSummary();
+		const auto Latest = LocalData::ReadLatestSessionSummary(Path, Id, Cipher);
+		EXPECT_TRUE(Latest.has_value() && Latest->MetricsPayload == "kept");
+		RemoveDatabase(Path);
+	}
+
 	void local_data_recovery_ends_the_open_sessions_row()
 	{
 		const auto Path = MakeTempDatabasePath(__func__);
@@ -757,6 +783,7 @@ int main()
 	local_data_writer_rolls_back_a_duplicate_event_and_stays_usable();
 	local_data_reader_with_a_cipher_rejects_plaintext_and_unknown_codecs();
 	local_data_session_summary_requires_an_existing_session();
+	local_data_abandoned_stage_does_not_wedge_later_writes();
 	local_data_recovery_ends_the_open_sessions_row();
 	local_data_recovery_handles_every_unterminated_session();
 	local_data_ended_session_cannot_be_reopened();

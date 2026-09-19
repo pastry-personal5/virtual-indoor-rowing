@@ -321,6 +321,14 @@ namespace LocalData
 		Impl->CommitStagedTransaction("CommitStagedSessionSummary");
 	}
 
+	void FLocalDataJournalWriter::AbandonStaged() noexcept
+	{
+		if (!Impl->TransactionStaged)
+			return;
+		Impl->Connection.RollbackNoThrow();
+		Impl->TransactionStaged = false;
+	}
+
 	void FLocalDataJournalWriter::Close()
 	{
 		Impl.reset();

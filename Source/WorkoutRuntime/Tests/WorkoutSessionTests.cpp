@@ -46,7 +46,9 @@ namespace
 		};
 
 		bool bFailAppend = false;
+		int CreateSessionFailuresRemaining = 0;
 		int CreateSessionCount = 0;
+		int CreatedSessionCount = 0;
 		std::vector<ERowingSessionState> States;
 		std::vector<FEvent> Events;
 		std::vector<std::vector<FRowingMetricSample>> Chunks;
@@ -55,6 +57,12 @@ namespace
 		void CreateSession(const LocalData::FSessionRecord &) override
 		{
 			++CreateSessionCount;
+			if (CreateSessionFailuresRemaining > 0)
+			{
+				--CreateSessionFailuresRemaining;
+				throw std::runtime_error("injected create failure");
+			}
+			++CreatedSessionCount;
 		}
 		void UpdateSessionState(const FRowingSessionId &, ERowingSessionState State) override
 		{
@@ -129,14 +137,14 @@ namespace
 		return Sample;
 	}
 
-	FWorkoutSessionDependencies MakeDependencies(IRowingMachine &Machine, IJournalSink &Sink)
+	FWorkoutSessionDependencies MakeDependencies(IRowingMachine &Machine, IJournalSink &Sink, std::uint8_t RandomSeed = 0)
 	{
 		FWorkoutSessionDependencies Deps;
 		Deps.Machine = &Machine;
 		Deps.Sink = &Sink;
 		Deps.UnixTimeMs = []
 		{ return std::uint64_t{1758067200000ULL}; };
-		Deps.RandomByte = [Next = std::uint8_t{0}]() mutable
+		Deps.RandomByte = [Next = RandomSeed]() mutable
 		{ return Next++; };
 		return Deps;
 	}
@@ -145,11 +153,11 @@ namespace
 	// both. Step() advances time; Publish() delivers one device fact.
 	struct FHarness
 	{
-		explicit FHarness(IJournalSink &Sink, FWorkoutSessionConfig Config = {})
+		explicit FHarness(IJournalSink &Sink, FWorkoutSessionConfig Config = {}, std::uint8_t RandomSeed = 0)
 			: Machine(std::make_unique<pm5_sim::FMockRowingMachine>(pm5_sim::MakeSyntheticIndoorRowerScenario()))
 		{
 			Machine->Connect();
-			Session = std::make_unique<FWorkoutSession>(MakeDependencies(*Machine, Sink), std::move(Config));
+			Session = std::make_unique<FWorkoutSession>(MakeDependencies(*Machine, Sink, RandomSeed), std::move(Config));
 			Session->Tick(Now);
 		}
 
@@ -713,6 +721,129 @@ namespace
 		EXPECT_TRUE(Session.GetSnapshot().AcceptedSampleCount == 5);
 	}
 
+	FRowingMachineEvent MakeSampleEvent(std::uint64_t Sequence, std::uint64_t NowNs, std::uint64_t Index)
+	{
+		FRowingMetricSample Sample = MakeSample(Index);
+		Sample.Sequence = Index;
+		return FRowingMachineEvent{Sequence, NowNs, std::move(Sample)};
+	}
+
+	FRowingMachineEvent MakeConnectionEvent(std::uint64_t Sequence, std::uint64_t NowNs, ERowingConnectionState Previous, ERowingConnectionState Next)
+	{
+		FRowingConnectionStateChanged Changed;
+		Changed.PreviousState = Previous;
+		Changed.NewState = Next;
+		return FRowingMachineEvent{Sequence, NowNs, Changed};
+	}
+
+	// The real Concept2PM adapter emits ConnectionStateChanged(Ready) and only
+	// then FRowingConnectionRestored (FinishTelemetryIfReady transitions, then
+	// emits). The device-reported gap must still reach the journal.
+	void workout_session_records_device_gap_when_ready_precedes_restored()
+	{
+		FFakeSink Sink;
+		pm5_sim::FMockRowingMachine Machine(pm5_sim::MakeSyntheticIndoorRowerScenario());
+		FWorkoutSession Session(MakeDependencies(Machine, Sink));
+
+		std::uint64_t Sequence = 0;
+		std::uint64_t Now = 0;
+		Session.Ingest(MakeConnectionEvent(++Sequence, Now, ERowingConnectionState::Subscribing, ERowingConnectionState::Ready));
+		for (std::uint64_t Index = 1; Index <= 3; ++Index)
+		{
+			Now += 100 * NsPerMs;
+			Session.Ingest(MakeSampleEvent(++Sequence, Now, Index));
+		}
+		EXPECT_TRUE(Session.GetSnapshot().State == ERowingSessionState::Active);
+
+		Now += 100 * NsPerMs;
+		Session.Ingest(MakeConnectionEvent(++Sequence, Now, ERowingConnectionState::Ready, ERowingConnectionState::Reconnecting));
+		EXPECT_TRUE(Session.GetSnapshot().State == ERowingSessionState::ConnectionLost);
+		Now += 2500 * NsPerMs;
+		Session.Ingest(MakeConnectionEvent(++Sequence, Now, ERowingConnectionState::Reconnecting, ERowingConnectionState::Ready));
+		FRowingConnectionRestored Restored;
+		Restored.GapDurationMs = 2500;
+		Session.Ingest(FRowingMachineEvent{++Sequence, Now, Restored});
+
+		EXPECT_TRUE(Session.GetSnapshot().State == ERowingSessionState::Active);
+		EXPECT_TRUE(Session.GetSnapshot().GapCount == 1);
+		EXPECT_TRUE(Sink.EventCount(LocalData::EJournalEventKind::LinkGap) == 1);
+		const auto GapEvent = std::find_if(Sink.Events.begin(), Sink.Events.end(), [](const FFakeSink::FEvent &Event)
+										   { return Event.Kind == LocalData::EJournalEventKind::LinkGap; });
+		const WorkoutRuntime::Private::FLinkGap Gap = WorkoutRuntime::Private::ParseLinkGap(GapEvent->Payload);
+		EXPECT_TRUE(Gap.bDeviceReported);
+		EXPECT_TRUE(Gap.GapDurationMs == 2500);
+	}
+
+	// Ready with no Restored still restores, host-measured, on the next sample.
+	void workout_session_restores_host_measured_when_ready_arrives_without_restored()
+	{
+		FFakeSink Sink;
+		pm5_sim::FMockRowingMachine Machine(pm5_sim::MakeSyntheticIndoorRowerScenario());
+		FWorkoutSession Session(MakeDependencies(Machine, Sink));
+
+		std::uint64_t Sequence = 0;
+		std::uint64_t Now = 0;
+		Session.Ingest(MakeConnectionEvent(++Sequence, Now, ERowingConnectionState::Subscribing, ERowingConnectionState::Ready));
+		Now += 100 * NsPerMs;
+		Session.Ingest(MakeSampleEvent(++Sequence, Now, 1));
+		Now += 100 * NsPerMs;
+		Session.Ingest(MakeConnectionEvent(++Sequence, Now, ERowingConnectionState::Ready, ERowingConnectionState::Reconnecting));
+		Now += 1000 * NsPerMs;
+		Session.Ingest(MakeConnectionEvent(++Sequence, Now, ERowingConnectionState::Reconnecting, ERowingConnectionState::Ready));
+		Now += 100 * NsPerMs;
+		Session.Ingest(MakeSampleEvent(++Sequence, Now, 20));
+
+		EXPECT_TRUE(Session.GetSnapshot().State == ERowingSessionState::Active);
+		EXPECT_TRUE(Session.GetSnapshot().GapCount == 1);
+		EXPECT_TRUE(Session.GetSnapshot().AcceptedSampleCount == 2);
+		const auto GapEvent = std::find_if(Sink.Events.begin(), Sink.Events.end(), [](const FFakeSink::FEvent &Event)
+										   { return Event.Kind == LocalData::EJournalEventKind::LinkGap; });
+		EXPECT_TRUE(GapEvent != Sink.Events.end());
+		EXPECT_TRUE(!WorkoutRuntime::Private::ParseLinkGap(GapEvent->Payload).bDeviceReported);
+	}
+
+	// A transient first CreateSession failure must not lose the workout: later
+	// writes need the sessions row, so creation is retried until it lands.
+	void workout_session_retries_create_session_after_transient_failure()
+	{
+		FFakeSink Sink;
+		Sink.CreateSessionFailuresRemaining = 1;
+		FHarness Harness(Sink);
+		Harness.Row(1, 3);
+		EXPECT_TRUE(Sink.CreateSessionCount == 2);
+		EXPECT_TRUE(Sink.CreatedSessionCount == 1);
+		Harness.Session->End(Harness.Now);
+		// The retry landed before the samples flushed.
+		EXPECT_TRUE(Sink.SampleCount() == 3);
+		EXPECT_TRUE(Harness.Session->GetSnapshot().JournalErrorCount == 1);
+	}
+
+	// The summary revision is part of the sealed associated data, so a second
+	// session through the same sink must still start at revision 1.
+	void local_data_sink_numbers_summary_revisions_per_session()
+	{
+		const auto Path = MakeTempDatabasePath(__func__);
+		FTestCipher Cipher;
+		LocalData::FLocalDataJournalWriter Writer(Path, &Cipher);
+		FLocalDataJournalSink Sink(Writer);
+		FRowingSessionId Ids[2];
+		std::uint8_t Seed = 0;
+		for (FRowingSessionId &Id : Ids)
+		{
+			FHarness Harness(Sink, {}, Seed += 100);
+			Harness.Row(1, 3);
+			Id = Harness.Session->GetSnapshot().SessionId;
+			Harness.Session->End(Harness.Now);
+		}
+		EXPECT_TRUE(Ids[0].ToCanonicalString() != Ids[1].ToCanonicalString());
+		for (const FRowingSessionId &Id : Ids)
+		{
+			const auto Latest = LocalData::ReadLatestSessionSummary(Path, Id, Cipher);
+			EXPECT_TRUE(Latest.has_value() && Latest->Revision == 1);
+		}
+		RemoveDatabase(Path);
+	}
+
 	void workout_session_requires_complete_dependencies()
 	{
 		FFakeSink Sink;
@@ -754,6 +885,10 @@ int main()
 	session_summary_wire_mapping_round_trips();
 	link_gap_wire_mapping_round_trips_and_rejects_unknown_version();
 	workout_session_ingests_forwarded_events_without_polling_the_machine();
+	workout_session_records_device_gap_when_ready_precedes_restored();
+	workout_session_restores_host_measured_when_ready_arrives_without_restored();
+	workout_session_retries_create_session_after_transient_failure();
+	local_data_sink_numbers_summary_revisions_per_session();
 	workout_session_requires_complete_dependencies();
 
 	return Failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;

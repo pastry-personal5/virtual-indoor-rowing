@@ -100,6 +100,7 @@ struct FWorkoutSession::FImpl
 	{
 		if (Buffer.empty())
 			return true;
+		EnsureSessionRow();
 		if (Journal([&]
 					{ Deps.Sink->AppendSamples(Machine.GetId(), Buffer); }))
 		{
@@ -141,6 +142,18 @@ struct FWorkoutSession::FImpl
 		bDirty = true;
 	}
 
+	// The sessions row every later write depends on. A failed create stays
+	// pending and is retried on the next write, so one transient failure cannot
+	// lose the workout once the journal recovers.
+	void EnsureSessionRow()
+	{
+		if (!PendingRecord)
+			return;
+		if (Journal([&]
+					{ Deps.Sink->CreateSession(*PendingRecord); }))
+			PendingRecord.reset();
+	}
+
 	// Created -> Active. The first point at which anything is persisted.
 	void Activate(std::uint64_t Ns)
 	{
@@ -158,8 +171,8 @@ struct FWorkoutSession::FImpl
 		if (!Config.Timezone.empty())
 			Record.Timezone = Config.Timezone;
 		Record.Source = Config.Source;
-		Journal([&]
-				{ Deps.Sink->CreateSession(Record); });
+		PendingRecord = std::move(Record);
+		EnsureSessionRow();
 		RecordEvent(LocalData::EJournalEventKind::Started, Ns, {});
 		if (PendingInfo)
 		{
@@ -179,6 +192,7 @@ struct FWorkoutSession::FImpl
 		if (bPersisted)
 		{
 			Flush(Ns);
+			EnsureSessionRow();
 			Journal([&]
 					{ Deps.Sink->UpdateSessionState(Machine.GetId(), Change->NewState); });
 		}
@@ -194,6 +208,7 @@ struct FWorkoutSession::FImpl
 		Snapshot.EndReason = Reason;
 		if (bPersisted)
 		{
+			EnsureSessionRow();
 			if (!Flush(Ns) && !Flush(Ns))
 			{
 				// The session is over, so there is no later attempt. Say so.
@@ -218,6 +233,7 @@ struct FWorkoutSession::FImpl
 
 	void OnRestored(std::uint64_t Ns, std::optional<std::uint64_t> DeviceGapMs)
 	{
+		bRestorePending = false;
 		if (Machine.GetState() != ERowingSessionState::ConnectionLost)
 			return;
 		const std::uint64_t GapMs = DeviceGapMs ? *DeviceGapMs : (Ns >= LinkLostAtNs ? (Ns - LinkLostAtNs) / NanosecondsPerMillisecond : 0);
@@ -234,8 +250,11 @@ struct FWorkoutSession::FImpl
 		bDeviceReady = Changed.NewState == ERowingConnectionState::Ready;
 		if (Machine.GetState() == ERowingSessionState::Active && !bDeviceReady)
 			OnLinkLost(Ns);
-		else if (Machine.GetState() == ERowingSessionState::ConnectionLost && bDeviceReady)
-			OnRestored(Ns, std::nullopt);
+		else if (Machine.GetState() == ERowingSessionState::ConnectionLost)
+			// The real adapter emits Ready before FRowingConnectionRestored, which
+			// carries the device-measured gap. Wait for it; the next sample or the
+			// end of a drain restores host-measured if it never comes.
+			bRestorePending = bDeviceReady;
 	}
 
 	void OnMachineInfo(const FRowingMachineInfo &Info, std::uint64_t Ns)
@@ -250,6 +269,8 @@ struct FWorkoutSession::FImpl
 	{
 		if (Machine.GetState() == ERowingSessionState::Ended)
 			return;
+		if (bRestorePending)
+			OnRestored(Ns, std::nullopt);
 		const bool bUnusable = (Sample.QualityFlags & RejectedQualityFlags) != 0 ||
 							   (LastSequence && Sample.Sequence <= *LastSequence) ||
 							   // Official input is frozen for the whole gap.
@@ -276,6 +297,7 @@ struct FWorkoutSession::FImpl
 
 	void Accept(const FRowingMetricSample &Sample, std::uint64_t Ns)
 	{
+		EnsureSessionRow();
 		if (Buffer.empty())
 			BufferStartNs = Ns;
 		Buffer.push_back(Sample);
@@ -396,7 +418,9 @@ struct FWorkoutSession::FImpl
 
 	bool bDirty = false;
 	bool bPersisted = false;
+	std::optional<LocalData::FSessionRecord> PendingRecord;
 	bool bDeviceReady = false;
+	bool bRestorePending = false;
 	std::optional<FRowingMachineInfo> PendingInfo;
 	std::uint64_t EventSequence = 0;
 	std::optional<std::uint64_t> LastSequence;
@@ -427,8 +451,12 @@ void FWorkoutSession::Tick(std::uint64_t NowMonotonicNs)
 		return;
 
 	FRowingMachineEvent Event;
-	for (std::size_t Drained = 0; Drained < Impl->Config.MaxEventsPerTick && Impl->Machine.GetState() != ERowingSessionState::Ended && Impl->Deps.Machine->TryPollEvent(Event); ++Drained)
+	std::size_t Drained = 0;
+	for (; Drained < Impl->Config.MaxEventsPerTick && Impl->Machine.GetState() != ERowingSessionState::Ended && Impl->Deps.Machine->TryPollEvent(Event); ++Drained)
 		Impl->OnEvent(Event);
+
+	if (Impl->bRestorePending && Drained < Impl->Config.MaxEventsPerTick)
+		Impl->OnRestored(NowMonotonicNs, std::nullopt);
 
 	if (Impl->Machine.GetState() == ERowingSessionState::ConnectionLost && NowMonotonicNs >= Impl->LinkLostAtNs &&
 		(NowMonotonicNs - Impl->LinkLostAtNs) / NanosecondsPerMillisecond >= Impl->Config.ReconnectWindowMs)

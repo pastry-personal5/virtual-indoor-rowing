@@ -38,12 +38,31 @@ void FLocalDataJournalSink::AppendSamples(const FRowingSessionId &Id, const std:
 
 void FLocalDataJournalSink::WriteSummary(const FRowingSessionId &Id, const std::string &Payload, std::uint32_t QualityFlags)
 {
+	std::uint32_t &Revision = NextSummaryRevision.try_emplace(Id.ToCanonicalString(), 1).first->second;
 	LocalData::FSessionSummary Summary;
 	Summary.Id = Id;
-	Summary.Revision = NextSummaryRevision;
+	Summary.Revision = Revision;
 	Summary.MetricsPayload = Payload;
 	Summary.QualityFlags = QualityFlags;
 	Writer.StageSessionSummary(Summary);
-	Writer.CommitStagedSessionSummary();
-	++NextSummaryRevision;
+	try
+	{
+		Writer.CommitStagedSessionSummary();
+	}
+	catch (...)
+	{
+		// The runtime never retries a summary, and a stage that stays open would
+		// fail every later write through this writer. One more commit attempt,
+		// then give the stage up.
+		try
+		{
+			Writer.CommitStagedSessionSummary();
+		}
+		catch (...)
+		{
+			Writer.AbandonStaged();
+			throw;
+		}
+	}
+	++Revision;
 }

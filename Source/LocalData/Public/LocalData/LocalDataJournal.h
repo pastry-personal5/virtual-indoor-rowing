@@ -144,6 +144,10 @@ namespace LocalData
 		void StageSessionSummary(const FSessionSummary &Summary);
 		void CommitStagedSessionSummary();
 
+		// Rolls back whatever is staged and forgets it, so a commit that keeps
+		// failing cannot wedge every later write. A no-op when nothing is staged.
+		void AbandonStaged() noexcept;
+
 		// Closes the connection. A durability barrier: every prior
 		// AppendChunk/RecordJournalEvent call has already committed, so
 		// this only releases the handle.
