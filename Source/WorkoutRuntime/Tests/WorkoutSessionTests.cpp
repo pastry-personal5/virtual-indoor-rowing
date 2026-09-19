@@ -468,6 +468,37 @@ namespace
 		EXPECT_TRUE(Sink.EventCount(LocalData::EJournalEventKind::Aborted) == 1);
 	}
 
+	void workout_session_ends_when_the_device_reports_the_end_with_reset_meters()
+	{
+		FFakeSink Sink;
+		FHarness Harness(Sink);
+		Harness.Row(1, 3);
+		EXPECT_TRUE(Harness.Session->GetSnapshot().State == ERowingSessionState::Active);
+		const std::uint64_t Accepted = Harness.Session->GetSnapshot().AcceptedSampleCount;
+		Harness.Step(100);
+		// The PM5 resets distance and time as it reports the workout over, which the
+		// normalizer flags as a regression: the sample is rejected, but the end is a fact.
+		Harness.Publish(MakeSample(4, ERowingWorkoutState::Complete, ERowingState::Inactive, ToRowingQualityFlags(ERowingQualityFlag::DistanceRegression)));
+		const FWorkoutSnapshot &Snapshot = Harness.Session->GetSnapshot();
+		EXPECT_TRUE(Snapshot.State == ERowingSessionState::Ended);
+		EXPECT_TRUE(Snapshot.EndReason == ERowingSessionStateReason::DeviceCompleted);
+		EXPECT_TRUE(Snapshot.AcceptedSampleCount == Accepted);
+		EXPECT_TRUE(Snapshot.RejectedSampleCount == 1);
+	}
+
+	void workout_session_ends_when_the_device_returns_to_waiting_to_begin()
+	{
+		FFakeSink Sink;
+		FHarness Harness(Sink);
+		Harness.Row(1, 3);
+		EXPECT_TRUE(Harness.Session->GetSnapshot().State == ERowingSessionState::Active);
+		Harness.Step(100);
+		// Ending a Just Row on the PM5 can drop it straight back to waiting, with meters reset.
+		Harness.Publish(MakeSample(4, ERowingWorkoutState::WaitingToBegin, ERowingState::Inactive, ToRowingQualityFlags(ERowingQualityFlag::DistanceRegression)));
+		EXPECT_TRUE(Harness.Session->GetSnapshot().State == ERowingSessionState::Ended);
+		EXPECT_TRUE(Harness.Session->GetSnapshot().Disposition == ERowingSessionDisposition::Completed);
+	}
+
 	void workout_session_ignores_paused_and_resting_for_completion()
 	{
 		FFakeSink Sink;
@@ -893,6 +924,8 @@ int main()
 	workout_session_interrupts_after_reconnect_window();
 	workout_session_completes_on_device_complete_state();
 	workout_session_aborts_on_device_terminated_state();
+	workout_session_ends_when_the_device_reports_the_end_with_reset_meters();
+	workout_session_ends_when_the_device_returns_to_waiting_to_begin();
 	workout_session_ignores_paused_and_resting_for_completion();
 	workout_session_flushes_chunk_on_sample_count();
 	workout_session_flushes_chunk_on_elapsed_time();

@@ -31,6 +31,23 @@ namespace
 		return Sample.WorkoutState == ERowingWorkoutState::Active && Sample.RowingState != ERowingState::Inactive;
 	}
 
+	// Whether the device's own workout state says the workout is over. Only meaningful while the
+	// session is Active, which needed an Active workout state to begin with: a PM5 that ends a
+	// Just Row can report Complete/Terminated, or drop straight back to WaitingToBegin.
+	std::optional<ERowingSessionStateReason> DeviceEndReason(const FRowingMetricSample &Sample)
+	{
+		switch (Sample.WorkoutState)
+		{
+		case ERowingWorkoutState::Complete:
+		case ERowingWorkoutState::WaitingToBegin:
+			return ERowingSessionStateReason::DeviceCompleted;
+		case ERowingWorkoutState::Terminated:
+			return ERowingSessionStateReason::DeviceTerminated;
+		default:
+			return std::nullopt;
+		}
+	}
+
 	std::string FormatUtc(std::uint64_t UnixTimeMs)
 	{
 		const std::time_t Seconds = static_cast<std::time_t>(UnixTimeMs / 1000);
@@ -297,6 +314,15 @@ struct FWorkoutSession::FImpl
 		{
 			++Snapshot.RejectedSampleCount;
 			bDirty = true;
+			// A PM5 that ends the workout may reset distance and time in the same report, which
+			// marks the sample as a regression. Its meters are still not used, but the device
+			// saying the workout is over is a fact independent of them: without this the row
+			// would never end in the HUD.
+			if (Machine.GetState() == ERowingSessionState::Active)
+			{
+				if (const std::optional<ERowingSessionStateReason> Reason = DeviceEndReason(Sample))
+					Finish(*Reason, Ns);
+			}
 			return;
 		}
 
@@ -337,10 +363,8 @@ struct FWorkoutSession::FImpl
 		if (Sample.Calories)
 			LastCalories = Sample.Calories;
 
-		if (Sample.WorkoutState == ERowingWorkoutState::Complete)
-			Finish(ERowingSessionStateReason::DeviceCompleted, Ns);
-		else if (Sample.WorkoutState == ERowingWorkoutState::Terminated)
-			Finish(ERowingSessionStateReason::DeviceTerminated, Ns);
+		if (const std::optional<ERowingSessionStateReason> Reason = DeviceEndReason(Sample))
+			Finish(*Reason, Ns);
 		else if (Buffer.size() >= Config.FlushSampleCount)
 			Flush(Ns);
 	}

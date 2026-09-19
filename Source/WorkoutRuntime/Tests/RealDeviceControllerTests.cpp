@@ -423,7 +423,7 @@ namespace
 		EXPECT_TRUE(H.Controller->GetSnapshot()->AcceptedSampleCount > 0);
 	}
 
-	void controller_end_after_the_row_stopped_does_not_hold_the_next_session()
+	void controller_a_device_ended_row_does_not_hold_the_next_session()
 	{
 		FHarness H;
 		H.ConnectRemembered();
@@ -431,7 +431,9 @@ namespace
 		H.Step(100);
 		H.Discovery->Live->PublishTelemetry(MakeStoppedSample(6));
 		H.Controller->Pump();
-		EXPECT_TRUE(H.Controller->EndSession());
+		// The PM5 reporting the workout stopped ends the session by itself.
+		EXPECT_TRUE(H.Controller->GetSnapshot()->State == ERowingSessionState::Ended);
+		EXPECT_TRUE(!H.Controller->IsAwaitingRowStop());
 		EXPECT_TRUE(H.Controller->StartNewSession());
 		H.Row(20, 5);
 		EXPECT_TRUE(H.Controller->GetSnapshot()->AcceptedSampleCount > 0);
@@ -590,7 +592,7 @@ int main()
 	controller_link_loss_freezes_the_session_and_keeps_draining();
 	controller_end_then_start_new_uses_a_fresh_session_id();
 	controller_end_mid_row_holds_the_next_session_until_the_row_stops();
-	controller_end_after_the_row_stopped_does_not_hold_the_next_session();
+	controller_a_device_ended_row_does_not_hold_the_next_session();
 	controller_selects_the_candidate_the_user_saw_when_the_list_re_sorts();
 	controller_ignores_a_token_that_left_the_list();
 	controller_shows_a_problem_when_the_discovery_cannot_be_created();
