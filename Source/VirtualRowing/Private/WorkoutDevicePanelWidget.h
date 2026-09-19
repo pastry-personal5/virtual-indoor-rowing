@@ -29,6 +29,10 @@ class VIRTUALROWING_API UWorkoutDevicePanelWidget : public UUserWidget
 	// nearest-first, so these are the nearest PMs.
 	static constexpr int32 MaxCandidateButtons = 5;
 
+	// Applies the subsystem's current panel state if it changed. Called by the subsystem every
+	// tick and on creation, and by NativeTick; safe to call any number of times.
+	void Sync();
+
   protected:
 	virtual void NativeOnInitialized() override;
 	virtual void NativeTick(const FGeometry &MyGeometry, float InDeltaTime) override;

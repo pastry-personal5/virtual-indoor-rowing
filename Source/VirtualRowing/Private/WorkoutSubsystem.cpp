@@ -359,6 +359,10 @@ void UWorkoutSubsystem::Tick(float DeltaTime)
 	Pump();
 	EnsureHud();
 	EnsureDevicePanel();
+	// Driven from here, not only from the widget's own tick: the panel must appear even if
+	// Slate never ticks it.
+	if (DevicePanel)
+		DevicePanel->Sync();
 }
 
 TArray<FString> UWorkoutSubsystem::GetSimulatorFixtureNames()
@@ -688,6 +692,7 @@ void UWorkoutSubsystem::EnsureDevicePanel()
 		return;
 	}
 	DevicePanel = NewPanel;
+	DevicePanel->Sync();
 }
 
 void UWorkoutSubsystem::EnsureHud()

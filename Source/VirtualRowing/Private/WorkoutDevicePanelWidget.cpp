@@ -17,6 +17,9 @@ namespace
 	constexpr int32 MessageFontSize = 30;
 	constexpr int32 ButtonFontSize = 26;
 	constexpr int32 JournalFontSize = 22;
+	// Attached: the device actions shrink to a corner cluster so they never sit on the metrics.
+	constexpr int32 CompactButtonFontSize = 14;
+	constexpr int32 CompactJournalFontSize = 12;
 	const FLinearColor TextColor(1.0f, 1.0f, 1.0f, 1.0f);
 	// The unsaved warning must not rely on color alone; the text says it too.
 	const FLinearColor WarningColor(1.0f, 0.55f, 0.2f, 1.0f);
@@ -102,8 +105,8 @@ void UWorkoutDevicePanelWidget::NativeOnInitialized()
 	WidgetTree->RootWidget = RootBorder;
 
 	SetIsFocusable(true);
-	// Hidden, not Collapsed: Slate does not tick Collapsed widgets, and NativeTick is
-	// what applies the first panel state and un-hides this widget.
+	// Hidden until the first Sync() applies the panel state. The subsystem calls Sync()
+	// itself, so showing the panel never depends on this widget's own tick running.
 	SetVisibility(ESlateVisibility::Hidden);
 	AppliedFocus.Init(-1, MaxCandidateButtons + 6);
 }
@@ -136,6 +139,11 @@ UButton *UWorkoutDevicePanelWidget::GetPrimaryButton(const FWorkoutDevicePanel &
 void UWorkoutDevicePanelWidget::NativeTick(const FGeometry &MyGeometry, float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
+	Sync();
+}
+
+void UWorkoutDevicePanelWidget::Sync()
+{
 	UWorkoutSubsystem *Subsystem = GetWorkoutSubsystem();
 	if (!Subsystem)
 		return;
@@ -198,7 +206,20 @@ void UWorkoutDevicePanelWidget::ApplyPanel(const FWorkoutDevicePanel &Panel)
 	SetVisibility(Panel.Mode == EWorkoutDevicePanelMode::Hidden ? ESlateVisibility::Hidden : (bBlocking ? ESlateVisibility::Visible : ESlateVisibility::SelfHitTestInvisible));
 	RootBorder->SetVisibility(bBlocking ? ESlateVisibility::Visible : ESlateVisibility::SelfHitTestInvisible);
 	RootBorder->SetBrushColor(bBlocking ? FLinearColor(0.02f, 0.03f, 0.05f, 1.0f) : FLinearColor(0.0f, 0.0f, 0.0f, 0.0f));
-	RootBorder->SetVerticalAlignment(bBlocking ? VAlign_Center : VAlign_Top);
+	// Attached: a small cluster in the bottom-right corner, clear of the centered metrics,
+	// instead of a full-width strip laid over the top of the HUD.
+	RootBorder->SetHorizontalAlignment(bBlocking ? HAlign_Center : HAlign_Right);
+	RootBorder->SetVerticalAlignment(bBlocking ? VAlign_Center : VAlign_Bottom);
+	RootBorder->SetPadding(bBlocking ? FMargin(0.0f) : FMargin(16.0f));
+	for (UButton *Button : {ScanButton.Get(), ForgetButton.Get(), CancelButton.Get()})
+	{
+		if (UTextBlock *Label = Cast<UTextBlock>(Button->GetContent()))
+			Label->SetFont(FCoreStyle::GetDefaultFontStyle("Bold", bAttached ? CompactButtonFontSize : ButtonFontSize));
+		if (UButtonSlot *ButtonSlot = Cast<UButtonSlot>(Button->GetContent() ? Button->GetContent()->Slot : nullptr))
+			ButtonSlot->SetPadding(bAttached ? FMargin(10.0f, 4.0f) : FMargin(24.0f, 12.0f));
+	}
+	JournalText->SetFont(FCoreStyle::GetDefaultFontStyle("Bold", bAttached ? CompactJournalFontSize : JournalFontSize));
+	JournalText->SetJustification(bAttached ? ETextJustify::Right : ETextJustify::Center);
 
 	MessageText->SetText(FText::FromString(Panel.Message));
 	MessageText->SetVisibility(bBlocking ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
