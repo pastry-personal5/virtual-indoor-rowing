@@ -457,6 +457,8 @@ if(VIR_BUILD_TESTS AND BUILD_TESTING AND NOT VIR_APP_LIBS_ONLY)
 			pm5_tui_metrics_writer_tests
 			Tools/pm5-tui/tests/RunMetricsWriterTests.cpp
 			Tools/pm5-tui/src/RunMetricsWriter.cpp
+			Tools/pm5-tui/src/RunMetricsJson.cpp
+			Tools/pm5-tui/src/RunMetricsNames.cpp
 		)
 		target_include_directories(pm5_tui_metrics_writer_tests PRIVATE
 			"${CMAKE_CURRENT_SOURCE_DIR}/Tools/pm5-tui/src"
