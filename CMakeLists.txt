@@ -19,11 +19,64 @@ endif()
 # pins the Protobuf toolchain the same way cmake/ninja/git-lfs are pinned in
 # Config/BuildVersions.json — an exact version checked by `make doctor`, not a
 # floating dependency. Install with `brew install protobuf`.
-find_package(Protobuf CONFIG REQUIRED)
+option(VIR_STATIC_PROTOBUF "Build protobuf and abseil statically from the sources pinned in Config/BuildVersions.json (used by the app-bound Build/native-app tree)" OFF)
+option(VIR_APP_LIBS_ONLY "Build only the engine-independent libraries the Unreal app links, merged into one archive (Phase 1 Milestone 5)" OFF)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+if(VIR_APP_LIBS_ONLY)
+	# The archive is linked into an Unreal module image alongside engine-bundled
+	# protobuf/abseil (different versions). Hidden visibility keeps our copies
+	# out of the module's export table so dyld cannot coalesce weak/inline
+	# symbols across images.
+	set(CMAKE_CXX_VISIBILITY_PRESET hidden)
+	set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
+endif()
+
+if(VIR_STATIC_PROTOBUF)
+	# Phase 1 Milestone 5: the Unreal app must not depend on Homebrew dylibs, so
+	# the app-bound tree builds the pinned protobuf runtime and its abseil
+	# dependency as static libraries. Sources are hash-verified downloads;
+	# nothing is vendored. protoc stays the pinned Homebrew build (one version).
+	include(FetchContent)
+	file(READ "${CMAKE_CURRENT_SOURCE_DIR}/Config/BuildVersions.json" VIR_BUILD_VERSIONS_JSON)
+	string(JSON VIR_ABSL_URL GET "${VIR_BUILD_VERSIONS_JSON}" static_dependencies abseil url)
+	string(JSON VIR_ABSL_SHA256 GET "${VIR_BUILD_VERSIONS_JSON}" static_dependencies abseil sha256)
+	string(JSON VIR_PROTOBUF_URL GET "${VIR_BUILD_VERSIONS_JSON}" static_dependencies protobuf url)
+	string(JSON VIR_PROTOBUF_SHA256 GET "${VIR_BUILD_VERSIONS_JSON}" static_dependencies protobuf sha256)
+	string(JSON VIR_PROTOBUF_VERSION GET "${VIR_BUILD_VERSIONS_JSON}" static_dependencies protobuf version)
+
+	find_program(VIR_PROTOC_EXECUTABLE protoc REQUIRED)
+	execute_process(COMMAND "${VIR_PROTOC_EXECUTABLE}" --version OUTPUT_VARIABLE VIR_PROTOC_VERSION_OUTPUT OUTPUT_STRIP_TRAILING_WHITESPACE)
+	if(NOT VIR_PROTOC_VERSION_OUTPUT MATCHES "libprotoc ${VIR_PROTOBUF_VERSION}$")
+		message(FATAL_ERROR "protoc '${VIR_PROTOC_VERSION_OUTPUT}' does not match the pinned static protobuf runtime ${VIR_PROTOBUF_VERSION}; generated code and runtime must agree.")
+	endif()
+
+	set(ABSL_PROPAGATE_CXX_STD ON CACHE BOOL "" FORCE)
+	set(ABSL_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+	set(ABSL_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+	set(protobuf_INSTALL OFF CACHE BOOL "" FORCE)
+	set(protobuf_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+	set(protobuf_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+	set(protobuf_BUILD_PROTOC_BINARIES OFF CACHE BOOL "" FORCE)
+	set(protobuf_BUILD_LIBUPB OFF CACHE BOOL "" FORCE)
+	set(protobuf_BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+	set(protobuf_WITH_ZLIB OFF CACHE BOOL "" FORCE)
+	set(protobuf_LOCAL_DEPENDENCIES_ONLY ON CACHE BOOL "" FORCE)
+	set(BUILD_SHARED_LIBS OFF)
+
+	FetchContent_Declare(absl URL "${VIR_ABSL_URL}" URL_HASH "SHA256=${VIR_ABSL_SHA256}" DOWNLOAD_EXTRACT_TIMESTAMP TRUE SYSTEM)
+	FetchContent_MakeAvailable(absl)
+	FetchContent_Declare(protobuf URL "${VIR_PROTOBUF_URL}" URL_HASH "SHA256=${VIR_PROTOBUF_SHA256}" DOWNLOAD_EXTRACT_TIMESTAMP TRUE SYSTEM)
+	FetchContent_MakeAvailable(protobuf)
+	include("${protobuf_SOURCE_DIR}/cmake/protobuf-generate.cmake")
+	set(VIR_PROTOBUF_GENERATE_EXTRA_ARGS PROTOC_EXE "${VIR_PROTOC_EXECUTABLE}")
+else()
+	find_package(Protobuf CONFIG REQUIRED)
+	set(VIR_PROTOBUF_GENERATE_EXTRA_ARGS)
+endif()
 
 option(VIR_BUILD_TESTS "Build native unit, contract, and integration tests" ON)
 option(VIR_BUILD_PM5_TUI "Build the Concept2 diagnostic terminal application" ON)
@@ -131,6 +184,7 @@ protobuf_generate(
 		"${CMAKE_CURRENT_SOURCE_DIR}/Contracts/proto/rowing/v1/telemetry.proto"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Contracts/proto/rowing/v1/session_summary.proto"
 	PROTOC_OUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/contracts"
+	${VIR_PROTOBUF_GENERATE_EXTRA_ARGS}
 )
 
 # Phase 0 Milestone 4 Spike B: bounded local-durability journal spike
@@ -150,7 +204,7 @@ target_compile_features(LocalData PUBLIC cxx_std_20)
 # Concept2PMMac split: LocalData stays free of Apple types and only sees
 # IBlobCipher. CryptoKit's AES.GCM is Swift-only, so the shim is its own
 # Swift-only library exposing a C ABI, linked into the C++ adapter.
-if(APPLE)
+if(APPLE AND NOT VIR_APP_LIBS_ONLY)
 	enable_language(Swift)
 	add_library(LocalDataMacCryptoKitShim STATIC Source/LocalDataMac/Private/AesGcmCryptoKit.swift)
 	add_library(LocalDataMac STATIC Source/LocalDataMac/Private/CryptoKitBlobCipher.cpp)
@@ -163,7 +217,7 @@ endif()
 
 set(CONCEPT2_PLUGIN_DIR "${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Concept2PM")
 vir_collect_sources(CONCEPT2_CORE_SOURCES "${CONCEPT2_PLUGIN_DIR}/Source/Concept2PMCore")
-if(CONCEPT2_CORE_SOURCES)
+if(CONCEPT2_CORE_SOURCES AND NOT VIR_APP_LIBS_ONLY)
 	add_library(Concept2PMCore STATIC ${CONCEPT2_CORE_SOURCES})
 	add_library(concept2_pm_core ALIAS Concept2PMCore)
 	target_include_directories(Concept2PMCore PUBLIC
@@ -219,24 +273,24 @@ target_include_directories(WorkoutRuntime
 target_link_libraries(WorkoutRuntime PUBLIC RowingCore RowingDevice LocalData PRIVATE RowingContracts)
 target_compile_features(WorkoutRuntime PUBLIC cxx_std_20)
 
-vir_collect_sources(PM5_SIM_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Tools/pm5-sim/src")
+vir_collect_sources(PM5_SIM_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Source/RowingSim/src")
 if(PM5_SIM_SOURCES)
 	add_library(pm5-sim STATIC ${PM5_SIM_SOURCES})
-	target_include_directories(pm5-sim PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/Tools/pm5-sim/include")
+	target_include_directories(pm5-sim PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/Source/RowingSim/include")
 	target_link_libraries(pm5-sim PUBLIC RowingDevice RowingCore)
 	target_compile_features(pm5-sim PUBLIC cxx_std_20)
 endif()
 
 # Phase 0 Milestone 4 Spike B kill/recover harness. Not built into the
-# product; matches the Tools/pm5-tui, Tools/pm5-sim pattern.
+# product; matches the Tools/pm5-tui pattern.
 vir_collect_sources(DURABILITY_SPIKE_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Tools/durability-spike/src")
-if(DURABILITY_SPIKE_SOURCES AND TARGET pm5-sim)
+if(DURABILITY_SPIKE_SOURCES AND TARGET pm5-sim AND NOT VIR_APP_LIBS_ONLY)
 	add_executable(durability-spike ${DURABILITY_SPIKE_SOURCES})
 	target_link_libraries(durability-spike PRIVATE LocalData RowingCore pm5-sim)
 	target_compile_features(durability-spike PRIVATE cxx_std_20)
 endif()
 
-if(VIR_BUILD_PM5_TUI)
+if(VIR_BUILD_PM5_TUI AND NOT VIR_APP_LIBS_ONLY)
 	add_subdirectory(external/ftxui)
 	if(APPLE)
 		configure_file(
@@ -289,7 +343,7 @@ if(VIR_BUILD_PM5_TUI)
 	endif()
 endif()
 
-if(VIR_BUILD_TESTS AND BUILD_TESTING)
+if(VIR_BUILD_TESTS AND BUILD_TESTING AND NOT VIR_APP_LIBS_ONLY)
 	if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Source/RowingCore/Tests/RowingTelemetryUtilitiesTests.cpp")
 		add_executable(rowing_core_tests Source/RowingCore/Tests/RowingTelemetryUtilitiesTests.cpp)
 		target_include_directories(rowing_core_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Source/RowingCore/Private")
@@ -331,6 +385,11 @@ if(VIR_BUILD_TESTS AND BUILD_TESTING)
 		target_include_directories(workout_runtime_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Source/WorkoutRuntime/Private")
 		target_link_libraries(workout_runtime_tests PRIVATE WorkoutRuntime RowingContracts pm5-sim)
 		add_test(NAME workout_runtime_tests COMMAND workout_runtime_tests)
+	endif()
+	if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Source/WorkoutRuntime/Tests/WorkoutDisplayTests.cpp")
+		add_executable(workout_display_tests Source/WorkoutRuntime/Tests/WorkoutDisplayTests.cpp)
+		target_link_libraries(workout_display_tests PRIVATE WorkoutRuntime)
+		add_test(NAME workout_display_tests COMMAND workout_display_tests)
 	endif()
 	if(TARGET Concept2PMCore)
 		file(GLOB_RECURSE CONCEPT2_TEST_SOURCES CONFIGURE_DEPENDS
@@ -442,4 +501,65 @@ foreach(target RowingCore RowingDevice LocalData LocalDataMac Concept2PMCore Con
 		endif()
 	endif()
 endforeach()
+endif()
+
+# Phase 1 Milestone 5: merge every static archive the Unreal app needs into one
+# library so the UBT module has a single PublicAdditionalLibraries entry. The
+# closure is computed from the target graph (static protobuf/abseil included);
+# system libraries (SQLite) are declared in VirtualRowing.Build.cs instead.
+if(VIR_APP_LIBS_ONLY)
+	set(VIR_APP_LIB_ROOTS WorkoutRuntime)
+	if(TARGET pm5-sim)
+		list(APPEND VIR_APP_LIB_ROOTS pm5-sim)
+	endif()
+
+	function(vir_collect_static_archives target visited_var archives_var)
+		get_target_property(aliased "${target}" ALIASED_TARGET)
+		if(aliased)
+			set(target "${aliased}")
+		endif()
+		set(visited "${${visited_var}}")
+		if(target IN_LIST visited)
+			return()
+		endif()
+		list(APPEND visited "${target}")
+		set(archives "${${archives_var}}")
+		get_target_property(target_type "${target}" TYPE)
+		if(target_type STREQUAL "STATIC_LIBRARY")
+			list(APPEND archives "$<TARGET_FILE:${target}>")
+		endif()
+		get_target_property(deps "${target}" INTERFACE_LINK_LIBRARIES)
+		if(deps)
+			foreach(dep IN LISTS deps)
+				# Unwrap $<LINK_ONLY:...>/$<BUILD_INTERFACE:...>; skip other genexes and file paths.
+				if(dep MATCHES "^\\$<(LINK_ONLY|BUILD_INTERFACE):([^>]+)>$")
+					set(dep "${CMAKE_MATCH_2}")
+				endif()
+				if(TARGET "${dep}")
+					vir_collect_static_archives("${dep}" visited archives)
+				endif()
+			endforeach()
+		endif()
+		set(${visited_var} "${visited}" PARENT_SCOPE)
+		set(${archives_var} "${archives}" PARENT_SCOPE)
+	endfunction()
+
+	set(VIR_APP_VISITED "")
+	set(VIR_APP_ARCHIVES "")
+	foreach(root IN LISTS VIR_APP_LIB_ROOTS)
+		vir_collect_static_archives("${root}" VIR_APP_VISITED VIR_APP_ARCHIVES)
+	endforeach()
+	list(REMOVE_DUPLICATES VIR_APP_ARCHIVES)
+
+	set(VIR_APP_MERGED_ARCHIVE "${CMAKE_CURRENT_BINARY_DIR}/lib/libVirRowingApp.a")
+	add_custom_command(
+		OUTPUT "${VIR_APP_MERGED_ARCHIVE}"
+		COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/lib"
+		COMMAND xcrun libtool -static -o "${VIR_APP_MERGED_ARCHIVE}" ${VIR_APP_ARCHIVES}
+		DEPENDS ${VIR_APP_VISITED}
+		COMMAND_EXPAND_LISTS
+		VERBATIM
+		COMMENT "Merging app-bound static archives into libVirRowingApp.a"
+	)
+	add_custom_target(vir_app_libs ALL DEPENDS "${VIR_APP_MERGED_ARCHIVE}")
 endif()
