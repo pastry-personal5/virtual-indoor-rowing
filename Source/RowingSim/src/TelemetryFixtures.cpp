@@ -1,4 +1,4 @@
-#include "pm5_sim/TelemetryFixtures.h"
+#include "RowingSim/TelemetryFixtures.h"
 
 #include <algorithm>
 #include <optional>
@@ -6,7 +6,7 @@
 #include <string>
 #include <utility>
 
-namespace pm5_sim
+namespace RowingSim
 {
 	namespace
 	{
@@ -364,4 +364,4 @@ namespace pm5_sim
 		Fixture.FinalDistanceMm = Fixture.Frames.back().Sample.DistanceMm;
 		return Fixture;
 	}
-} // namespace pm5_sim
+} // namespace RowingSim

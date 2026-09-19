@@ -8,7 +8,7 @@
 #include <optional>
 #include <vector>
 
-namespace pm5_sim
+namespace RowingSim
 {
 	enum class EMockPermission : std::uint8_t
 	{
@@ -123,4 +123,4 @@ namespace pm5_sim
 		struct FImpl;
 		std::unique_ptr<FImpl> Impl;
 	};
-} // namespace pm5_sim
+} // namespace RowingSim

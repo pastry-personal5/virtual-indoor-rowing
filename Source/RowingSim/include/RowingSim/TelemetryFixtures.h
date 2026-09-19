@@ -1,12 +1,12 @@
 #pragma once
 
-#include "pm5_sim/ReplayRowingMachine.h"
+#include "RowingSim/ReplayRowingMachine.h"
 
 #include <cstdint>
 #include <string>
 #include <vector>
 
-namespace pm5_sim
+namespace RowingSim
 {
 	struct FGoldenTelemetryFixture
 	{
@@ -44,4 +44,4 @@ namespace pm5_sim
 							std::uint32_t Seed = 1);
 
 	FMockMachineScenario MakeSyntheticIndoorRowerScenario();
-} // namespace pm5_sim
+} // namespace RowingSim

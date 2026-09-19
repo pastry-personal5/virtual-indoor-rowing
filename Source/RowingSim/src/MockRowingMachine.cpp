@@ -1,11 +1,11 @@
-#include "pm5_sim/MockRowingMachine.h"
+#include "RowingSim/MockRowingMachine.h"
 
 #include <algorithm>
 #include <deque>
 #include <limits>
 #include <utility>
 
-namespace pm5_sim
+namespace RowingSim
 {
 	namespace
 	{
@@ -981,4 +981,4 @@ namespace pm5_sim
 	{
 		return Impl->Events.IsOverflowed();
 	}
-} // namespace pm5_sim
+} // namespace RowingSim

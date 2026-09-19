@@ -6,7 +6,7 @@
 // on. Needs no real PM5 and no Unreal runtime.
 
 #include "LocalData/LocalDataJournal.h"
-#include "pm5_sim/TelemetryFixtures.h"
+#include "RowingSim/TelemetryFixtures.h"
 
 #include <csignal>
 #include <cstdlib>
@@ -40,8 +40,8 @@ namespace
 	std::vector<FRowingMetricSample>
 	GenerateSyntheticSamples(std::uint64_t Count)
 	{
-		const pm5_sim::FGoldenTelemetryFixture Fixture =
-			pm5_sim::MakeEasy30SecondFixture();
+		const RowingSim::FGoldenTelemetryFixture Fixture =
+			RowingSim::MakeEasy30SecondFixture();
 		std::vector<FRowingMetricSample> Samples;
 		Samples.reserve(Count);
 		for (std::uint64_t Index = 0; Index < Count; ++Index)

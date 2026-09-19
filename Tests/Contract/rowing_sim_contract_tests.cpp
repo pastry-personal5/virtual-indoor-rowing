@@ -1,5 +1,5 @@
-#include "pm5_sim/MockRowingMachine.h"
-#include "pm5_sim/TelemetryFixtures.h"
+#include "RowingSim/MockRowingMachine.h"
+#include "RowingSim/TelemetryFixtures.h"
 
 #include <cstdint>
 #include <iostream>
@@ -33,7 +33,7 @@ namespace
 	}
 
 	std::vector<FRowingMachineEvent>
-	Drain(pm5_sim::FMockRowingMachineDiscovery &Discovery)
+	Drain(RowingSim::FMockRowingMachineDiscovery &Discovery)
 	{
 		std::vector<FRowingMachineEvent> Events;
 		FRowingMachineEvent Event;
@@ -159,16 +159,16 @@ namespace
 
 	void permission_denial_discovery_and_explicit_selection()
 	{
-		auto Selected = pm5_sim::MakeSyntheticIndoorRowerScenario();
+		auto Selected = RowingSim::MakeSyntheticIndoorRowerScenario();
 		auto Nearby = Selected;
 		Nearby.Descriptor.Id = FRowingMachineId::FromPrivateAdapterValue(
 			"synthetic:indoor-rower-02");
 		Nearby.Descriptor.DisplayLabel = "Synthetic indoor rower B";
 		Nearby.Descriptor.SignalStrengthDbm = -80;
-		pm5_sim::FMockDiscoveryScenario Scenario;
-		Scenario.Permission = pm5_sim::EMockPermission::Denied;
+		RowingSim::FMockDiscoveryScenario Scenario;
+		Scenario.Permission = RowingSim::EMockPermission::Denied;
 		Scenario.Machines = {Selected, Nearby};
-		pm5_sim::FMockRowingMachineDiscovery Discovery(std::move(Scenario));
+		RowingSim::FMockRowingMachineDiscovery Discovery(std::move(Scenario));
 
 		Check(Discovery.StartScan().IsAccepted(),
 			  "denied scan request is accepted for asynchronous reporting");
@@ -178,7 +178,7 @@ namespace
 		Check(Discovery.CreateMachine(Selected.Descriptor.Id) == nullptr,
 			  "machine cannot be created before discovery");
 
-		Discovery.SetPermission(pm5_sim::EMockPermission::Granted);
+		Discovery.SetPermission(RowingSim::EMockPermission::Granted);
 		Check(Discovery.StartScan().IsAccepted(),
 			  "scan can restart after permission repair");
 		const auto FoundEvents = Drain(Discovery);
@@ -200,9 +200,9 @@ namespace
 
 	void unsupported_identity_fails_closed()
 	{
-		auto Scenario = pm5_sim::MakeSyntheticIndoorRowerScenario();
+		auto Scenario = RowingSim::MakeSyntheticIndoorRowerScenario();
 		Scenario.Info.MachineKind = ERowingMachineKind::SkiErg;
-		pm5_sim::FMockRowingMachine Machine(std::move(Scenario));
+		RowingSim::FMockRowingMachine Machine(std::move(Scenario));
 		Check(Machine.Connect().IsAccepted(),
 			  "unsupported connection outcome is reported asynchronously");
 		const auto Events = Drain(Machine);
@@ -215,9 +215,9 @@ namespace
 
 	void empty_scan_times_out_at_the_configured_monotonic_deadline()
 	{
-		pm5_sim::FMockDiscoveryScenario Scenario;
+		RowingSim::FMockDiscoveryScenario Scenario;
 		Scenario.ScanTimeoutMs = 10;
-		pm5_sim::FMockRowingMachineDiscovery Discovery(std::move(Scenario));
+		RowingSim::FMockRowingMachineDiscovery Discovery(std::move(Scenario));
 
 		Check(Discovery.StartScan().IsAccepted(),
 			  "empty scan starts asynchronously");
@@ -261,9 +261,9 @@ namespace
 
 	void connection_failure_is_asynchronous_and_terminal()
 	{
-		auto Scenario = pm5_sim::MakeSyntheticIndoorRowerScenario();
+		auto Scenario = RowingSim::MakeSyntheticIndoorRowerScenario();
 		Scenario.ConnectionSucceeds = false;
-		pm5_sim::FMockRowingMachine Machine(std::move(Scenario));
+		RowingSim::FMockRowingMachine Machine(std::move(Scenario));
 
 		Check(Machine.Connect().IsAccepted(),
 			  "connection attempt failure is reported asynchronously");
@@ -293,9 +293,9 @@ namespace
 
 	void malformed_identity_fails_closed_before_machine_info()
 	{
-		auto Scenario = pm5_sim::MakeSyntheticIndoorRowerScenario();
+		auto Scenario = RowingSim::MakeSyntheticIndoorRowerScenario();
 		Scenario.IdentityWellFormed = false;
-		pm5_sim::FMockRowingMachine Machine(std::move(Scenario));
+		RowingSim::FMockRowingMachine Machine(std::move(Scenario));
 
 		Check(Machine.Connect().IsAccepted(),
 			  "malformed identity is reported as an asynchronous outcome");
@@ -322,8 +322,8 @@ namespace
 
 	void malformed_sample_is_reported_without_publishing_metrics()
 	{
-		pm5_sim::FMockRowingMachine Machine(
-			pm5_sim::MakeSyntheticIndoorRowerScenario());
+		RowingSim::FMockRowingMachine Machine(
+			RowingSim::MakeSyntheticIndoorRowerScenario());
 		Check(Machine.Connect().IsAccepted(),
 			  "valid synthetic machine connects before malformed sample injection");
 		Drain(Machine);
@@ -355,8 +355,8 @@ namespace
 
 	void event_streams_are_ordered_and_metric_timestamps_cover_receive_time()
 	{
-		pm5_sim::FMockRowingMachine Machine(
-			pm5_sim::MakeSyntheticIndoorRowerScenario());
+		RowingSim::FMockRowingMachine Machine(
+			RowingSim::MakeSyntheticIndoorRowerScenario());
 		std::vector<FRowingMachineEvent> MachineEvents;
 		Machine.Connect();
 		AppendDrained(Machine, MachineEvents);
@@ -371,10 +371,10 @@ namespace
 		check_event_stream_ordering_and_timestamps(MachineEvents,
 												   "mock machine stream");
 
-		pm5_sim::FMockDiscoveryScenario DiscoveryScenario;
+		RowingSim::FMockDiscoveryScenario DiscoveryScenario;
 		DiscoveryScenario.Machines.push_back(
-			pm5_sim::MakeSyntheticIndoorRowerScenario());
-		pm5_sim::FMockRowingMachineDiscovery Discovery(
+			RowingSim::MakeSyntheticIndoorRowerScenario());
+		RowingSim::FMockRowingMachineDiscovery Discovery(
 			std::move(DiscoveryScenario));
 		std::vector<FRowingMachineEvent> DiscoveryEvents;
 		Discovery.StartScan();
@@ -384,9 +384,9 @@ namespace
 		check_event_stream_ordering_and_timestamps(DiscoveryEvents,
 												   "discovery stream");
 
-		auto Fixture = pm5_sim::MakeNoRowingFixture(100);
-		pm5_sim::FReplayRowingMachine Replay(
-			pm5_sim::MakeSyntheticIndoorRowerScenario(),
+		auto Fixture = RowingSim::MakeNoRowingFixture(100);
+		RowingSim::FReplayRowingMachine Replay(
+			RowingSim::MakeSyntheticIndoorRowerScenario(),
 			std::move(Fixture.Frames));
 		std::vector<FRowingMachineEvent> ReplayEvents;
 		Replay.Connect();
@@ -418,8 +418,8 @@ namespace
 
 	void nullable_and_unrealistic_values_are_preserved()
 	{
-		pm5_sim::FMockRowingMachine Machine(
-			pm5_sim::MakeSyntheticIndoorRowerScenario());
+		RowingSim::FMockRowingMachine Machine(
+			RowingSim::MakeSyntheticIndoorRowerScenario());
 		Machine.Connect();
 		Drain(Machine);
 		FRowingMetricSample Missing = Sample(100, 100);
@@ -461,8 +461,8 @@ namespace
 
 	void stale_data_recovers_without_synthetic_distance()
 	{
-		pm5_sim::FMockRowingMachine Machine(
-			pm5_sim::MakeSyntheticIndoorRowerScenario());
+		RowingSim::FMockRowingMachine Machine(
+			RowingSim::MakeSyntheticIndoorRowerScenario());
 		Machine.Connect();
 		Drain(Machine);
 		Check(Machine.AdvanceTo(499000000ULL),
@@ -488,8 +488,8 @@ namespace
 
 	void reconnect_requires_same_identity_and_monotonic_facts()
 	{
-		pm5_sim::FMockRowingMachine Machine(
-			pm5_sim::MakeSyntheticIndoorRowerScenario());
+		RowingSim::FMockRowingMachine Machine(
+			RowingSim::MakeSyntheticIndoorRowerScenario());
 		Machine.Connect();
 		Drain(Machine);
 		Machine.PublishTelemetry(Sample(1000, 100));
@@ -525,13 +525,13 @@ namespace
 		Check(HasReconnectFlag,
 			  "first restored fact carries reconnect evidence");
 
-		auto WrongScenario = pm5_sim::MakeSyntheticIndoorRowerScenario();
-		pm5_sim::FMockReconnectIdentity Wrong;
+		auto WrongScenario = RowingSim::MakeSyntheticIndoorRowerScenario();
+		RowingSim::FMockReconnectIdentity Wrong;
 		Wrong.Id =
 			FRowingMachineId::FromPrivateAdapterValue("synthetic:other-rower");
 		Wrong.Info = WrongScenario.Info;
 		WrongScenario.ReconnectIdentity = Wrong;
-		pm5_sim::FMockRowingMachine WrongMachine(std::move(WrongScenario));
+		RowingSim::FMockRowingMachine WrongMachine(std::move(WrongScenario));
 		WrongMachine.Connect();
 		Drain(WrongMachine);
 		WrongMachine.PublishTelemetry(Sample(1000, 100));
@@ -552,8 +552,8 @@ namespace
 
 	void overflow_and_shutdown_are_explicit()
 	{
-		pm5_sim::FMockRowingMachine Machine(
-			pm5_sim::MakeSyntheticIndoorRowerScenario(), 8);
+		RowingSim::FMockRowingMachine Machine(
+			RowingSim::MakeSyntheticIndoorRowerScenario(), 8);
 		Machine.Connect();
 		const auto ConnectedDiagnostics = Machine.GetDiagnostics();
 		Check(!ConnectedDiagnostics.AcquisitionQueue,
@@ -598,8 +598,8 @@ namespace
 		Check(DrainedDiagnostics.EventQueue.HighWaterMark == 8,
 			  "draining does not erase the event queue high-water mark");
 
-		pm5_sim::FMockRowingMachine ShutdownMachine(
-			pm5_sim::MakeSyntheticIndoorRowerScenario());
+		RowingSim::FMockRowingMachine ShutdownMachine(
+			RowingSim::MakeSyntheticIndoorRowerScenario());
 		ShutdownMachine.Connect();
 		Drain(ShutdownMachine);
 		ShutdownMachine.Shutdown();
@@ -612,9 +612,9 @@ namespace
 
 	void replay_forwards_event_queue_diagnostics_without_acquisition_queue()
 	{
-		auto Fixture = pm5_sim::MakeEasy30SecondFixture();
-		pm5_sim::FReplayRowingMachine Machine(
-			pm5_sim::MakeSyntheticIndoorRowerScenario(),
+		auto Fixture = RowingSim::MakeEasy30SecondFixture();
+		RowingSim::FReplayRowingMachine Machine(
+			RowingSim::MakeSyntheticIndoorRowerScenario(),
 			std::move(Fixture.Frames),
 			16);
 
@@ -659,6 +659,6 @@ int main()
 		std::cerr << Failures << " contract assertion(s) failed\n";
 		return 1;
 	}
-	std::cout << "pm5-sim contract scenarios passed\n";
+	std::cout << "RowingSim contract scenarios passed\n";
 	return 0;
 }

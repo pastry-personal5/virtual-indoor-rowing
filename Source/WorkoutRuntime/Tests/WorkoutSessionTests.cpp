@@ -2,9 +2,9 @@
 
 #include "WorkoutRuntime/LocalDataJournalSink.h"
 #include "WorkoutRuntime/SessionWireMapping.h"
-#include "pm5_sim/MockRowingMachine.h"
-#include "pm5_sim/ReplayRowingMachine.h"
-#include "pm5_sim/TelemetryFixtures.h"
+#include "RowingSim/MockRowingMachine.h"
+#include "RowingSim/ReplayRowingMachine.h"
+#include "RowingSim/TelemetryFixtures.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -154,7 +154,7 @@ namespace
 	struct FHarness
 	{
 		explicit FHarness(IJournalSink &Sink, FWorkoutSessionConfig Config = {}, std::uint8_t RandomSeed = 0)
-			: Machine(std::make_unique<pm5_sim::FMockRowingMachine>(pm5_sim::MakeSyntheticIndoorRowerScenario()))
+			: Machine(std::make_unique<RowingSim::FMockRowingMachine>(RowingSim::MakeSyntheticIndoorRowerScenario()))
 		{
 			Machine->Connect();
 			Session = std::make_unique<FWorkoutSession>(MakeDependencies(*Machine, Sink, RandomSeed), std::move(Config));
@@ -184,15 +184,15 @@ namespace
 			}
 		}
 
-		std::unique_ptr<pm5_sim::FMockRowingMachine> Machine;
+		std::unique_ptr<RowingSim::FMockRowingMachine> Machine;
 		std::unique_ptr<FWorkoutSession> Session;
 		std::uint64_t Now = 0;
 	};
 
 	// Drives a replay fixture at 100 ms steps through and past its duration.
-	void RunReplay(const pm5_sim::FGoldenTelemetryFixture &Fixture, FWorkoutSession *&SessionOut, FFakeSink &Sink, std::unique_ptr<pm5_sim::FReplayRowingMachine> &MachineOut, std::unique_ptr<FWorkoutSession> &Owner)
+	void RunReplay(const RowingSim::FGoldenTelemetryFixture &Fixture, FWorkoutSession *&SessionOut, FFakeSink &Sink, std::unique_ptr<RowingSim::FReplayRowingMachine> &MachineOut, std::unique_ptr<FWorkoutSession> &Owner)
 	{
-		MachineOut = std::make_unique<pm5_sim::FReplayRowingMachine>(pm5_sim::MakeSyntheticIndoorRowerScenario(), Fixture.Frames);
+		MachineOut = std::make_unique<RowingSim::FReplayRowingMachine>(RowingSim::MakeSyntheticIndoorRowerScenario(), Fixture.Frames);
 		MachineOut->Connect();
 		Owner = std::make_unique<FWorkoutSession>(MakeDependencies(*MachineOut, Sink));
 		SessionOut = Owner.get();
@@ -222,10 +222,10 @@ namespace
 	void workout_session_journals_samples_from_simulator()
 	{
 		FFakeSink Sink;
-		std::unique_ptr<pm5_sim::FReplayRowingMachine> Machine;
+		std::unique_ptr<RowingSim::FReplayRowingMachine> Machine;
 		std::unique_ptr<FWorkoutSession> Owner;
 		FWorkoutSession *Session = nullptr;
-		const auto Fixture = pm5_sim::MakeEasy30SecondFixture();
+		const auto Fixture = RowingSim::MakeEasy30SecondFixture();
 		RunReplay(Fixture, Session, Sink, Machine, Owner);
 
 		EXPECT_TRUE(Session->GetSnapshot().State == ERowingSessionState::Active);
@@ -438,10 +438,10 @@ namespace
 	void workout_session_completes_on_device_complete_state()
 	{
 		FFakeSink Sink;
-		std::unique_ptr<pm5_sim::FReplayRowingMachine> Machine;
+		std::unique_ptr<RowingSim::FReplayRowingMachine> Machine;
 		std::unique_ptr<FWorkoutSession> Owner;
 		FWorkoutSession *Session = nullptr;
-		RunReplay(pm5_sim::MakeDeviceCompletedFixture(), Session, Sink, Machine, Owner);
+		RunReplay(RowingSim::MakeDeviceCompletedFixture(), Session, Sink, Machine, Owner);
 
 		const FWorkoutSnapshot &Snapshot = Session->GetSnapshot();
 		EXPECT_TRUE(Snapshot.State == ERowingSessionState::Ended);
@@ -456,10 +456,10 @@ namespace
 	void workout_session_aborts_on_device_terminated_state()
 	{
 		FFakeSink Sink;
-		std::unique_ptr<pm5_sim::FReplayRowingMachine> Machine;
+		std::unique_ptr<RowingSim::FReplayRowingMachine> Machine;
 		std::unique_ptr<FWorkoutSession> Owner;
 		FWorkoutSession *Session = nullptr;
-		RunReplay(pm5_sim::MakeDeviceTerminatedFixture(), Session, Sink, Machine, Owner);
+		RunReplay(RowingSim::MakeDeviceTerminatedFixture(), Session, Sink, Machine, Owner);
 
 		const FWorkoutSnapshot &Snapshot = Session->GetSnapshot();
 		EXPECT_TRUE(Snapshot.State == ERowingSessionState::Ended);
@@ -689,7 +689,7 @@ namespace
 	void workout_session_ingests_forwarded_events_without_polling_the_machine()
 	{
 		FFakeSink Sink;
-		pm5_sim::FMockRowingMachine Machine(pm5_sim::MakeSyntheticIndoorRowerScenario());
+		RowingSim::FMockRowingMachine Machine(RowingSim::MakeSyntheticIndoorRowerScenario());
 		Machine.Connect();
 		FWorkoutSession Session(MakeDependencies(Machine, Sink));
 
@@ -742,7 +742,7 @@ namespace
 	void workout_session_records_device_gap_when_ready_precedes_restored()
 	{
 		FFakeSink Sink;
-		pm5_sim::FMockRowingMachine Machine(pm5_sim::MakeSyntheticIndoorRowerScenario());
+		RowingSim::FMockRowingMachine Machine(RowingSim::MakeSyntheticIndoorRowerScenario());
 		FWorkoutSession Session(MakeDependencies(Machine, Sink));
 
 		std::uint64_t Sequence = 0;
@@ -778,7 +778,7 @@ namespace
 	void workout_session_restores_host_measured_when_ready_arrives_without_restored()
 	{
 		FFakeSink Sink;
-		pm5_sim::FMockRowingMachine Machine(pm5_sim::MakeSyntheticIndoorRowerScenario());
+		RowingSim::FMockRowingMachine Machine(RowingSim::MakeSyntheticIndoorRowerScenario());
 		FWorkoutSession Session(MakeDependencies(Machine, Sink));
 
 		std::uint64_t Sequence = 0;
@@ -849,7 +849,7 @@ namespace
 	void workout_session_tick_does_not_poll_when_polling_is_disabled()
 	{
 		FFakeSink Sink;
-		pm5_sim::FMockRowingMachine Machine(pm5_sim::MakeSyntheticIndoorRowerScenario());
+		RowingSim::FMockRowingMachine Machine(RowingSim::MakeSyntheticIndoorRowerScenario());
 		Machine.Connect();
 		FWorkoutSessionConfig Config;
 		Config.bPollMachine = false;

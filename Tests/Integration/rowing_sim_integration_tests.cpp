@@ -1,4 +1,4 @@
-#include "pm5_sim/TelemetryFixtures.h"
+#include "RowingSim/TelemetryFixtures.h"
 
 #include <cstdint>
 #include <iostream>
@@ -72,11 +72,11 @@ namespace
 		HashU64(Sample.QualityFlags, Hash);
 	}
 
-	FReplayResult RunFixture(const pm5_sim::FGoldenTelemetryFixture &Fixture)
+	FReplayResult RunFixture(const RowingSim::FGoldenTelemetryFixture &Fixture)
 	{
 		FReplayResult Result;
-		pm5_sim::FReplayRowingMachine Replay(
-			pm5_sim::MakeSyntheticIndoorRowerScenario(), Fixture.Frames);
+		RowingSim::FReplayRowingMachine Replay(
+			RowingSim::MakeSyntheticIndoorRowerScenario(), Fixture.Frames);
 		Check(Replay.Connect().IsAccepted(), Fixture.Name + " connects");
 		FRowingMachineEvent Event;
 		while (Replay.TryPollEvent(Event))
@@ -133,7 +133,7 @@ namespace
 	}
 
 	void
-	CheckDeterministicGolden(const pm5_sim::FGoldenTelemetryFixture &Fixture)
+	CheckDeterministicGolden(const RowingSim::FGoldenTelemetryFixture &Fixture)
 	{
 		const FReplayResult First = RunFixture(Fixture);
 		const FReplayResult Second = RunFixture(Fixture);
@@ -152,25 +152,25 @@ namespace
 
 	void golden_workouts_and_fault_replays()
 	{
-		CheckDeterministicGolden(pm5_sim::MakeEasy30SecondFixture());
-		CheckDeterministicGolden(pm5_sim::Make500mSprintFixture());
-		CheckDeterministicGolden(pm5_sim::Make2000mRaceFixture());
-		CheckDeterministicGolden(pm5_sim::Make30MinuteSteadyStateFixture());
-		CheckDeterministicGolden(pm5_sim::MakeNoRowingFixture());
-		CheckDeterministicGolden(pm5_sim::MakeIntervalFixture());
-		CheckDeterministicGolden(pm5_sim::MakeAbruptStopFixture());
-		CheckDeterministicGolden(pm5_sim::MakePacketLossFixture());
+		CheckDeterministicGolden(RowingSim::MakeEasy30SecondFixture());
+		CheckDeterministicGolden(RowingSim::Make500mSprintFixture());
+		CheckDeterministicGolden(RowingSim::Make2000mRaceFixture());
+		CheckDeterministicGolden(RowingSim::Make30MinuteSteadyStateFixture());
+		CheckDeterministicGolden(RowingSim::MakeNoRowingFixture());
+		CheckDeterministicGolden(RowingSim::MakeIntervalFixture());
+		CheckDeterministicGolden(RowingSim::MakeAbruptStopFixture());
+		CheckDeterministicGolden(RowingSim::MakePacketLossFixture());
 
-		const auto NoRowing = RunFixture(pm5_sim::MakeNoRowingFixture());
+		const auto NoRowing = RunFixture(RowingSim::MakeNoRowingFixture());
 		Check(NoRowing.AllDistancesZero,
 			  "no-rowing replay never invents distance");
-		const auto Intervals = RunFixture(pm5_sim::MakeIntervalFixture());
+		const auto Intervals = RunFixture(RowingSim::MakeIntervalFixture());
 		Check(Intervals.SawRest && Intervals.SawActive,
 			  "interval replay covers both work and rest");
-		const auto AbruptStop = RunFixture(pm5_sim::MakeAbruptStopFixture());
+		const auto AbruptStop = RunFixture(RowingSim::MakeAbruptStopFixture());
 		Check(AbruptStop.SawStale,
 			  "abrupt stop enters stale state after the final status");
-		const auto PacketLoss = RunFixture(pm5_sim::MakePacketLossFixture());
+		const auto PacketLoss = RunFixture(RowingSim::MakePacketLossFixture());
 		Check(PacketLoss.SawStale, "packet-loss gap crosses stale threshold");
 		Check(PacketLoss.SawSourceGap,
 			  "resumed packet-loss fixture preserves source-gap quality");
@@ -178,10 +178,10 @@ namespace
 
 	void random_stroke_run_is_seeded_deterministic_and_duration_scales()
 	{
-		CheckDeterministicGolden(pm5_sim::MakeRandomStrokeFixture(5, 42));
-		CheckDeterministicGolden(pm5_sim::MakeRandomStrokeFixture(1, 7));
+		CheckDeterministicGolden(RowingSim::MakeRandomStrokeFixture(5, 42));
+		CheckDeterministicGolden(RowingSim::MakeRandomStrokeFixture(1, 7));
 
-		const auto FiveMinutes = pm5_sim::MakeRandomStrokeFixture(5, 42);
+		const auto FiveMinutes = RowingSim::MakeRandomStrokeFixture(5, 42);
 		Check(FiveMinutes.DurationMs == 5ULL * 60000ULL,
 			  "random-stroke fixture duration matches the requested minutes");
 		Check(!FiveMinutes.Frames.empty() &&
@@ -204,12 +204,12 @@ namespace
 		Check(SawDrive && SawRecovery,
 			  "random-stroke fixture cycles through drive and recovery");
 
-		const auto SameSeedAgain = pm5_sim::MakeRandomStrokeFixture(5, 42);
+		const auto SameSeedAgain = RowingSim::MakeRandomStrokeFixture(5, 42);
 		Check(SameSeedAgain.Frames.size() == FiveMinutes.Frames.size() &&
 				  SameSeedAgain.FinalDistanceMm == FiveMinutes.FinalDistanceMm,
 			  "random-stroke fixture is reproducible for the same seed");
 
-		const auto DifferentSeed = pm5_sim::MakeRandomStrokeFixture(5, 43);
+		const auto DifferentSeed = RowingSim::MakeRandomStrokeFixture(5, 43);
 		Check(DifferentSeed.FinalDistanceMm != FiveMinutes.FinalDistanceMm,
 			  "random-stroke fixture varies with a different seed");
 	}
@@ -224,6 +224,6 @@ int main()
 		std::cerr << Failures << " integration assertion(s) failed\n";
 		return 1;
 	}
-	std::cout << "pm5-sim deterministic integration scenarios passed\n";
+	std::cout << "RowingSim deterministic integration scenarios passed\n";
 	return 0;
 }

@@ -1,12 +1,12 @@
 #pragma once
 
-#include "pm5_sim/MockRowingMachine.h"
+#include "RowingSim/MockRowingMachine.h"
 
 #include <cstddef>
 #include <cstdint>
 #include <vector>
 
-namespace pm5_sim
+namespace RowingSim
 {
 	struct FReplayTelemetryFrame
 	{
@@ -39,4 +39,4 @@ namespace pm5_sim
 		std::vector<FReplayTelemetryFrame> Frames;
 		std::size_t NextFrameIndex = 0;
 	};
-} // namespace pm5_sim
+} // namespace RowingSim

@@ -15,8 +15,8 @@
 #include "WorkoutRuntime/JournalSink.h"
 #include "WorkoutRuntime/WorkoutDisplay.h"
 #include "WorkoutRuntime/WorkoutSession.h"
-#include "pm5_sim/ReplayRowingMachine.h"
-#include "pm5_sim/TelemetryFixtures.h"
+#include "RowingSim/ReplayRowingMachine.h"
+#include "RowingSim/TelemetryFixtures.h"
 
 #include <chrono>
 #include <memory>
@@ -48,29 +48,29 @@ namespace
 	struct FFixtureEntry
 	{
 		const TCHAR *Name;
-		pm5_sim::FGoldenTelemetryFixture (*Make)();
+		RowingSim::FGoldenTelemetryFixture (*Make)();
 	};
 
-	pm5_sim::FGoldenTelemetryFixture MakeNoRowing()
+	RowingSim::FGoldenTelemetryFixture MakeNoRowing()
 	{
-		return pm5_sim::MakeNoRowingFixture();
+		return RowingSim::MakeNoRowingFixture();
 	}
-	pm5_sim::FGoldenTelemetryFixture MakeDeviceCompleted()
+	RowingSim::FGoldenTelemetryFixture MakeDeviceCompleted()
 	{
-		return pm5_sim::MakeDeviceCompletedFixture();
+		return RowingSim::MakeDeviceCompletedFixture();
 	}
-	pm5_sim::FGoldenTelemetryFixture MakeDeviceTerminated()
+	RowingSim::FGoldenTelemetryFixture MakeDeviceTerminated()
 	{
-		return pm5_sim::MakeDeviceTerminatedFixture();
+		return RowingSim::MakeDeviceTerminatedFixture();
 	}
 
-	pm5_sim::FGoldenTelemetryFixture MakeRandom10Minutes()
+	RowingSim::FGoldenTelemetryFixture MakeRandom10Minutes()
 	{
-		return pm5_sim::MakeRandomStrokeFixture(10);
+		return RowingSim::MakeRandomStrokeFixture(10);
 	}
-	pm5_sim::FGoldenTelemetryFixture MakeRandom30Minutes()
+	RowingSim::FGoldenTelemetryFixture MakeRandom30Minutes()
 	{
-		return pm5_sim::MakeRandomStrokeFixture(30);
+		return RowingSim::MakeRandomStrokeFixture(30);
 	}
 
 	// Varying stroke rate, power, and pace, so the HUD visibly tracks live data;
@@ -84,15 +84,15 @@ namespace
 	constexpr const TCHAR *DefaultFixtureName = TEXT("random30min");
 
 	const FFixtureEntry FixtureTable[] = {
-		{TEXT("easy30s"), &pm5_sim::MakeEasy30SecondFixture},
-		{TEXT("sprint500m"), &pm5_sim::Make500mSprintFixture},
-		{TEXT("race2000m"), &pm5_sim::Make2000mRaceFixture},
+		{TEXT("easy30s"), &RowingSim::MakeEasy30SecondFixture},
+		{TEXT("sprint500m"), &RowingSim::Make500mSprintFixture},
+		{TEXT("race2000m"), &RowingSim::Make2000mRaceFixture},
 		{DefaultFixtureName, &MakeRandom30Minutes},
 		{TEXT("random10min"), &MakeRandom10Minutes},
-		{TEXT("steady30min"), &pm5_sim::Make30MinuteSteadyStateFixture},
-		{TEXT("intervals"), &pm5_sim::MakeIntervalFixture},
-		{TEXT("abrupt_stop"), &pm5_sim::MakeAbruptStopFixture},
-		{TEXT("packet_loss"), &pm5_sim::MakePacketLossFixture},
+		{TEXT("steady30min"), &RowingSim::Make30MinuteSteadyStateFixture},
+		{TEXT("intervals"), &RowingSim::MakeIntervalFixture},
+		{TEXT("abrupt_stop"), &RowingSim::MakeAbruptStopFixture},
+		{TEXT("packet_loss"), &RowingSim::MakePacketLossFixture},
 		{TEXT("no_rowing"), &MakeNoRowing},
 		{TEXT("device_completed"), &MakeDeviceCompleted},
 		{TEXT("device_terminated"), &MakeDeviceTerminated},
@@ -116,7 +116,7 @@ struct UWorkoutSubsystem::FImpl
 	const FFixtureEntry *Fixture = nullptr;
 
 	// Owned by the subsystem, not the session: the session only consumes events.
-	std::unique_ptr<pm5_sim::FReplayRowingMachine> Machine;
+	std::unique_ptr<RowingSim::FReplayRowingMachine> Machine;
 	std::unique_ptr<FWorkoutSession> Session;
 	// The simulator's virtual time and the session's Tick timebase are the same
 	// monotonic value: nanoseconds since the machine was (re)started.
@@ -151,8 +151,8 @@ struct UWorkoutSubsystem::FImpl
 	{
 		// The old session points at the old machine; drop it first.
 		Session.reset();
-		pm5_sim::FGoldenTelemetryFixture GoldenFixture = Fixture->Make();
-		Machine = std::make_unique<pm5_sim::FReplayRowingMachine>(pm5_sim::MakeSyntheticIndoorRowerScenario(), std::move(GoldenFixture.Frames));
+		RowingSim::FGoldenTelemetryFixture GoldenFixture = Fixture->Make();
+		Machine = std::make_unique<RowingSim::FReplayRowingMachine>(RowingSim::MakeSyntheticIndoorRowerScenario(), std::move(GoldenFixture.Frames));
 		Machine->Connect();
 		OriginNs = Clock();
 		LastPumpClockNs = OriginNs;

@@ -1,8 +1,8 @@
-#include "pm5_sim/ReplayRowingMachine.h"
+#include "RowingSim/ReplayRowingMachine.h"
 
 #include <utility>
 
-namespace pm5_sim
+namespace RowingSim
 {
 	FReplayRowingMachine::FReplayRowingMachine(
 		FMockMachineScenario Scenario,
@@ -68,4 +68,4 @@ namespace pm5_sim
 	{
 		return Machine;
 	}
-} // namespace pm5_sim
+} // namespace RowingSim

@@ -3,8 +3,8 @@
 #include "LocalData/LocalDataJournal.h"
 #include "WorkoutRuntime/LocalDataJournalSink.h"
 #include "WorkoutRuntime/WorkoutSession.h"
-#include "pm5_sim/MockRowingMachine.h"
-#include "pm5_sim/TelemetryFixtures.h"
+#include "RowingSim/MockRowingMachine.h"
+#include "RowingSim/TelemetryFixtures.h"
 
 #include <filesystem>
 #include <memory>
@@ -35,7 +35,7 @@ bool VirNativeLinkageProbe()
 		{
 			LocalData::FLocalDataJournalWriter Writer(DatabasePath);
 			FLocalDataJournalSink Sink(Writer);
-			pm5_sim::FMockRowingMachine Machine(pm5_sim::MakeSyntheticIndoorRowerScenario());
+			RowingSim::FMockRowingMachine Machine(RowingSim::MakeSyntheticIndoorRowerScenario());
 			FWorkoutSessionDependencies Dependencies;
 			Dependencies.Machine = &Machine;
 			Dependencies.Sink = &Sink;
