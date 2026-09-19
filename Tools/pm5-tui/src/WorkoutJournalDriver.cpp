@@ -68,7 +68,7 @@ namespace PM5Tui
 			if (std::filesystem::exists(Database))
 			{
 				const LocalData::FLocalDataRecoveryReport Report = LocalData::ScanAndRecover(Database);
-				if (Report.RecoveredAfterUncleanExit)
+				if (Report.NewlyRecoveredSessionCount > 0)
 					RecoveryNote = "Recovered an unfinished session from the previous run";
 			}
 

@@ -8,13 +8,8 @@
 // Adapter-specific ownership extension used by the local HIL tool. A remembered
 // relaunch machine must be transferred to exactly one normal IRowingMachine
 // owner; its events and diagnostics must not remain hidden behind discovery.
-class IConcept2PMDiscovery : public IRowingMachineDiscovery
+class IConcept2PMDiscovery : public IRememberingMachineDiscovery
 {
-  public:
-	virtual std::unique_ptr<IRowingMachine> TryTakeRelaunchMachine() = 0;
-	// Clears only the adapter-private remembered PM5 preference. The caller owns
-	// and must disconnect any machine already transferred from discovery.
-	virtual void ForgetRememberedMachine() = 0;
 };
 
 // Factories for callers that must not construct PM protocol profiles. The

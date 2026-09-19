@@ -4,20 +4,56 @@
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "Tickable.h"
 
+#include "WorkoutRuntime/AppJournal.h"
+#include "WorkoutRuntime/DeviceConnector.h"
+
 #include "WorkoutSubsystem.generated.h"
 
 struct FWorkoutDisplay;
 struct FWorkoutSnapshot;
 class UWorkoutHudWidget;
+class UWorkoutDevicePanelWidget;
+
+/** What the device panel shows; derived from the engine-independent controller. */
+enum class EWorkoutDevicePanelMode : uint8
+{
+	// Simulator run: there is no device flow to show.
+	Hidden,
+	Idle,
+	JournalDecision,
+	Starting,
+	Scanning,
+	Problem,
+	Attached
+};
+
+struct FWorkoutDevicePanel
+{
+	EWorkoutDevicePanelMode Mode = EWorkoutDevicePanelMode::Hidden;
+	// Plain-language state; always present in a visible mode, never a dead end.
+	FString Message;
+	// Nearest first, e.g. "PM5 #1 (-52 dBm)". Only while scanning.
+	TArray<FString> Candidates;
+	// Parallel to Candidates: what a click selects by, stable while the list re-sorts.
+	TArray<uint64> CandidateTokens;
+	// The journal line: saving, or the persistent not-saved warning.
+	FString JournalLine;
+	bool bJournalNotSaved = false;
+	// One notice per launch when an interrupted session was recovered.
+	bool bRecoveredNotice = false;
+};
 
 /**
  * The only place the engine-independent workout runtime is reachable from Unreal
- * (docs/phase-1/05-milestone-5-unreal-hud.md). Game-thread only: it owns the
- * simulator machine and the current FWorkoutSession, drains the machine every
- * tick and forwards each event to the session, and exposes the latest display
- * value as a pull. Milestone 5 has no real-device path, so a launch without
- * -SimulatorDevice shows the idle "no device" display and never falls back to
- * simulated data.
+ * (docs/phase-1/05-milestone-5-unreal-hud.md, and for the real device
+ * docs/phase-1/07-milestone-7-real-pm5-app-wiring.md). Game-thread only: it owns
+ * either the simulator machine and its FWorkoutSession, or, without
+ * -SimulatorDevice, an FRealDeviceController that owns the Bluetooth connection
+ * flow, the sealed journal and the session. It drains the machine every tick and
+ * forwards each event to the session, and exposes the latest display value as a
+ * pull. It never falls back from one path to the other, so simulated data is never
+ * mistaken for a real device. Nothing touches Bluetooth or the Keychain until the
+ * user asks to connect.
  */
 UCLASS()
 class VIRTUALROWING_API UWorkoutSubsystem : public UGameInstanceSubsystem, public FTickableGameObject
@@ -44,6 +80,22 @@ class VIRTUALROWING_API UWorkoutSubsystem : public UGameInstanceSubsystem, publi
 	bool HasDevice() const;
 	bool HasSession() const;
 
+	// Real device (Milestone 7). Each action is a user click; none runs at launch.
+	// BeginConnect opens the journal first (the Keychain may prompt) and then creates
+	// the Bluetooth discovery. If the journal cannot be opened the panel offers
+	// "Row without saving", retry, or cancel; a row never silently goes unjournaled.
+	bool BeginConnect();
+	bool ConfirmRowWithoutSaving();
+	void CancelConnect();
+	bool ScanForDevices();
+	bool SelectDeviceByToken(uint64 Token);
+	void ForgetDevice();
+	FWorkoutDevicePanel GetDevicePanel() const;
+	uint64 GetDevicePanelGeneration() const;
+	// The HUD calls this when it applies a display generation, which closes the
+	// software-latency measurement for the samples that produced it.
+	void NoteDisplayApplied(uint64 Generation);
+
 	// Pull values for the HUD. The display generation increases whenever the display
 	// value changes (a new snapshot revision or a replaced session) so a consumer can
 	// skip re-formatting when it is unchanged. Valid until the next Tick or action.
@@ -68,7 +120,11 @@ class VIRTUALROWING_API UWorkoutSubsystem : public UGameInstanceSubsystem, publi
 	void SetHudEnabled(bool bInEnabled)
 	{
 		bHudEnabled = bInEnabled;
+		bPanelEnabled = bInEnabled;
 	}
+	// Replaces the real-device dependencies (and any existing controller) so the
+	// Automation spec can script Bluetooth and the Keychain. Call before Connect.
+	void SetRealDeviceDependenciesForTesting(FDeviceConnector::FDiscoveryFactory InDiscovery, FAppJournal::FCipherFactory InCipher, const FString &InAppDataDirectory);
 
   private:
 	struct FImpl;
@@ -76,10 +132,16 @@ class VIRTUALROWING_API UWorkoutSubsystem : public UGameInstanceSubsystem, publi
 
 	UPROPERTY(Transient)
 	TObjectPtr<UWorkoutHudWidget> Hud;
+	UPROPERTY(Transient)
+	TObjectPtr<UWorkoutDevicePanelWidget> DevicePanel;
 
 	bool bHudEnabled = true;
 	// Frames to wait before trying to create the HUD again after a failed attempt.
 	int32 HudRetryCountdown = 0;
+	bool bPanelEnabled = true;
+	int32 PanelRetryCountdown = 0;
 
 	void EnsureHud();
+	void EnsureDevicePanel();
+	void EnsureRealController();
 };

@@ -154,6 +154,30 @@ class UnrealShippingPackagingTests(unittest.TestCase):
 			patch.object(packaging, "homebrew_load_commands", return_value=["/opt/homebrew/lib/libabsl_base.2601.0.0.dylib"]):
 			self.assertTrue(any("not self-contained" in value for value in packaging.verify_package(app, self.versions)))
 
+	def test_non_system_swift_load_commands_allows_only_the_os_runtime(self) -> None:
+		otool_output = "\n".join([
+			"/x/libVirtualRowing.dylib:",
+			"\t/usr/lib/swift/libswiftCore.dylib (compatibility version 1.0.0, current version 1.0.0)",
+			"\t@rpath/libswiftCore.dylib (compatibility version 1.0.0, current version 1.0.0)",
+			"\t/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/macosx/libswiftCompatibility56.dylib (compatibility version 1.0.0, current version 1.0.0)",
+			"\t/System/Library/Frameworks/Security.framework/Versions/A/Security (compatibility version 1.0.0, current version 61040.0.0)",
+		])
+		with patch.object(common, "capture", return_value=otool_output):
+			self.assertEqual(packaging.non_system_swift_load_commands(self.root / "x"), [
+				"@rpath/libswiftCore.dylib",
+				"/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/macosx/libswiftCompatibility56.dylib",
+			])
+		with patch.object(common, "capture", return_value=None):
+			self.assertEqual(packaging.non_system_swift_load_commands(self.root / "x"), [])
+
+	def test_package_verifier_rejects_a_bundled_swift_runtime(self) -> None:
+		app = self.make_app()
+		with patch.object(packaging, "binary_architectures", return_value={"arm64"}), \
+			patch.object(packaging, "plugin_module_linked", return_value=True), \
+			patch.object(packaging, "homebrew_load_commands", return_value=[]), \
+			patch.object(packaging, "non_system_swift_load_commands", return_value=["@rpath/libswiftCore.dylib"]):
+			self.assertTrue(any("non-system Swift runtime" in value for value in packaging.verify_package(app, self.versions)))
+
 	def test_plugin_module_linked_detects_symbol_in_nm_output(self) -> None:
 		with patch.object(common, "capture", return_value="0000000000000000 t __ZN23FConcept2PMUnrealModuleD1Ev"):
 			self.assertTrue(packaging.plugin_module_linked(self.root / "VirtualRowing", packaging.CONCEPT2PM_MODULE_NAME))

@@ -12,6 +12,6 @@
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>Virtual Rowing uses Bluetooth only when you run the explicit toolchain Bluetooth diagnostic.</string>
+	<string>Virtual Rowing uses Bluetooth to find and connect to your Concept2 PM5 rowing monitor and read your rowing data. It only scans after you choose to connect.</string>
 </dict>
 </plist>

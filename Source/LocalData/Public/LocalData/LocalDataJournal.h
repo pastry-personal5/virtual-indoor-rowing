@@ -186,6 +186,10 @@ namespace LocalData
 		std::uint64_t TruncatedChunkCount = 0;
 		std::uint64_t DuplicateChunkCount = 0;
 		bool RecoveredAfterUncleanExit = false;
+		// Sessions whose recovery marker this scan recorded. Unlike
+		// RecoveredAfterUncleanExit (true on every later scan too, by design), this is
+		// zero on a repeated scan, so a caller can tell a fresh recovery from an old one.
+		std::uint64_t NewlyRecoveredSessionCount = 0;
 	};
 
 	// Scans every sample_chunks row in ascending first_sequence order,

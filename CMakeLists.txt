@@ -32,6 +32,7 @@ if(VIR_APP_LIBS_ONLY)
 	# out of the module's export table so dyld cannot coalesce weak/inline
 	# symbols across images.
 	set(CMAKE_CXX_VISIBILITY_PRESET hidden)
+	set(CMAKE_OBJCXX_VISIBILITY_PRESET hidden)
 	set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 endif()
 
@@ -204,9 +205,15 @@ target_compile_features(LocalData PUBLIC cxx_std_20)
 # Concept2PMMac split: LocalData stays free of Apple types and only sees
 # IBlobCipher. CryptoKit's AES.GCM is Swift-only, so the shim is its own
 # Swift-only library exposing a C ABI, linked into the C++ adapter.
-if(APPLE AND NOT VIR_APP_LIBS_ONLY)
+if(APPLE)
 	enable_language(Swift)
 	add_library(LocalDataMacCryptoKitShim STATIC Source/LocalDataMac/Private/AesGcmCryptoKit.swift)
+	# swiftc does not read CMAKE_OSX_DEPLOYMENT_TARGET and would otherwise stamp the
+	# host OS version into the object, which the app archive (linked at the
+	# deployment target) then warns about and could not run below.
+	if(CMAKE_OSX_DEPLOYMENT_TARGET AND CMAKE_OSX_ARCHITECTURES)
+		target_compile_options(LocalDataMacCryptoKitShim PRIVATE -target "${CMAKE_OSX_ARCHITECTURES}-apple-macos${CMAKE_OSX_DEPLOYMENT_TARGET}")
+	endif()
 	add_library(LocalDataMac STATIC Source/LocalDataMac/Private/CryptoKitBlobCipher.cpp)
 	target_include_directories(LocalDataMac PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/Source/LocalDataMac/Public")
 	target_link_libraries(LocalDataMac PUBLIC LocalData PRIVATE LocalDataMacCryptoKitShim "-framework Security" "-framework CoreFoundation")
@@ -217,7 +224,7 @@ endif()
 
 set(CONCEPT2_PLUGIN_DIR "${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Concept2PM")
 vir_collect_sources(CONCEPT2_CORE_SOURCES "${CONCEPT2_PLUGIN_DIR}/Source/Concept2PMCore")
-if(CONCEPT2_CORE_SOURCES AND NOT VIR_APP_LIBS_ONLY)
+if(CONCEPT2_CORE_SOURCES)
 	add_library(Concept2PMCore STATIC ${CONCEPT2_CORE_SOURCES})
 	add_library(concept2_pm_core ALIAS Concept2PMCore)
 	target_include_directories(Concept2PMCore PUBLIC
@@ -386,6 +393,21 @@ if(VIR_BUILD_TESTS AND BUILD_TESTING AND NOT VIR_APP_LIBS_ONLY)
 		target_link_libraries(workout_runtime_tests PRIVATE WorkoutRuntime RowingContracts RowingSim)
 		add_test(NAME workout_runtime_tests COMMAND workout_runtime_tests)
 	endif()
+	if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Source/WorkoutRuntime/Tests/DeviceConnectorTests.cpp")
+		add_executable(device_connector_tests Source/WorkoutRuntime/Tests/DeviceConnectorTests.cpp)
+		target_link_libraries(device_connector_tests PRIVATE WorkoutRuntime)
+		add_test(NAME device_connector_tests COMMAND device_connector_tests)
+	endif()
+	if(TARGET RowingSim AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Source/WorkoutRuntime/Tests/RealDeviceControllerTests.cpp")
+		add_executable(real_device_controller_tests Source/WorkoutRuntime/Tests/RealDeviceControllerTests.cpp)
+		target_link_libraries(real_device_controller_tests PRIVATE WorkoutRuntime RowingContracts RowingSim)
+		add_test(NAME real_device_controller_tests COMMAND real_device_controller_tests)
+	endif()
+	if(TARGET RowingSim AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Source/WorkoutRuntime/Tests/AppJournalTests.cpp")
+		add_executable(app_journal_tests Source/WorkoutRuntime/Tests/AppJournalTests.cpp)
+		target_link_libraries(app_journal_tests PRIVATE WorkoutRuntime RowingContracts RowingSim)
+		add_test(NAME app_journal_tests COMMAND app_journal_tests)
+	endif()
 	if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Source/WorkoutRuntime/Tests/WorkoutDisplayTests.cpp")
 		add_executable(workout_display_tests Source/WorkoutRuntime/Tests/WorkoutDisplayTests.cpp)
 		target_link_libraries(workout_display_tests PRIVATE WorkoutRuntime)
@@ -514,6 +536,13 @@ if(VIR_APP_LIBS_ONLY)
 	if(TARGET RowingSim)
 		list(APPEND VIR_APP_LIB_ROOTS RowingSim)
 	endif()
+	# Phase 1 Milestone 7: the real-device path. The CoreBluetooth adapter and the
+	# Keychain-sealed CryptoKit cipher (with its Swift shim) join the archive.
+	foreach(vir_real_device_target Concept2PMMac LocalDataMac)
+		if(TARGET ${vir_real_device_target})
+			list(APPEND VIR_APP_LIB_ROOTS ${vir_real_device_target})
+		endif()
+	endforeach()
 
 	function(vir_collect_static_archives target visited_var archives_var)
 		get_target_property(aliased "${target}" ALIASED_TARGET)

@@ -10,7 +10,7 @@ from pathlib import Path
 from vir_dev import common
 
 
-BLUETOOTH_USAGE_DESCRIPTION = "Virtual Rowing uses Bluetooth only when you run the explicit toolchain Bluetooth diagnostic."
+BLUETOOTH_USAGE_DESCRIPTION = "Virtual Rowing uses Bluetooth to find and connect to your Concept2 PM5 rowing monitor and read your rowing data. It only scans after you choose to connect."
 CONCEPT2PM_MODULE_NAME = "Concept2PMUnreal"
 
 
@@ -79,6 +79,18 @@ def homebrew_load_commands(binary: Path) -> list[str]:
 	return found
 
 
+def non_system_swift_load_commands(binary: Path) -> list[str]:
+	"""Swift runtime install names outside /usr/lib/swift (the OS copy). The Keychain cipher's Swift shim
+	must load the system runtime, never a toolchain or @rpath copy the packaged app would have to ship."""
+	output = common.capture(["otool", "-L", str(binary)]) or ""
+	found: list[str] = []
+	for line in output.splitlines()[1:]:
+		install_name = line.strip().split(" (", 1)[0]
+		if "libswift" in install_name and not install_name.startswith("/usr/lib/swift/"):
+			found.append(install_name)
+	return found
+
+
 def plugin_module_linked(main: Path, module_name: str) -> bool:
 	symbols = common.capture(["nm", str(main)]) or ""
 	return module_name in symbols
@@ -142,6 +154,9 @@ def verify_package(app: Path, versions: dict) -> list[str]:
 			homebrew = homebrew_load_commands(binary)
 			if homebrew:
 				failures.append(f"{binary.name} is not self-contained: it loads Homebrew libraries {homebrew}")
+			swift_runtime = non_system_swift_load_commands(binary)
+			if swift_runtime:
+				failures.append(f"{binary.name} is not self-contained: it loads a non-system Swift runtime {swift_runtime}")
 			arches = binary_architectures(binary)
 			if arches != {versions["platform"]["architecture"]}:
 				failures.append(f"wrong architecture for {binary.name}: {sorted(arches) if arches else 'unreadable'}")

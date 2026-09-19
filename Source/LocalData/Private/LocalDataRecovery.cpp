@@ -248,6 +248,7 @@ namespace LocalData
 				if (!HasRecoveryMarker(Connection, SessionId))
 				{
 					RecordRecoveryMarker(Connection, SessionId);
+					++Report.NewlyRecoveredSessionCount;
 				}
 				continue;
 			}

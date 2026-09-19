@@ -169,7 +169,12 @@ void UWorkoutHudWidget::NativeTick(const FGeometry &MyGeometry, float InDeltaTim
 	if (!Subsystem)
 		return;
 	if (!bHasApplied || Subsystem->GetDisplayGeneration() != AppliedGeneration)
+	{
 		ApplyDisplay(*Subsystem);
+		// Closes the software-latency measurement for the samples behind this display.
+		if (UWorkoutSubsystem *Mutable = GetWorkoutSubsystem())
+			Mutable->NoteDisplayApplied(AppliedGeneration);
+	}
 	if (bInitialFocusPending)
 	{
 		FocusAction();

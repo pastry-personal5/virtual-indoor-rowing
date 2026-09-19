@@ -473,6 +473,8 @@ namespace
 		// second marker or otherwise change the outcome.
 		const auto SecondReport = LocalData::ScanAndRecover(Path);
 		EXPECT_TRUE(SecondReport.RecoveredAfterUncleanExit);
+		EXPECT_TRUE(FirstReport.NewlyRecoveredSessionCount == 1);
+		EXPECT_TRUE(SecondReport.NewlyRecoveredSessionCount == 0);
 
 		RemoveDatabase(Path);
 	}
