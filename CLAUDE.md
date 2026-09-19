@@ -21,12 +21,13 @@ make format-check     # clang-format --dry-run --Werror over Source/, Plugins/Co
 make pm5-tui          # build and launch the interactive PM5 diagnostic TUI
 make hil-pm5          # same TUI, explicitly enabling the bounded hardware-probe capture (user-driven, real PM5 required)
 make pm5-tui-journal  # same TUI with the opt-in Keychain-sealed workout journal (Phase 1 Milestone 4; creates a Keychain item on first run)
-make unreal-smoke     # compile the UnrealEditor Development target (only after `make doctor` passes)
+make native-app       # Release arm64 static archive (Build/native-app/lib/libVirRowingApp.a) of the engine-independent modules + static protobuf/abseil that the Unreal module links; first configure downloads hash-pinned sources (network needed)
+make unreal-smoke     # build native-app, then compile the UnrealEditor Development target (only after `make doctor` passes)
 make unreal-shipping  # BuildCookRun the unsigned arm64 Shipping diagnostic host via RunUAT.sh
 make unreal-package-verify        # inspect the staged Shipping .app only (no sign/notarize/launch)
 make toolchain-bluetooth-probe    # run the bounded CoreBluetooth/TCC diagnostic in the staged app
 make release-sign-notarize        # protected sign/notarize procedure; requires VIR_DEVELOPER_ID_IDENTITY and VIR_NOTARY_KEYCHAIN_PROFILE env vars, never takes credentials as arguments
-make clean            # remove Build/native/ only
+make clean            # remove Build/native/ and Build/native-app/
 make clean-unreal     # remove Unreal-generated intermediates: Saved/, Intermediate/, Binaries/, DerivedDataCache/, Build/unreal-shipping/
 make clean-logs       # purge Logs/pm5-tui/*.log*
 make clean-metrics    # purge Metrics/pm5-tui/*.jsonl
@@ -75,10 +76,11 @@ PM5 ──BLE──> Concept2PM adapter ──> rowing domain ──> Unreal UI 
 - `RowingCore` (`Source/RowingCore`): engine-independent C++ domain types and state machines.
 - `RowingDevice` (`Source/RowingDevice`): transport-neutral device contracts and telemetry normalization.
 - `Concept2PM` (`Plugins/Concept2PM`): Objective-C++/CoreBluetooth and PM protocol adapter — Apple/Concept2 types stop here, never leak upward. Owns discovery, identity, capabilities, subscriptions, decoding, control commands, and reconnect policy; emits normalized ordered facts with source time, sequence, provenance, and quality flags. Only validated device facts affect a local workout; a disconnect freezes official input, records the gap, and attempts bounded reconnect — never fabricates meters.
-- `WorkoutRuntime` (`Source/WorkoutRuntime`, Phase 1 Milestone 4, engine-independent): the Just Row session orchestrator — device events → session state machine → `IJournalSink`/`LocalData` journal, gap handling, and a pull `FWorkoutSnapshot` for the UI. Single-threaded and poll-driven; depends on `RowingCore`/`RowingDevice`/`LocalData`, never Apple or Unreal types. `CourseRuntime`, `RaceClient` (planned): local route presentation, online-race client logic.
+- `WorkoutRuntime` (`Source/WorkoutRuntime`, Phase 1 Milestone 4, engine-independent): the Just Row session orchestrator — device events → session state machine → `IJournalSink`/`LocalData` journal, gap handling, and a pull `FWorkoutSnapshot` for the UI. Phase 1 Milestone 5 adds `WorkoutDisplay.h`, the pure snapshot→formatted-display function the HUD binds (absent metrics render `--`, never zero; frozen values are flagged stale). Single-threaded and poll-driven; depends on `RowingCore`/`RowingDevice`/`LocalData`, never Apple or Unreal types. `CourseRuntime`, `RaceClient` (planned): local route presentation, online-race client logic.
 - `LocalData` (`Source/LocalData`): the local session journal — a SQLite WAL-mode store with the full nine-table schema (`schema_migrations`, `sessions`, `journal_events`, `sample_chunks`, `session_summaries`, `sync_outbox`, `cloud_links`, `installed_content`, `paired_devices`), depending on `RowingCore`/`RowingDevice` domain types and the `IBlobCipher` seam. A private mapper converts telemetry/capability domain types to `Contracts/proto/rowing/v1/telemetry.proto`. `sync_outbox`/`cloud_links`/`installed_content`/`paired_devices` have schema only and no writer yet; there is no live device→journal capture loop. `LocalDataMac` (`Source/LocalDataMac`, Apple-only) implements `IBlobCipher` as AES-256-GCM via CryptoKit (a small Swift shim exposing a C ABI) with the data key held in Keychain; Apple types stop there. Cloud sync remains planned. `OnlineClient` (planned): control-plane access.
-- `RowingUI`, `RowingWorld` (`Source/VirtualRowing`, Unreal-side): UMG/CommonUI, actors, rendering, audio, content. Consume domain snapshots only — never parse devices, persist sessions, or determine race results. `UObject`/Actor/Slate/UMG usage is restricted to the game thread.
-- `Diagnostics` (`Tools/pm5-tui`, `Tools/pm5-sim`): redacted observability and consented support tooling.
+- `RowingSim` (`Source/RowingSim`, Phase 1 Milestone 5, engine-independent): the PM simulator — mock and replay machines and deterministic telemetry fixtures (`pm5_sim/` include prefix, `pm5-sim` CMake target). Relocated from `Tools/pm5-sim` so the product app does not depend on `Tools/`; depends only on `RowingCore`/`RowingDevice`. The app links it for `-SimulatorDevice`.
+- `RowingUI`, `RowingWorld` (`Source/VirtualRowing`, Unreal-side): UMG/CommonUI, actors, rendering, audio, content. Consume domain snapshots only — never parse devices, persist sessions, or determine race results. `UObject`/Actor/Slate/UMG usage is restricted to the game thread. Phase 1 Milestone 5 adds `UWorkoutSubsystem` (game-thread owner of the simulator machine and `FWorkoutSession`; the only place the domain runtime is reachable from Unreal) and the code-only `UWorkoutHudWidget`. UBT never compiles the engine-independent modules: `VirtualRowing.Build.cs` links the prebuilt `Build/native-app` archive, and fails with a "run `make native-app`" message if it is missing. Launch with `-SimulatorDevice[=<fixture>]` to drive the HUD from a `RowingSim` fixture; without it the HUD shows the idle "no device" state and never falls back to simulated data.
+- `Diagnostics` (`Tools/pm5-tui`): redacted observability and consented support tooling.
 
 **Persistence and contracts (planned, not yet implemented):** SQLite (WAL) holds the local event journal/outbox/preferences; Keychain holds secrets; PostgreSQL holds durable cloud records; object storage holds immutable compressed sample/replay objects; Redis is ephemeral-only (presence, leases, queues, caches). Queue consumers and finalization paths must be idempotent. Protobuf is canonical for real-time/object events (`lower_snake_case` fields, never reuse field numbers); OpenAPI defines control APIs. Version every externally visible protocol/schema before implementation; keep contracts small and backward compatible for the supported client window. Details: `docs/architecture/06-data-and-protocols.md`.
 
@@ -88,9 +90,9 @@ PM5 ──BLE──> Concept2PM adapter ──> rowing domain ──> Unreal UI 
 
 | Path | Status | Purpose |
 |---|---|---|
-| `Source/` | exists | Unreal (`VirtualRowing`) and engine-independent (`RowingCore`, `RowingDevice`, `LocalData`, `LocalDataMac`, `WorkoutRuntime`) C++ modules |
+| `Source/` | exists | Unreal (`VirtualRowing`) and engine-independent (`RowingCore`, `RowingDevice`, `RowingSim`, `LocalData`, `LocalDataMac`, `WorkoutRuntime`) C++ modules |
 | `Plugins/Concept2PM/` | exists | CoreBluetooth and PM protocol adapter |
-| `Tools/pm5-sim/`, `Tools/pm5-tui/` | exists | Simulator/replay fixtures and the PM5 diagnostic TUI |
+| `Tools/pm5-tui/` | exists | The PM5 diagnostic TUI (the simulator lives in `Source/RowingSim/`) |
 | `Tools/durability-spike/` | exists | Phase 0 Milestone 4 Spike B kill/recover harness for the `LocalData` journal |
 | `Tests/` | exists | Contract and integration test fixtures |
 | `docs/` | exists | Specs (`architecture/`), ADRs (`adr/`), phase milestones (`phase-0/`, `phase-1/`), research (`archive/research/`) |

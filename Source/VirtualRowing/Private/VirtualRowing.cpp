@@ -4,6 +4,7 @@
 #include "Misc/CoreDelegates.h"
 #include "Misc/Parse.h"
 
+#include "NativeLinkageProbe.h"
 #include "VirDebugLog.h"
 
 #if PLATFORM_MAC
@@ -20,6 +21,10 @@ class FVirtualRowingModule final : public IModuleInterface
 		VirDebugLog(FString::Printf(TEXT("CommandLine=[%s]"), FCommandLine::Get()));
 		FCoreDelegates::OnPostEngineInit.AddLambda([]()
 												   { VirDebugLog(TEXT("OnPostEngineInit fired")); });
+		if (FParse::Param(FCommandLine::Get(), TEXT("NativeLinkageProbe")))
+		{
+			VirDebugLog(FString::Printf(TEXT("VirNativeLinkageProbe()=%s"), VirNativeLinkageProbe() ? TEXT("true") : TEXT("false")));
+		}
 #if PLATFORM_MAC
 		const bool bProbeRequested = FParse::Param(FCommandLine::Get(), TEXT("ToolchainBluetoothProbe"));
 		VirDebugLog(FString::Printf(TEXT("FParse::Param(ToolchainBluetoothProbe)=%s"), bProbeRequested ? TEXT("true") : TEXT("false")));
