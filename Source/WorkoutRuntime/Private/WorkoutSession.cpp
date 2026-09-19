@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <ctime>
 #include <exception>
+#include <functional>
 #include <optional>
 #include <stdexcept>
 #include <utility>
@@ -121,18 +122,30 @@ struct FWorkoutSession::FImpl
 		bDirty = true;
 	}
 
+	// Event rows reference the sessions row. While its creation is still pending
+	// the write is held (with its sequence number) and replayed, in order, once
+	// the row lands, so a transient CreateSession failure cannot drop Started.
+	template <typename FWrite>
+	void WriteAfterSessionRow(FWrite &&Write)
+	{
+		if (PendingRecord)
+			DeferredWrites.emplace_back(std::forward<FWrite>(Write));
+		else
+			Journal(Write);
+	}
+
 	void RecordEvent(LocalData::EJournalEventKind Kind, std::uint64_t Ns, const std::string &Payload)
 	{
 		const std::uint64_t Sequence = ++EventSequence;
-		Journal([&]
-				{ Deps.Sink->RecordEvent(Machine.GetId(), Kind, Sequence, Ns, Payload); });
+		WriteAfterSessionRow([this, Kind, Sequence, Ns, Payload]
+							 { Deps.Sink->RecordEvent(Machine.GetId(), Kind, Sequence, Ns, Payload); });
 	}
 
 	void RecordCapability(std::uint64_t Ns, const FRowingMachineInfo &Info)
 	{
 		const std::uint64_t Sequence = ++EventSequence;
-		Journal([&]
-				{ Deps.Sink->RecordCapability(Machine.GetId(), Sequence, Ns, Info); });
+		WriteAfterSessionRow([this, Sequence, Ns, Info]
+							 { Deps.Sink->RecordCapability(Machine.GetId(), Sequence, Ns, Info); });
 	}
 
 	void ApplyChange(const FRowingSessionStateChanged &Change)
@@ -149,9 +162,14 @@ struct FWorkoutSession::FImpl
 	{
 		if (!PendingRecord)
 			return;
-		if (Journal([&]
-					{ Deps.Sink->CreateSession(*PendingRecord); }))
-			PendingRecord.reset();
+		if (!Journal([&]
+					 { Deps.Sink->CreateSession(*PendingRecord); }))
+			return;
+		PendingRecord.reset();
+		std::vector<std::function<void()>> Writes = std::move(DeferredWrites);
+		DeferredWrites.clear();
+		for (const std::function<void()> &Write : Writes)
+			Journal(Write);
 	}
 
 	// Created -> Active. The first point at which anything is persisted.
@@ -419,6 +437,7 @@ struct FWorkoutSession::FImpl
 	bool bDirty = false;
 	bool bPersisted = false;
 	std::optional<LocalData::FSessionRecord> PendingRecord;
+	std::vector<std::function<void()>> DeferredWrites;
 	bool bDeviceReady = false;
 	bool bRestorePending = false;
 	std::optional<FRowingMachineInfo> PendingInfo;

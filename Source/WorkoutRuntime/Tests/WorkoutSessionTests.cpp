@@ -816,6 +816,8 @@ namespace
 		// The retry landed before the samples flushed.
 		EXPECT_TRUE(Sink.SampleCount() == 3);
 		EXPECT_TRUE(Harness.Session->GetSnapshot().JournalErrorCount == 1);
+		// The Started event was held until the row existed, then written.
+		EXPECT_TRUE(Sink.EventCount(LocalData::EJournalEventKind::Started) == 1);
 	}
 
 	// The summary revision is part of the sealed associated data, so a second

@@ -188,9 +188,20 @@ namespace PM5Tui
 			return {};
 		Session->Tick(NowNs);
 		std::vector<std::string> Lines = DescribeChange();
-		// A finished row must not swallow the next one: start a fresh session.
+		// A finished row must not swallow the next one. A session that ended on its
+		// own (device Complete/Terminated, reconnect window) may still have the PM5
+		// mid-row, so it waits for the row to stop like a user End does.
 		if (Session->GetSnapshot().State == ERowingSessionState::Ended)
-			StartSession(NowNs);
+		{
+			// Ingest() can end the session before Tick(); accepted samples mean it was rowing.
+			if (Session->GetSnapshot().AcceptedSampleCount > 0)
+			{
+				Session.reset();
+				bAwaitingRowStop = true;
+			}
+			else
+				StartSession(NowNs);
+		}
 		return Lines;
 	}
 
