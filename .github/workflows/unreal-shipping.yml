@@ -3,16 +3,29 @@ name: Unreal Shipping verifier
 on:
   push:
     branches: [main]
+    # A documentation-only push cannot change the package; skip the hour-long build.
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Builds are expensive: a running one finishes, and only the newest waiting one is kept.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
 
 jobs:
   unsigned-shipping:
-    runs-on: [self-hosted, macOS, ARM64]
-    permissions:
-      contents: read
+    runs-on: [self-hosted, macOS, ARM64, vir-m1]
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+        with:
+          lfs: true
+          submodules: true
       - name: Verify pinned host
         run: make doctor
       - name: Build unsigned Shipping package

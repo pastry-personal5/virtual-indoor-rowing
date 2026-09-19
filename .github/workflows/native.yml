@@ -1,4 +1,4 @@
-name: M1 native quality gates
+name: Native quality gates
 
 on:
   pull_request:
@@ -8,10 +8,18 @@ on:
 permissions:
   contents: read
 
+# A newer push to the same pull request supersedes the running check; main is never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   native:
-    # This label identifies the provisioned golden Apple-silicon runner with
-    # Xcode 26.1.1 and CMake/Ninja versions pinned by Config/BuildVersions.json.
+    # A pull request from a fork would run its code on the self-hosted runner: only same-repo
+    # pull requests and pushes to main run here.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # The provisioned golden Apple-silicon host (Xcode 26.1.1; CMake, Ninja, protobuf and Unreal
+    # versions pinned by Config/BuildVersions.json); `make doctor` verifies it before any build.
     runs-on: [self-hosted, macOS, ARM64, vir-m1]
     timeout-minutes: 30
     steps:
@@ -19,18 +27,53 @@ jobs:
         with:
           lfs: true
           submodules: true
+          # The whitespace check below needs the base commit.
+          fetch-depth: 0
       - name: Verify pinned toolchain
         run: make doctor
-      - name: Configure native targets
-        run: make configure
-      - name: Compile native targets
-        run: make build
-      - name: Run unit, protocol, contract, and integration tests
-        run: make test
+      # Cheap checks first, so a formatting slip fails in seconds instead of after the build.
       - name: Check C++ formatting
         run: make format-check
-      - name: Check patch whitespace
-        run: git diff --check
+      - name: Check whitespace in the change
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          # `git diff --check` on a clean checkout compares nothing, so check the range this
+          # event introduces. A new branch has an all-zero `before`; fall back to the parent.
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            BASE_SHA="HEAD~1"
+          fi
+          git diff --check "$BASE_SHA" HEAD
+      - name: Compile native targets
+        run: make build
+      - name: Run unit, protocol, contract, packaging, and integration tests
+        run: make test
+      - name: Retain test log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ctest-log-${{ github.run_id }}
+          if-no-files-found: ignore
+          path: Build/native/Testing/Temporary/LastTest.log
 
-# PM5 hardware-in-loop and Unreal smoke jobs run only on explicitly provisioned
-# rigs; they are separate from ordinary pull-request CI and never simulated.
+  unreal-smoke:
+    # The Unreal module links the prebuilt native archive and is never compiled by CMake, so a
+    # change that breaks it is invisible to the `native` job. This compiles the Editor target
+    # only: no cook, no packaging, no Bluetooth, no launch.
+    needs: native
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, macOS, ARM64, vir-m1]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+          submodules: true
+      - name: Verify pinned host
+        run: make doctor
+      - name: Build the app archive and compile the Unreal Editor target
+        run: make unreal-smoke
+
+# PM5 hardware-in-loop runs only on explicitly provisioned rigs and never in ordinary CI; the
+# unsigned Shipping package is verified by unreal-shipping.yml.
