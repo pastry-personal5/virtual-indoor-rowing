@@ -19,18 +19,20 @@ make build            # configure if needed, then compile all native diagnostic-
 make test             # build, then run CTest with failure output enabled
 make format-check     # clang-format --dry-run --Werror over Source/, Plugins/Concept2PM, Tools/, Tests/
 make pm5-tui          # build and launch the interactive PM5 diagnostic TUI
-make hil-pm5          # same TUI, explicitly enabling the bounded hardware-probe capture (user-driven, real PM5 required)
+make pm5-tui-hil      # same TUI, explicitly enabling the bounded hardware-probe capture (user-driven, real PM5 required)
 make pm5-tui-journal  # same TUI with the opt-in Keychain-sealed workout journal (Phase 1 Milestone 4; creates a Keychain item on first run)
-make native-app       # Release arm64 static archive (Build/native-app/lib/libVirRowingApp.a) of the engine-independent modules, the Concept2PM CoreBluetooth adapter and the LocalDataMac Keychain cipher (with its Swift shim), plus static protobuf/abseil, that the Unreal module links; first configure downloads hash-pinned sources (network needed)
-make unreal-smoke     # build native-app, then compile the UnrealEditor Development target (only after `make doctor` passes)
+make unreal-native-app  # Release arm64 static archive (Build/native-app/lib/libVirRowingApp.a) of the engine-independent modules, the Concept2PM CoreBluetooth adapter and the LocalDataMac Keychain cipher (with its Swift shim), plus static protobuf/abseil, that the Unreal module links; first configure downloads hash-pinned sources (network needed)
+make unreal-smoke     # build unreal-native-app, then compile the UnrealEditor Development target (only after `make doctor` passes)
 make unreal-shipping  # BuildCookRun the unsigned arm64 Shipping diagnostic host via RunUAT.sh
 make unreal-package-verify        # inspect the staged Shipping .app only (no sign/notarize/launch)
-make toolchain-bluetooth-probe    # run the bounded CoreBluetooth/TCC diagnostic in the staged app
+make unreal-bluetooth-probe     # run the bounded CoreBluetooth/TCC diagnostic in the staged app
 make release-sign-notarize        # protected sign/notarize procedure; requires VIR_DEVELOPER_ID_IDENTITY and VIR_NOTARY_KEYCHAIN_PROFILE env vars, never takes credentials as arguments
 make clean            # remove Build/native/ and Build/native-app/
 make clean-unreal     # remove Unreal-generated intermediates: Saved/, Intermediate/, Binaries/, DerivedDataCache/, Build/unreal-shipping/
 make clean-logs       # purge Logs/pm5-tui/*.log*
 make clean-metrics    # purge Metrics/pm5-tui/*.jsonl
+make clean-diagnostics # both of the above
+make help             # list every target with a one-line description
 ```
 
 Run a single native test after building (target names come from `CMakeLists.txt`, e.g. `rowing_core_tests`, `pm5_tui_logger_tests`, `pm5_tui_metrics_writer_tests`):
@@ -121,7 +123,7 @@ Every delivery phase has one or more milestones, named `Phase <N> Milestone <M>`
 
 `make pm5-tui-journal` (`--journal`) journals rows through `WorkoutRuntime` into a Keychain-sealed SQLite database at `Metrics/pm5-tui/journal/` (owner-only directory, Git-ignored). It holds athlete data: treat it as private evidence, never commit or attach it; logs record aggregate session state only.
 
-`make toolchain-bluetooth-probe` writes one redacted `Saved/Logs/toolchain-bluetooth-probe-*.json` result per run (schema version, source revision, toolchain fingerprint, timestamp, result state, duration) — no raw BLE data. It requires a verified unsigned Shipping `.app` staged by `make unreal-shipping`.
+`make unreal-bluetooth-probe` writes one redacted `Saved/Logs/toolchain-bluetooth-probe-*.json` result per run (schema version, source revision, toolchain fingerprint, timestamp, result state, duration) — no raw BLE data. It requires a verified unsigned Shipping `.app` staged by `make unreal-shipping`.
 
 ## Useful references
 

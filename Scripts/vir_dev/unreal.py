@@ -29,7 +29,7 @@ def unreal_smoke() -> int:
 	# a missing or stale archive fails here, not inside UBT.
 	native_result = native.native_app()
 	if native_result:
-		print("ERROR: `make native-app` failed; the Unreal module cannot link without it", file=sys.stderr)
+		print("ERROR: `make unreal-native-app` failed; the Unreal module cannot link without it", file=sys.stderr)
 		return native_result
 	result = common.run([
 		str(ubt),
@@ -65,7 +65,7 @@ def unreal_shipping() -> int:
 	# archive can never be packaged (UBT does not notice archive changes by itself).
 	native_result = native.native_app()
 	if native_result:
-		print("ERROR: `make native-app` failed; the Unreal module cannot link without it", file=sys.stderr)
+		print("ERROR: `make unreal-native-app` failed; the Unreal module cannot link without it", file=sys.stderr)
 		return native_result
 	packaging.write_shipping_provenance(versions)
 	env = common.tool_env(versions)

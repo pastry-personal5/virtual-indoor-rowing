@@ -26,13 +26,13 @@ public class VirtualRowing : ModuleRules
 		// Phase 1 Milestone 5: the engine-independent modules (RowingCore, RowingDevice,
 		// LocalData, WorkoutRuntime, the simulator, and static protobuf/abseil) are built by
 		// CMake, not UBT, and arrive as one prebuilt Release arm64 archive from
-		// `make native-app`. Their headers are includable as-is; nothing here compiles
+		// `make unreal-native-app`. Their headers are includable as-is; nothing here compiles
 		// their sources.
 		string RepoRoot = Target.ProjectFile.Directory.FullName;
 		string NativeArchive = Path.Combine(RepoRoot, "Build", "native-app", "lib", "libVirRowingApp.a");
 		if (!File.Exists(NativeArchive))
 		{
-			throw new BuildException("Missing " + NativeArchive + ". Run `make native-app` (or `make unreal-smoke`, which does) before building the VirtualRowing module.");
+			throw new BuildException("Missing " + NativeArchive + ". Run `make unreal-native-app` (or `make unreal-smoke`, which does) before building the VirtualRowing module.");
 		}
 		PublicIncludePaths.AddRange(new[]
 		{

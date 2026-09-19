@@ -569,7 +569,7 @@ namespace
 		}
 
 		// Diagnostic-only managed-workout commands (Phase 0 Milestone 4 Spike
-		// A). Reachable only under --hardware-probe (make hil-pm5), matching
+		// A). Reachable only under --hardware-probe (make pm5-tui-hil), matching
 		// the DiagnosticOnly/DiagnosticSampleObserved precedent's owner-run
 		// real-hardware gating; never a production workout control surface.
 		void ProgramWorkout(const Concept2PM::FDiagnosticWorkoutSpec &Spec,
@@ -659,7 +659,7 @@ namespace
 				ftxui::Container::Horizontal({Scan, Stop, Select, ConnectButton, Disconnect}),
 			};
 			// Diagnostic-only managed-workout commands are reachable only
-			// under --hardware-probe (make hil-pm5): a real, owner-run PM5
+			// under --hardware-probe (make pm5-tui-hil): a real, owner-run PM5
 			// session, matching the DiagnosticOnly precedent's gating.
 			if (HardwareProbeEnabled)
 				ActionRows.push_back(ftxui::Container::Horizontal(

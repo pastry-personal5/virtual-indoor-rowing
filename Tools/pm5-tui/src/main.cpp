@@ -131,13 +131,13 @@ int main(int argc, char **argv)
 				 Command == "program-interval" || Command == "abort-workout")
 		{
 			// Diagnostic-only managed-workout commands are reachable only
-			// under --hardware-probe (make hil-pm5), matching the
+			// under --hardware-probe (make pm5-tui-hil), matching the
 			// interactive TUI's gating and the DiagnosticOnly precedent's
 			// owner-run real-hardware restriction; never a production
 			// workout control surface.
 			if (!HardwareProbeEnabled)
 			{
-				std::cout << "diagnostic workout commands require --hardware-probe (make hil-pm5)\n";
+				std::cout << "diagnostic workout commands require --hardware-probe (make pm5-tui-hil)\n";
 				continue;
 			}
 			auto *PM5Diagnostics =
