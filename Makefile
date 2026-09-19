@@ -8,6 +8,8 @@
 
 PYTHON ?= python3
 DEV := $(PYTHON) Scripts/dev.py
+VIR_GO_CACHE ?= /tmp/virtual-rowing-go-build
+VIR_GO_MOD_CACHE ?= /tmp/virtual-rowing-go-modcache
 
 .DEFAULT_GOAL := help
 
@@ -17,7 +19,7 @@ help: ## List the available targets.
 
 # --- Native build and test ---------------------------------------------------
 
-.PHONY: doctor configure build test format-check
+.PHONY: doctor configure build test format-check phase1-check development-sync-test
 
 doctor: ## Verify the host and installed tools against Config/BuildVersions.json.
 	$(DEV) doctor
@@ -34,13 +36,21 @@ test: ## Build, then run CTest with failure output enabled.
 format-check: ## Check C++/Objective-C++ formatting without modifying files.
 	$(DEV) format-check
 
+phase1-check: ## Validate Phase 1 milestone numbering, links, and evidence statuses.
+	$(PYTHON) Scripts/check_phase1_packet.py
+
+development-sync-test: ## Run the development-sync Go test suite.
+	cd Services/development-sync && GOCACHE="$(VIR_GO_CACHE)" GOMODCACHE="$(VIR_GO_MOD_CACHE)" go test ./...
+
 # --- Optional loopback development sync -------------------------------------
 
-.PHONY: development-sync-bootstrap development-sync-up development-sync-down development-sync-reset
+.PHONY: development-sync-bootstrap development-sync-up development-sync-migrate development-sync-down development-sync-reset
 development-sync-bootstrap: ## Generate the owner-only Compose bootstrap secret.
 	$(PYTHON) Scripts/development_sync.py bootstrap
 development-sync-up: ## Start the opt-in loopback-only development sync API.
 	$(PYTHON) Scripts/development_sync.py up
+development-sync-migrate: ## Apply forward-only development-sync migrations to an existing Compose volume.
+	$(PYTHON) Scripts/development_sync.py migrate
 development-sync-down: ## Stop the development sync API, preserving any volumes.
 	$(PYTHON) Scripts/development_sync.py down
 development-sync-reset: ## Destructively remove only named development-sync Compose volumes.

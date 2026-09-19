@@ -70,6 +70,11 @@ def unreal_shipping() -> int:
 	packaging.write_shipping_provenance(versions)
 	env = common.tool_env(versions)
 	env["VIR_SOURCE_REVISION"] = common.source_revision()
+	# RunUAT defaults to ~/Library/Logs/Unreal Engine/LocalBuildLogs on macOS.
+	# Keep generated build diagnostics inside the repository build area so the
+	# wrapper works on restricted builders and does not mutate a developer's
+	# unrelated global Unreal logs.
+	env["uebp_LogFolder"] = str(common.UNREAL_SHIPPING_DIR / "logs")
 	result = common.run(packaging.unreal_shipping_command(ue_root, project, common.UNREAL_ARCHIVE_DIR), env=env)
 	if result.returncode:
 		return result.returncode

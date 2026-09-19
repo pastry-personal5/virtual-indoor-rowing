@@ -23,7 +23,6 @@ CREATE TABLE IF NOT EXISTS sessions (
     object_sha256 TEXT NOT NULL CHECK (object_sha256 ~ '^[a-f0-9]{64}$'),
     status TEXT NOT NULL,
     revision BIGINT NOT NULL DEFAULT 1,
-    finalized_at TIMESTAMPTZ,
     processing_lease_until TIMESTAMPTZ,
     processing_lease_owner TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),

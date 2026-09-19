@@ -420,6 +420,7 @@ if(VIR_BUILD_TESTS AND BUILD_TESTING AND NOT VIR_APP_LIBS_ONLY)
 		# rejects clang's -Wl,-framework forms; link with the C++ driver instead.
 		set_target_properties(local_data_mac_tests PROPERTIES LINKER_LANGUAGE CXX)
 		add_test(NAME local_data_mac_tests COMMAND local_data_mac_tests)
+		set_tests_properties(local_data_mac_tests PROPERTIES SKIP_RETURN_CODE 77)
 	endif()
 	if(TARGET RowingSim AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Source/WorkoutRuntime/Tests/WorkoutSessionTests.cpp")
 		add_executable(workout_runtime_tests Source/WorkoutRuntime/Tests/WorkoutSessionTests.cpp)
@@ -568,8 +569,10 @@ endif()
 
 # Phase 1 Milestone 5: merge every static archive the Unreal app needs into one
 # library so the UBT module has a single PublicAdditionalLibraries entry. The
-# closure is computed from the target graph (static protobuf/abseil included);
-# system libraries (SQLite) are declared in VirtualRowing.Build.cs instead.
+# closure is computed from the target graph (static protobuf/abseil included).
+# SQLite remains a system library declared in VirtualRowing.Build.cs; Zstandard
+# is explicitly merged because LocalData consumes it through a private CMake
+# dependency, which static libraries do not propagate to UBT.
 if(VIR_APP_LIBS_ONLY)
 	set(VIR_APP_LIB_ROOTS WorkoutRuntime CourseRuntime)
 	# Phase 1 Milestone 10: the opt-in development coordinator is linked into the
@@ -630,8 +633,8 @@ if(VIR_APP_LIBS_ONLY)
 	add_custom_command(
 		OUTPUT "${VIR_APP_MERGED_ARCHIVE}"
 		COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/lib"
-		COMMAND xcrun libtool -static -o "${VIR_APP_MERGED_ARCHIVE}" ${VIR_APP_ARCHIVES}
-		DEPENDS ${VIR_APP_VISITED}
+		COMMAND xcrun libtool -static -o "${VIR_APP_MERGED_ARCHIVE}" ${VIR_APP_ARCHIVES} "${ZSTD_LIBRARY}"
+		DEPENDS ${VIR_APP_VISITED} "${ZSTD_LIBRARY}"
 		COMMAND_EXPAND_LISTS
 		VERBATIM
 		COMMENT "Merging app-bound static archives into libVirRowingApp.a"

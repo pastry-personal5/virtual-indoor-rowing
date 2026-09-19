@@ -24,6 +24,8 @@ def unreal_shipping_command(ue_root: Path, project: Path, archive_dir: Path) -> 
 		"-targetplatform=Mac",
 		"-clientconfig=Shipping",
 		"-build",
+		# Shipping builds remain local and reproducible on clean builders.
+		'-ubtargs=-NoUBA',
 		"-cook",
 		"-pak",
 		"-iostore",

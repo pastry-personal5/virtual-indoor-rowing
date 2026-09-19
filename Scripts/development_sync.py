@@ -12,7 +12,7 @@ ENV = STACK / ".env"
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=("bootstrap", "up", "down", "reset"))
+    parser.add_argument("command", choices=("bootstrap", "up", "migrate", "down", "reset"))
     command = parser.parse_args().command
     if command == "bootstrap":
         ENV.write_text(
@@ -25,7 +25,12 @@ def main() -> None:
         print(f"wrote owner-only {ENV.relative_to(ROOT)}")
         return
     compose = ["docker", "compose", "--env-file", str(ENV), "-f", str(STACK / "compose.yaml")]
-    if command == "up": subprocess.run(compose + ["up", "--build", "-d"], check=True)
+    if command == "up":
+        subprocess.run(compose + ["up", "--build", "-d"], check=True)
+        subprocess.run(compose + ["exec", "-T", "postgres", "psql", "-U", "rowing_development", "-d", "rowing_development", "-f", "/docker-entrypoint-initdb.d/002_finalize_session.sql"], check=True)
+        subprocess.run(compose + ["restart", "api", "worker"], check=True)
+    elif command == "migrate":
+        subprocess.run(compose + ["exec", "-T", "postgres", "psql", "-U", "rowing_development", "-d", "rowing_development", "-f", "/docker-entrypoint-initdb.d/002_finalize_session.sql"], check=True)
     elif command == "down": subprocess.run(compose + ["down"], check=True)
     else: subprocess.run(compose + ["down", "--volumes"], check=True)
 

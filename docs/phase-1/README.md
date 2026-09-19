@@ -1,8 +1,8 @@
 # Delivery Phase 1: walking skeleton
 
-Status: Open (per [ADR-0010](../adr/0010-defer-remaining-phase-0-spike-evidence-to-phase-4.md), 2026-09-17); Milestones 1–8 are scoped and implemented, with their recorded owner-run evidence still outstanding where noted. Milestone 8 completes the gray-box portion of build-order step 5 (see [08-milestone-8-gray-box-course-presentation.md](08-milestone-8-gray-box-course-presentation.md)).
+Status: Open (per [ADR-0010](../adr/0010-defer-remaining-phase-0-spike-evidence-to-phase-4.md)); Milestones 1–10 are implemented with automated evidence, while the combined Phase 1 exit-gate evidence remains outstanding where noted.
 Owner: A0 — CTO / Principal Architect
-Last reviewed: 2026-09-19
+Last reviewed: 2026-09-20
 
 ## Purpose
 
@@ -30,7 +30,7 @@ Per [the delivery plan](../architecture/10-delivery-plan.md#phase-1--walking-ske
 6. Control API session endpoint, PostgreSQL, object upload, worker validation.
 7. Unsigned ad-hoc build/package/verify pipeline and redacted diagnostics; Developer ID signing/notarization is a Phase 4 build-order item per ADR-0008.
 
-Milestones have not yet been scoped against this build order — see "Open questions" below.
+Milestones are scoped individually immediately before implementation; Milestones 1–10 are recorded below.
 
 ## In scope (once milestones are scoped)
 
@@ -81,9 +81,11 @@ Owner-confirmed (2026-09-17): Phase 1 milestones are **not** pre-planned as a fu
 
 - **Milestone 10 — persistent development session sync** (completion of the development-infrastructure portion of build-order step 6): completed on automated implementation evidence. Uses PostgreSQL for session lifecycle/idempotency/worker leases and MinIO for identity-confined immutable objects, with a loopback-only presigned upload grant and durable worker status. It remains development-only; Compose and packaged-app follow-up evidence are owner-run. See [10-milestone-10-persistent-development-sync.md](10-milestone-10-persistent-development-sync.md).
 
+- **Milestone 11 — closeout and sync-hardening chores**: completed on automated evidence. Reconciles the Phase 1 packet, adds the exit-gate evidence matrix, adds the forward-safe development-sync migration, and exposes `make phase1-check` and `make development-sync-test`. It does not execute or waive owner-run Phase 1 exit evidence. See [11-milestone-11-closeout-and-sync-hardening-chores.md](11-milestone-11-closeout-and-sync-hardening-chores.md).
+
 ## Open questions
 
-None currently open.
+The Phase 1 exit-gate evidence report is pending owner-run hardware, packaged-app, and environment-specific checks; this does not change the implementation status of completed milestones.
 
 ## Completion rule
 
