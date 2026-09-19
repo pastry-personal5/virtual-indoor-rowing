@@ -113,6 +113,14 @@ namespace
 	{
 		return RowingSim::MakeRandomStrokeFixture(30);
 	}
+	RowingSim::FGoldenTelemetryFixture MakeStateMissing()
+	{
+		RowingSim::FGoldenTelemetryFixture Fixture = RowingSim::MakeRandomStrokeFixture(10);
+		Fixture.Name = "state_missing";
+		for (RowingSim::FReplayTelemetryFrame &Frame : Fixture.Frames)
+			Frame.Sample.StrokeState = ERowingStrokeState::Unknown;
+		return Fixture;
+	}
 
 	// Varying stroke rate, power, and pace, so the HUD visibly tracks live data;
 	// steady30min is a constant-speed script whose pace and rate never change.
@@ -134,6 +142,7 @@ namespace
 		{TEXT("intervals"), &RowingSim::MakeIntervalFixture},
 		{TEXT("abrupt_stop"), &RowingSim::MakeAbruptStopFixture},
 		{TEXT("packet_loss"), &RowingSim::MakePacketLossFixture},
+		{TEXT("state_missing"), &MakeStateMissing},
 		{TEXT("no_rowing"), &MakeNoRowing},
 		{TEXT("device_completed"), &MakeDeviceCompleted},
 		{TEXT("device_terminated"), &MakeDeviceTerminated},

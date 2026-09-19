@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "CourseRuntime/CoursePresentation.h"
 
 #include "WorkoutHudWidget.generated.h"
 
@@ -29,6 +30,7 @@ class VIRTUALROWING_API UWorkoutHudWidget : public UUserWidget
 	// Moves keyboard focus to the action that applies now. Public so the Escape
 	// input processor can reach it; never activates the action.
 	void FocusAction();
+	static ESlateVisibility AnimationLabelVisibility(ECourseAnimationQuality Quality);
 
   protected:
 	virtual void NativeOnInitialized() override;
@@ -51,6 +53,8 @@ class VIRTUALROWING_API UWorkoutHudWidget : public UUserWidget
 	TObjectPtr<UTextBlock> BannerText;
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> ConnectionText;
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> EstimatedStrokeText;
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> DistanceText;
 	UPROPERTY(Transient)

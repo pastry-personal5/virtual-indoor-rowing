@@ -19,7 +19,7 @@ class FVirtualRowingModule final : public IModuleInterface
 		// TEMPORARY Milestone 3 probe-invocation diagnostic (2026-09-17): see VirDebugLog.h.
 		VirDebugLog(TEXT("StartupModule entered"));
 		VirDebugLog(FString::Printf(TEXT("CommandLine=[%s]"), FCommandLine::Get()));
-		FCoreDelegates::OnPostEngineInit.AddLambda([]()
+		FCoreDelegates::GetOnPostEngineInit().AddLambda([]()
 												   { VirDebugLog(TEXT("OnPostEngineInit fired")); });
 		if (FParse::Param(FCommandLine::Get(), TEXT("NativeLinkageProbe")))
 		{

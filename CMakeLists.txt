@@ -280,6 +280,15 @@ target_include_directories(WorkoutRuntime
 target_link_libraries(WorkoutRuntime PUBLIC RowingCore RowingDevice LocalData PRIVATE RowingContracts)
 target_compile_features(WorkoutRuntime PUBLIC cxx_std_20)
 
+# Phase 1 Milestone 8: deterministic, engine-independent course and rower
+# presentation. It consumes normalized domain facts and never writes them back.
+vir_collect_sources(COURSE_RUNTIME_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Source/CourseRuntime/Private")
+add_library(CourseRuntime STATIC ${COURSE_RUNTIME_SOURCES})
+add_library(course_runtime ALIAS CourseRuntime)
+target_include_directories(CourseRuntime PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/Source/CourseRuntime/Public")
+target_link_libraries(CourseRuntime PUBLIC RowingCore)
+target_compile_features(CourseRuntime PUBLIC cxx_std_20)
+
 vir_collect_sources(ROWING_SIM_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Source/RowingSim/src")
 if(ROWING_SIM_SOURCES)
 	add_library(RowingSim STATIC ${ROWING_SIM_SOURCES})
@@ -413,6 +422,11 @@ if(VIR_BUILD_TESTS AND BUILD_TESTING AND NOT VIR_APP_LIBS_ONLY)
 		target_link_libraries(workout_display_tests PRIVATE WorkoutRuntime)
 		add_test(NAME workout_display_tests COMMAND workout_display_tests)
 	endif()
+	if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Source/CourseRuntime/Tests/CoursePresentationTests.cpp")
+		add_executable(course_runtime_tests Source/CourseRuntime/Tests/CoursePresentationTests.cpp)
+		target_link_libraries(course_runtime_tests PRIVATE CourseRuntime)
+		add_test(NAME course_runtime_tests COMMAND course_runtime_tests)
+	endif()
 	if(TARGET Concept2PMCore)
 		file(GLOB_RECURSE CONCEPT2_TEST_SOURCES CONFIGURE_DEPENDS
 			"${CONCEPT2_PLUGIN_DIR}/Tests/*.cpp"
@@ -515,7 +529,7 @@ if(VIR_BUILD_TESTS AND BUILD_TESTING AND NOT VIR_APP_LIBS_ONLY)
 endif()
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang|GNU")
-foreach(target RowingCore RowingDevice LocalData LocalDataMac WorkoutRuntime Concept2PMCore Concept2PMMac RowingSim durability-spike)
+foreach(target RowingCore RowingDevice LocalData LocalDataMac WorkoutRuntime CourseRuntime Concept2PMCore Concept2PMMac RowingSim durability-spike)
 	if(TARGET "${target}")
 		get_target_property(target_type "${target}" TYPE)
 		if(target_type STREQUAL "INTERFACE_LIBRARY")
@@ -532,7 +546,7 @@ endif()
 # closure is computed from the target graph (static protobuf/abseil included);
 # system libraries (SQLite) are declared in VirtualRowing.Build.cs instead.
 if(VIR_APP_LIBS_ONLY)
-	set(VIR_APP_LIB_ROOTS WorkoutRuntime)
+	set(VIR_APP_LIB_ROOTS WorkoutRuntime CourseRuntime)
 	if(TARGET RowingSim)
 		list(APPEND VIR_APP_LIB_ROOTS RowingSim)
 	endif()

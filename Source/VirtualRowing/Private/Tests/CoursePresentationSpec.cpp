@@ -1,0 +1,108 @@
+#include "Misc/AutomationTest.h"
+
+#include "CourseSubsystem.h"
+#include "GrayBoxCourseActor.h"
+#include "WorkoutHudWidget.h"
+
+#include "Engine/World.h"
+
+#if WITH_DEV_AUTOMATION_TESTS
+
+BEGIN_DEFINE_SPEC(FCoursePresentationSpec, "VirtualRowing.CoursePresentation", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+UWorld *World = nullptr;
+AGrayBoxCourseActor *Course = nullptr;
+END_DEFINE_SPEC(FCoursePresentationSpec)
+
+void FCoursePresentationSpec::Define()
+{
+	BeforeEach([this]()
+			   {
+			World = UWorld::CreateWorld(EWorldType::Game, false);
+			World->InitializeNewWorld(UWorld::InitializationValues()
+				.AllowAudioPlayback(false)
+				.RequiresHitProxies(false)
+				.CreatePhysicsScene(false)
+				.CreateNavigation(false)
+				.CreateAISystem(false)
+				.ShouldSimulatePhysics(false));
+			Course = World->SpawnActor<AGrayBoxCourseActor>();
+			Course->InitializeCourse(); });
+
+	AfterEach([this]()
+			  {
+			Course = nullptr;
+			if (World)
+			{
+				World->DestroyWorld(false);
+				World = nullptr;
+			} });
+
+	It("maps the normalized 2 km domain continuously onto the closed spline", [this]()
+	   {
+		const FTransform Start = Course->GetCourseTransform(0.0);
+		const FTransform Finish = Course->GetCourseTransform(2'000'000.0);
+		TestTrue(TEXT("finish wraps to start"), Start.GetLocation().Equals(Finish.GetLocation(), 0.1));
+		TestTrue(TEXT("finish tangent wraps"), Course->GetCourseTangent(0.0).Equals(Course->GetCourseTangent(2'000'000.0), 0.001));
+		TestFalse(TEXT("250 m advances"), Start.GetLocation().Equals(Course->GetCourseTransform(250'000.0).GetLocation(), 1.0));
+		TestFalse(TEXT("1,000 m advances"), Start.GetLocation().Equals(Course->GetCourseTransform(1'000'000.0).GetLocation(), 1.0));
+		TestEqual(TEXT("markers every 250 m"), Course->GetMarkerCountForTesting(), 8); });
+
+	It("applies catch drive finish recovery and disconnect-return proxy transforms", [this]()
+	   {
+		FCoursePresentationSnapshot Snapshot;
+		Course->ApplyPresentation(Snapshot);
+		const FTransform CatchSeat = Course->GetSeatRelativeTransformForTesting();
+		Snapshot.StrokePose = 0.5;
+		Snapshot.SeatPose = 1.0;
+		Snapshot.TorsoPose = 0.5;
+		Snapshot.ArmsPose = 0.0;
+		Snapshot.OarPose = 0.5;
+		Course->ApplyPresentation(Snapshot);
+		TestTrue(TEXT("seat moves first"), Course->GetSeatRelativeTransformForTesting().GetLocation().X > CatchSeat.GetLocation().X);
+		const FRotator MidTorso = Course->GetTorsoRelativeTransformForTesting().Rotator();
+		Snapshot.SeatPose = 1.0;
+		Snapshot.TorsoPose = 1.0;
+		Snapshot.ArmsPose = 1.0;
+		Snapshot.OarPose = 1.0;
+		Course->ApplyPresentation(Snapshot);
+		TestFalse(TEXT("torso continues after seat"), Course->GetTorsoRelativeTransformForTesting().Rotator().Equals(MidTorso, 0.1));
+		Snapshot = {};
+		Course->ApplyPresentation(Snapshot);
+		TestTrue(TEXT("return reaches catch"), Course->GetSeatRelativeTransformForTesting().Equals(CatchSeat, 0.1)); });
+
+	It("uses a rigid level side camera with no input component", [this]()
+	   {
+		FCoursePresentationSnapshot Snapshot;
+		Snapshot.WrappedCourseDistanceMm = 750'000.0;
+		Course->ApplyPresentation(Snapshot);
+		const FTransform Boat = Course->GetBoatTransformForTesting();
+		const FVector Offset = Course->GetCameraTransformForTesting().GetLocation() - Boat.GetLocation();
+		TestTrue(TEXT("starboard offset"), FMath::IsNearlyEqual(FVector::DotProduct(Offset, Boat.GetUnitAxis(EAxis::Y)), 800.0, 0.1));
+		TestTrue(TEXT("camera elevation"), FMath::IsNearlyEqual(Offset.Z, 250.0, 0.1));
+		TestTrue(TEXT("level horizon"), FMath::IsNearlyZero(Course->GetCameraTransformForTesting().Rotator().Roll, 0.01));
+		TestTrue(TEXT("50 degree field of view"), FMath::IsNearlyEqual(Course->GetCameraFieldOfViewForTesting(), 50.0f));
+		TestFalse(TEXT("course actor binds no input"), Course->HasInputComponentForTesting()); });
+
+	It("restricts spawning and the fallback label to their intended states", [this]()
+	   {
+		TestTrue(TEXT("game supported"), UCourseSubsystem::SupportsWorldType(EWorldType::Game));
+		TestTrue(TEXT("PIE supported"), UCourseSubsystem::SupportsWorldType(EWorldType::PIE));
+		TestFalse(TEXT("editor unsupported"), UCourseSubsystem::SupportsWorldType(EWorldType::Editor));
+		TestFalse(TEXT("preview unsupported"), UCourseSubsystem::SupportsWorldType(EWorldType::EditorPreview));
+		TestTrue(TEXT("estimated visible"), UWorkoutHudWidget::AnimationLabelVisibility(ECourseAnimationQuality::Estimated) == ESlateVisibility::HitTestInvisible);
+		TestTrue(TEXT("primary hidden"), UWorkoutHudWidget::AnimationLabelVisibility(ECourseAnimationQuality::Primary) == ESlateVisibility::Hidden);
+		TestTrue(TEXT("unavailable hidden"), UWorkoutHudWidget::AnimationLabelVisibility(ECourseAnimationQuality::Unavailable) == ESlateVisibility::Hidden); });
+
+	It("cannot mutate authoritative workout facts", [this]()
+	   {
+		const uint64 OfficialDistance = 2'250'000;
+		FCoursePresentationSnapshot Presentation;
+		Presentation.MeasuredDistanceMm = OfficialDistance;
+		Presentation.PresentedDistanceMm = 2'251'000.0;
+		Presentation.WrappedCourseDistanceMm = 251'000.0;
+		Course->ApplyPresentation(Presentation);
+		TestEqual(TEXT("local official distance unchanged"), OfficialDistance, 2'250'000ULL);
+		TestEqual(TEXT("presentation input remains cumulative"), Presentation.MeasuredDistanceMm, OfficialDistance); });
+}
+
+#endif // WITH_DEV_AUTOMATION_TESTS

@@ -2,6 +2,7 @@
 
 #include "VirDebugLog.h"
 #include "WorkoutSubsystem.h"
+#include "CourseSubsystem.h"
 
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
@@ -118,6 +119,9 @@ void UWorkoutHudWidget::NativeOnInitialized()
 
 	ConnectionText = MakeText(TEXT(""), LabelFontSize, ETextJustify::Center, "Regular");
 	Column->AddChildToVerticalBox(ConnectionText)->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 16.0f));
+	EstimatedStrokeText = MakeText(TEXT("Estimated stroke motion"), LabelFontSize, ETextJustify::Center, "Regular");
+	EstimatedStrokeText->SetVisibility(ESlateVisibility::Hidden);
+	Column->AddChildToVerticalBox(EstimatedStrokeText)->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 8.0f));
 
 	TObjectPtr<UTextBlock> Unused;
 	AddRow(TEXT("DISTANCE (m)"), Unused, DistanceText);
@@ -168,6 +172,11 @@ void UWorkoutHudWidget::NativeTick(const FGeometry &MyGeometry, float InDeltaTim
 	const UWorkoutSubsystem *Subsystem = GetWorkoutSubsystem();
 	if (!Subsystem)
 		return;
+	if (UGameInstance *GameInstance = GetGameInstance())
+	{
+		if (const UCourseSubsystem *Course = GameInstance->GetSubsystem<UCourseSubsystem>())
+			EstimatedStrokeText->SetVisibility(AnimationLabelVisibility(Course->GetAnimationQuality()));
+	}
 	if (!bHasApplied || Subsystem->GetDisplayGeneration() != AppliedGeneration)
 	{
 		ApplyDisplay(*Subsystem);
@@ -191,6 +200,11 @@ void UWorkoutHudWidget::NativeTick(const FGeometry &MyGeometry, float InDeltaTim
 		}
 	}
 	ApplyFocusCue();
+}
+
+ESlateVisibility UWorkoutHudWidget::AnimationLabelVisibility(ECourseAnimationQuality Quality)
+{
+	return Quality == ECourseAnimationQuality::Estimated ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Hidden;
 }
 
 bool UWorkoutHudWidget::IsActionFocused() const

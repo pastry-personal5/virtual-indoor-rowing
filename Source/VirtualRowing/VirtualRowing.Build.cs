@@ -40,6 +40,7 @@ public class VirtualRowing : ModuleRules
 			Path.Combine(RepoRoot, "Source", "RowingDevice", "Public"),
 			Path.Combine(RepoRoot, "Source", "LocalData", "Public"),
 			Path.Combine(RepoRoot, "Source", "WorkoutRuntime", "Public"),
+			Path.Combine(RepoRoot, "Source", "CourseRuntime", "Public"),
 			Path.Combine(RepoRoot, "Source", "RowingSim", "include"),
 			// Phase 1 Milestone 7: the real-device path. Both are pure C++ headers; Apple and
 			// Swift types stay inside the prebuilt archive.

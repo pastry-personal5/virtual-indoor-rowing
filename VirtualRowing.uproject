@@ -2,7 +2,7 @@
 	"FileVersion": 3,
 	"EngineAssociation": "5.8",
 	"Category": "Tools",
-	"Description": "Bounded Unreal Shipping toolchain host; no gameplay or PM5 behavior.",
+	"Description": "Phase 1 walking skeleton for offline-capable virtual indoor rowing.",
 	"Modules": [
 		{
 			"Name": "VirtualRowing",
