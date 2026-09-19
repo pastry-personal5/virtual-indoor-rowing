@@ -31,7 +31,7 @@ The pyramid has many pure tests and fewer physical tests, but no simulator resul
 
 ### PM5 simulator
 
-`Tools/pm5-sim` implements the transport-neutral device interface first, plus a CoreBluetooth peripheral simulator where practical. Scenarios are declarative and seeded:
+`Source/RowingSim` (the `pm5-sim` target) implements the transport-neutral device interface first, plus a CoreBluetooth peripheral simulator where practical. Scenarios are declarative and seeded:
 
 - advertising/discovery/RSSI and multiple nearby monitors;
 - service/characteristic/property/length variants;

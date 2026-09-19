@@ -491,7 +491,7 @@ if(VIR_BUILD_TESTS AND BUILD_TESTING AND NOT VIR_APP_LIBS_ONLY)
 endif()
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang|GNU")
-foreach(target RowingCore RowingDevice LocalData LocalDataMac Concept2PMCore Concept2PMMac pm5-sim durability-spike)
+foreach(target RowingCore RowingDevice LocalData LocalDataMac WorkoutRuntime Concept2PMCore Concept2PMMac pm5-sim durability-spike)
 	if(TARGET "${target}")
 		get_target_property(target_type "${target}" TYPE)
 		if(target_type STREQUAL "INTERFACE_LIBRARY")
