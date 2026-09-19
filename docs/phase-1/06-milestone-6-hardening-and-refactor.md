@@ -1,6 +1,6 @@
 # Phase 1 Milestone 6: hardening, refactor, and chores
 
-Status: Scoped (2026-09-19) — not started
+Status: In progress (2026-09-19) — bugs, `RowingSim` rename and chores done; the three file splits are not started (see "Implementation notes")
 Owner: A0 — CTO / Principal Architect
 Last reviewed: 2026-09-19
 
@@ -60,3 +60,21 @@ Source: [Milestone 5, "Findings deferred to the real-device milestone"](05-miles
 - The rename touches many consumers and the `native-app` archive; a missed target breaks `make unreal-smoke` even when `make test` passes.
 - Splitting `main.cpp` risks subtle changes to TUI startup, logging, or metrics ordering; `StatusDiagnosticsSmoke.py` and the existing pm5-tui tests must stay green.
 - Fix 5 changes what the journal records for a mid-row End Session; the intended semantics need confirming against Milestone 4's session-lifecycle notes before coding.
+
+## Implementation notes (2026-09-19)
+
+### Done
+
+- Bugs 1-4: `FWorkoutSession` waits for `FRowingConnectionRestored` after `Ready` (host-measured fallback on the next sample or a fully drained `Tick`); `CreateSession` is a pending record retried on the next write; `FLocalDataJournalWriter::AbandonStaged()` is new and `FLocalDataJournalSink::WriteSummary` retries a failed commit once, then abandons the stage; summary revisions are per session. Tests: `workout_session_records_device_gap_when_ready_precedes_restored`, `workout_session_restores_host_measured_when_ready_arrives_without_restored`, `workout_session_retries_create_session_after_transient_failure`, `local_data_sink_numbers_summary_revisions_per_session`, `local_data_abandoned_stage_does_not_wedge_later_writes`.
+- Bug 5: `FWorkoutSessionConfig::bPollMachine` (the driver sets it false; `workout_session_tick_does_not_poll_when_polling_is_disabled`), a mid-row End Session holds the next session until a sample shows the row stopped, and each new session gets the last machine info replayed so it journals `CapabilityObserved`.
+- `RowingSim` rename (include prefix, namespace, CMake target, and `rowing_sim_contract_tests`/`rowing_sim_integration_tests`); dated docs keep the old names.
+- Chores: `WorkoutRuntime` compiles with `-Wall -Wextra -Wpedantic` with no new warnings; `09-verification-strategy.md` path corrected.
+
+### Verified and not verified
+
+- `make test` (23 tests), `make format-check`, `make doctor`, `make native-app` and `make unreal-smoke` pass after the rename. Simulator and unit evidence only.
+- Not automatically tested: the `WriteSummary` commit-retry path (SQLite offers no way to make `COMMIT` fail with the transaction still open, so only `AbandonStaged()` itself is tested), and the `pm5-tui` driver's End Session hold and info replay (the driver opens a Keychain-backed journal, so it has no unit target; needs an owner-run `make pm5-tui-journal` check).
+
+### Not started: file splits
+
+Splitting `pm5-tui`'s `main.cpp`/`RunMetricsWriter.cpp` and `Scripts/dev.py` is pending an owner decision. `Scripts/test_unreal_packaging.py` loads `dev.py` as one module and patches its functions (`dev.run`, `dev.capture`, ...), so a module split would change what those patches affect and need test edits, against this milestone's "no test edits" rule for refactor commits.
