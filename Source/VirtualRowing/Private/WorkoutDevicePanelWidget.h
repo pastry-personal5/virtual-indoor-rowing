@@ -16,7 +16,7 @@ class UVerticalBox;
  * Code-only device panel for the real-PM5 flow (docs/phase-1/07-milestone-7-real-pm5-app-wiring.md).
  * It renders FWorkoutDevicePanel and forwards clicks to UWorkoutSubsystem; it holds no
  * device or journal logic. While the flow is up it covers the HUD; once a PM5 is attached
- * it shrinks to a strip at the top with Change / Forget / Disconnect and the journal line.
+ * it shrinks to a bottom-right cluster with Change / Forget / Disconnect and the journal line.
  * It is not created for a simulator run.
  */
 UCLASS()
@@ -30,12 +30,11 @@ class VIRTUALROWING_API UWorkoutDevicePanelWidget : public UUserWidget
 	static constexpr int32 MaxCandidateButtons = 5;
 
 	// Applies the subsystem's current panel state if it changed. Called by the subsystem every
-	// tick and on creation, and by NativeTick; safe to call any number of times.
+	// tick and on creation; safe to call any number of times.
 	void Sync();
 
   protected:
 	virtual void NativeOnInitialized() override;
-	virtual void NativeTick(const FGeometry &MyGeometry, float InDeltaTime) override;
 
   private:
 	UFUNCTION()

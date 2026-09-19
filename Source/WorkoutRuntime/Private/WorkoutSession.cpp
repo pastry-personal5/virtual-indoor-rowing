@@ -39,8 +39,13 @@ namespace
 		switch (Sample.WorkoutState)
 		{
 		case ERowingWorkoutState::Complete:
-		case ERowingWorkoutState::WaitingToBegin:
 			return ERowingSessionStateReason::DeviceCompleted;
+		case ERowingWorkoutState::WaitingToBegin:
+			// WaitingToBegin is also the PM5's ordinary pre-row state. Treat it as the
+			// end of an active row only when the same fact says rowing has stopped.
+			return Sample.RowingState == ERowingState::Inactive
+					   ? std::optional<ERowingSessionStateReason>(ERowingSessionStateReason::DeviceCompleted)
+					   : std::nullopt;
 		case ERowingWorkoutState::Terminated:
 			return ERowingSessionStateReason::DeviceTerminated;
 		default:
@@ -306,8 +311,11 @@ struct FWorkoutSession::FImpl
 			return;
 		if (bRestorePending)
 			OnRestored(Ns, std::nullopt);
+		const bool bSequenceRejected = LastSequence && Sample.Sequence <= *LastSequence;
+		if (!bSequenceRejected)
+			LastSequence = Sample.Sequence;
 		const bool bUnusable = (Sample.QualityFlags & RejectedQualityFlags) != 0 ||
-							   (LastSequence && Sample.Sequence <= *LastSequence) ||
+							   bSequenceRejected ||
 							   // Official input is frozen for the whole gap.
 							   Machine.GetState() == ERowingSessionState::ConnectionLost;
 		if (bUnusable)
@@ -318,7 +326,10 @@ struct FWorkoutSession::FImpl
 			// marks the sample as a regression. Its meters are still not used, but the device
 			// saying the workout is over is a fact independent of them: without this the row
 			// would never end in the HUD.
-			if (Machine.GetState() == ERowingSessionState::Active)
+			// Sequence rejection means this is an old fact and must not end a row.
+			// Other rejected samples can still carry a newer, valid PM5 workout-state
+			// transition when the device resets its counters at the end.
+			if (Machine.GetState() == ERowingSessionState::Active && !bSequenceRejected)
 			{
 				if (const std::optional<ERowingSessionStateReason> Reason = DeviceEndReason(Sample))
 					Finish(*Reason, Ns);
@@ -326,7 +337,6 @@ struct FWorkoutSession::FImpl
 			return;
 		}
 
-		LastSequence = Sample.Sequence;
 		Snapshot.LatestSample = Sample;
 		bDirty = true;
 

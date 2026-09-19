@@ -499,6 +499,37 @@ namespace
 		EXPECT_TRUE(Harness.Session->GetSnapshot().Disposition == ERowingSessionDisposition::Completed);
 	}
 
+	void workout_session_does_not_end_from_an_out_of_order_rejected_sample()
+	{
+		FFakeSink Sink;
+		FHarness Harness(Sink);
+		Harness.Row(1, 3);
+
+		Harness.Step(100);
+		Harness.Publish(MakeSample(4, ERowingWorkoutState::Active, ERowingState::Active, ToRowingQualityFlags(ERowingQualityFlag::DistanceRegression)));
+		EXPECT_TRUE(Harness.Session->GetSnapshot().State == ERowingSessionState::Active);
+
+		FRowingMetricSample StaleEnd = MakeSample(5, ERowingWorkoutState::Complete, ERowingState::Inactive);
+		// Sequence 4 was already observed and rejected for its meters. A delayed
+		// sample with that sequence cannot be trusted as a newer state transition.
+		StaleEnd.Sequence = 4;
+		Harness.Session->Ingest(FRowingMachineEvent{100, Harness.Now, StaleEnd});
+		EXPECT_TRUE(Harness.Session->GetSnapshot().State == ERowingSessionState::Active);
+		EXPECT_TRUE(Harness.Session->GetSnapshot().RejectedSampleCount == 2);
+		EXPECT_TRUE(Harness.Session->End(Harness.Now));
+	}
+
+	void workout_session_does_not_end_from_inconsistent_waiting_state()
+	{
+		FFakeSink Sink;
+		FHarness Harness(Sink);
+		Harness.Row(1, 3);
+		Harness.Step(100);
+		Harness.Publish(MakeSample(4, ERowingWorkoutState::WaitingToBegin, ERowingState::Active));
+		EXPECT_TRUE(Harness.Session->GetSnapshot().State == ERowingSessionState::Active);
+		EXPECT_TRUE(Harness.Session->End(Harness.Now));
+	}
+
 	void workout_session_ignores_paused_and_resting_for_completion()
 	{
 		FFakeSink Sink;
@@ -926,6 +957,8 @@ int main()
 	workout_session_aborts_on_device_terminated_state();
 	workout_session_ends_when_the_device_reports_the_end_with_reset_meters();
 	workout_session_ends_when_the_device_returns_to_waiting_to_begin();
+	workout_session_does_not_end_from_an_out_of_order_rejected_sample();
+	workout_session_does_not_end_from_inconsistent_waiting_state();
 	workout_session_ignores_paused_and_resting_for_completion();
 	workout_session_flushes_chunk_on_sample_count();
 	workout_session_flushes_chunk_on_elapsed_time();

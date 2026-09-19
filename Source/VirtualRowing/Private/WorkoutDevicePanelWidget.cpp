@@ -136,12 +136,6 @@ UButton *UWorkoutDevicePanelWidget::GetPrimaryButton(const FWorkoutDevicePanel &
 	}
 }
 
-void UWorkoutDevicePanelWidget::NativeTick(const FGeometry &MyGeometry, float InDeltaTime)
-{
-	Super::NativeTick(MyGeometry, InDeltaTime);
-	Sync();
-}
-
 void UWorkoutDevicePanelWidget::Sync()
 {
 	UWorkoutSubsystem *Subsystem = GetWorkoutSubsystem();
@@ -201,7 +195,7 @@ void UWorkoutDevicePanelWidget::ApplyPanel(const FWorkoutDevicePanel &Panel)
 
 	const bool bBlocking = IsBlocking(Panel.Mode);
 	const bool bAttached = Panel.Mode == EWorkoutDevicePanelMode::Attached;
-	// Blocking modes cover the HUD and take clicks; the attached strip lets clicks
+	// Blocking modes cover the HUD and take clicks; the attached cluster lets clicks
 	// through everywhere except its own buttons.
 	SetVisibility(Panel.Mode == EWorkoutDevicePanelMode::Hidden ? ESlateVisibility::Hidden : (bBlocking ? ESlateVisibility::Visible : ESlateVisibility::SelfHitTestInvisible));
 	RootBorder->SetVisibility(bBlocking ? ESlateVisibility::Visible : ESlateVisibility::SelfHitTestInvisible);
