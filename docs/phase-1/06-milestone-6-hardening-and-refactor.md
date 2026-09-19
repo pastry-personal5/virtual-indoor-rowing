@@ -1,6 +1,6 @@
 # Phase 1 Milestone 6: hardening, refactor, and chores
 
-Status: In progress (2026-09-19) — bugs, `RowingSim` rename and chores done; the three file splits are not started (see "Implementation notes")
+Status: Implemented (2026-09-19) — automated checks pass; simulator and unit evidence only (see "Implementation notes")
 Owner: A0 — CTO / Principal Architect
 Last reviewed: 2026-09-19
 
@@ -75,6 +75,11 @@ Source: [Milestone 5, "Findings deferred to the real-device milestone"](05-miles
 - `make test` (23 tests), `make format-check`, `make doctor`, `make native-app` and `make unreal-smoke` pass after the rename. Simulator and unit evidence only.
 - Not automatically tested: the `WriteSummary` commit-retry path (SQLite offers no way to make `COMMIT` fail with the transaction still open, so only `AbandonStaged()` itself is tested), and the `pm5-tui` driver's End Session hold and info replay (the driver opens a Keychain-backed journal, so it has no unit target; needs an owner-run `make pm5-tui-journal` check).
 
-### Not started: file splits
+### File splits (done)
 
-Splitting `pm5-tui`'s `main.cpp`/`RunMetricsWriter.cpp` and `Scripts/dev.py` is pending an owner decision. `Scripts/test_unreal_packaging.py` loads `dev.py` as one module and patches its functions (`dev.run`, `dev.capture`, ...), so a module split would change what those patches affect and need test edits, against this milestone's "no test edits" rule for refactor commits.
+Owner-confirmed: split as much as possible, including `Scripts/dev.py`.
+
+- `Scripts/dev.py` is now only the argparse entry point; the implementation is `Scripts/vir_dev/{common,doctor,native,tui,packaging,unreal,release}.py`. Cross-module calls go through the module (`common.run(...)`) so a test patches the defining module. `Scripts/test_unreal_packaging.py` was rewired to patch those modules (same assertions), which is the one deliberate exception to "no test edits in a refactor commit".
+- `Tools/pm5-tui/src/main.cpp` (1,905 lines) is now `main.cpp` (arguments and script mode), `InteractiveTui` (the FTXUI class), `DiagnosticEvents` (script-mode event handling and logging), `DisplaySnapshot` (snapshot and status line) and `TuiFormat` (enum names and formatters), in namespace `PM5Tui`. Every original line is preserved except two default arguments now declared in headers.
+- `Tools/pm5-tui/src/RunMetricsWriter.cpp` (1,120 lines) keeps the class; the helpers moved to `RunMetricsNames` and `RunMetricsJson` in namespace `PM5Tui::Json`. `pm5_tui_metrics_writer_tests` compiles the two new sources.
+- Verification: `make test` (23 tests, including `pm5_tui_*` smoke tests and `test_unreal_packaging.py`), `make format-check`, `make doctor`. Not run: an interactive `make pm5-tui` session, and the Shipping/sign paths of `dev.py` beyond what `test_unreal_packaging.py` mocks.

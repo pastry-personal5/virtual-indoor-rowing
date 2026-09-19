@@ -39,7 +39,7 @@ Run a single native test after building (target names come from `CMakeLists.txt`
 ctest --test-dir Build/native --output-on-failure -R <test-name-regex>
 ```
 
-Set `UE_ROOT` if the approved stock Unreal 5.8.2 install isn't in a recognized default location (see `find_unreal` in `Scripts/dev.py`).
+Set `UE_ROOT` if the approved stock Unreal 5.8.2 install isn't in a recognized default location (see `find_unreal` in `Scripts/vir_dev/common.py`; `Scripts/dev.py` is only the entry point).
 
 For documentation-only changes, verification is:
 
