@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -63,7 +64,8 @@ namespace PM5Tui
 		void Ingest(const FRowingMachineEvent &Event);
 		// Returns log lines for session-state changes since the last call.
 		std::vector<std::string> Tick(std::uint64_t NowNs);
-		// User-ended session; the driver then starts a fresh one for the next row.
+		// User-ended session. Ended mid-row, the next session waits until the PM5
+		// reports the row has stopped; otherwise a fresh one starts immediately.
 		std::vector<std::string> EndSession(std::uint64_t NowNs);
 
 		std::string StatusText() const;
@@ -79,6 +81,8 @@ namespace PM5Tui
 		std::unique_ptr<FLocalDataJournalSink> Sink;
 		IRowingMachine *Machine = nullptr;
 		std::unique_ptr<FWorkoutSession> Session;
+		std::optional<FRowingMachineInfo> LastMachineInfo;
+		bool bAwaitingRowStop = false;
 		ERowingSessionState LastLoggedState = ERowingSessionState::Created;
 		std::uint32_t LastLoggedGapCount = 0;
 	};

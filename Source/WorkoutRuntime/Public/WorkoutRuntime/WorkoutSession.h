@@ -23,6 +23,9 @@ struct FWorkoutSessionConfig
 	// A journal that keeps failing cannot grow the buffer without bound; the
 	// oldest samples are dropped (and counted) past this.
 	std::size_t MaxBufferedSamples = 4096;
+	// A caller that forwards every event through Ingest() sets this false so
+	// Tick() never polls the machine and steals events the caller has not seen.
+	bool bPollMachine = true;
 	// Bound on events drained from the device per Tick().
 	std::size_t MaxEventsPerTick = 4096;
 	std::string UserScope = "local";

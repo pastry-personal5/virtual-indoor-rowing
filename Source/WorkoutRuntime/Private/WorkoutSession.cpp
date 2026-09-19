@@ -452,7 +452,7 @@ void FWorkoutSession::Tick(std::uint64_t NowMonotonicNs)
 
 	FRowingMachineEvent Event;
 	std::size_t Drained = 0;
-	for (; Drained < Impl->Config.MaxEventsPerTick && Impl->Machine.GetState() != ERowingSessionState::Ended && Impl->Deps.Machine->TryPollEvent(Event); ++Drained)
+	for (; Impl->Config.bPollMachine && Drained < Impl->Config.MaxEventsPerTick && Impl->Machine.GetState() != ERowingSessionState::Ended && Impl->Deps.Machine->TryPollEvent(Event); ++Drained)
 		Impl->OnEvent(Event);
 
 	if (Impl->bRestorePending && Drained < Impl->Config.MaxEventsPerTick)

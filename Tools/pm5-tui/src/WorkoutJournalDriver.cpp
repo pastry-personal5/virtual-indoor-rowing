@@ -114,7 +114,13 @@ namespace PM5Tui
 		};
 		FWorkoutSessionConfig Config;
 		Config.Source = "pm5-tui";
+		// The TUI drains the machine and forwards every event through Ingest().
+		Config.bPollMachine = false;
 		Session = std::make_unique<FWorkoutSession>(std::move(Dependencies), std::move(Config));
+		// A session that starts after the machine announced itself would otherwise
+		// never journal CapabilityObserved.
+		if (LastMachineInfo)
+			Session->Ingest(FRowingMachineEvent{0, NowNs, *LastMachineInfo});
 		Session->Tick(NowNs);
 		LastLoggedState = Session->GetSnapshot().State;
 		LastLoggedGapCount = 0;
@@ -128,11 +134,31 @@ namespace PM5Tui
 			Session->Abort(NowNs);
 		Session.reset();
 		Machine = NewMachine;
+		LastMachineInfo.reset();
+		bAwaitingRowStop = false;
 		StartSession(NowNs);
 	}
 
 	void FWorkoutJournalDriver::Ingest(const FRowingMachineEvent &Event)
 	{
+		if (const auto *Info = std::get_if<FRowingMachineInfo>(&Event.Payload))
+			LastMachineInfo = *Info;
+		else if (const auto *Restored = std::get_if<FRowingConnectionRestored>(&Event.Payload))
+			LastMachineInfo = Restored->MachineInfo;
+		else if (bAwaitingRowStop)
+		{
+			// After a user End mid-row the PM5 keeps reporting that row's cumulative
+			// distance and time. Only a sample showing the row has stopped may arm
+			// the next session, or one workout would be journaled twice.
+			if (const auto *Sample = std::get_if<FRowingMetricSample>(&Event.Payload))
+			{
+				if (Sample->WorkoutState != ERowingWorkoutState::Active || Sample->RowingState == ERowingState::Inactive)
+				{
+					bAwaitingRowStop = false;
+					StartSession(Event.MonotonicTimestampNs);
+				}
+			}
+		}
 		if (Session)
 			Session->Ingest(Event);
 	}
@@ -172,9 +198,16 @@ namespace PM5Tui
 	{
 		if (!Session)
 			return {};
+		const bool bWasRowing = Session->GetSnapshot().State == ERowingSessionState::Active || Session->GetSnapshot().State == ERowingSessionState::ConnectionLost;
 		Session->End(NowNs);
 		std::vector<std::string> Lines = DescribeChange();
-		StartSession(NowNs);
+		if (bWasRowing)
+		{
+			Session.reset();
+			bAwaitingRowStop = true;
+		}
+		else
+			StartSession(NowNs);
 		return Lines;
 	}
 
@@ -182,6 +215,8 @@ namespace PM5Tui
 	{
 		if (!IsAvailable())
 			return "unavailable (" + Error + ")";
+		if (bAwaitingRowStop)
+			return "ended | waiting for the row to stop";
 		if (!Session)
 			return "waiting for a PM5";
 		const FWorkoutSnapshot &Snapshot = Session->GetSnapshot();

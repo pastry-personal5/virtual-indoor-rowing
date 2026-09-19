@@ -844,6 +844,22 @@ namespace
 		RemoveDatabase(Path);
 	}
 
+	// An ingesting caller owns the machine's queue: with bPollMachine false, Tick
+	// must leave queued events for the caller to drain and forward.
+	void workout_session_tick_does_not_poll_when_polling_is_disabled()
+	{
+		FFakeSink Sink;
+		pm5_sim::FMockRowingMachine Machine(pm5_sim::MakeSyntheticIndoorRowerScenario());
+		Machine.Connect();
+		FWorkoutSessionConfig Config;
+		Config.bPollMachine = false;
+		FWorkoutSession Session(MakeDependencies(Machine, Sink), Config);
+		Session.Tick(0);
+		FRowingMachineEvent Event;
+		EXPECT_TRUE(Machine.TryPollEvent(Event));
+		EXPECT_TRUE(Session.GetSnapshot().ConnectionState == ERowingConnectionState::Ready);
+	}
+
 	void workout_session_requires_complete_dependencies()
 	{
 		FFakeSink Sink;
@@ -889,6 +905,7 @@ int main()
 	workout_session_restores_host_measured_when_ready_arrives_without_restored();
 	workout_session_retries_create_session_after_transient_failure();
 	local_data_sink_numbers_summary_revisions_per_session();
+	workout_session_tick_does_not_poll_when_polling_is_disabled();
 	workout_session_requires_complete_dependencies();
 
 	return Failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
