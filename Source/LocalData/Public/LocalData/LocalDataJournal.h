@@ -77,6 +77,29 @@ namespace LocalData
 		std::uint32_t QualityFlags = 0;
 	};
 
+	// A durable instruction to upload a finalized session. The payload itself
+	// stays in the encrypted journal; this table contains only technical retry
+	// state and the digest which identifies the immutable SessionObject.
+	struct FSyncOutboxItem
+	{
+		std::string OperationId;
+		FRowingSessionId SessionId;
+		std::string ObjectDigestSha256;
+		std::uint32_t Attempt = 0;
+		std::optional<std::string> NextAttemptAtUtc;
+		std::string State;
+		std::optional<std::string> LastError;
+	};
+
+	struct FFinalizedSession
+	{
+		FJournalEvent TerminalEvent;
+		FSessionSummary Summary;
+		// Lowercase hexadecimal SHA-256 of the prospective deterministic
+		// SessionObject. LocalData does not upload or alter this value.
+		std::string ObjectDigestSha256;
+	};
+
 	// Owns one SQLite WAL-mode connection. Bootstraps schema_migrations on
 	// first open. Every public method commits its own transaction before
 	// returning, except the explicit two-phase final-summary pair below,
@@ -144,6 +167,12 @@ namespace LocalData
 		void StageSessionSummary(const FSessionSummary &Summary);
 		void CommitStagedSessionSummary();
 
+		// The production terminal path. Commits the terminal event, Ended state,
+		// sealed summary and one idempotent sync intent as one transaction. A
+		// failure rolls back all four writes, leaving the locally durable active
+		// workout untouched for recovery/retry.
+		void FinalizeSession(const FFinalizedSession &Finalized);
+
 		// Rolls back whatever is staged and forgets it, so a commit that keeps
 		// failing cannot wedge every later write. A no-op when nothing is staged.
 		void AbandonStaged() noexcept;
@@ -179,6 +208,27 @@ namespace LocalData
 	// summary was sealed with.
 	std::optional<FSessionSummary>
 	ReadLatestSessionSummary(const std::filesystem::path &DatabasePath, const FRowingSessionId &Id, IBlobCipher &Cipher);
+
+	std::vector<FJournalEvent>
+	ReadJournalEvents(const std::filesystem::path &DatabasePath,
+					  const std::string &SessionId,
+					  IBlobCipher *Cipher = nullptr,
+					  bool bAllowLegacyPlaintext = false);
+
+	std::vector<FSyncOutboxItem>
+	ReadPendingSyncOutbox(const std::filesystem::path &DatabasePath);
+
+	void UpdateSyncOutbox(const std::filesystem::path &DatabasePath,
+						  const std::string &OperationId,
+						  const std::string &State,
+						  std::uint32_t Attempt,
+						  const std::string &LastError);
+
+	// Reconstructs the deterministic Zstandard-compressed SessionObject for a
+	// finalized session. The returned bytes hash to the outbox payload_hash.
+	std::string ReadSessionObject(const std::filesystem::path &DatabasePath,
+								  const FRowingSessionId &Id,
+								  IBlobCipher &Cipher);
 
 	struct FLocalDataRecoveryReport
 	{

@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+// Immutable local-session export container. The serialized protobuf is
+// Zstandard-compressed by its transport; all digest fields below are SHA-256
+// lowercase hex strings so browser JSON never loses integer precision.
+package rowing.v1;
+
+message SessionObjectHeader {
+  uint32 container_version = 1;
+  uint32 schema_version = 2;
+  bytes session_id = 3;
+  string disposition = 4;
+  string provenance = 5;
+  uint32 quality_flags = 6;
+  string compression = 7;
+}
+
+message SessionObjectEvent {
+  uint64 sequence = 1;
+  uint64 monotonic_ns = 2;
+  string kind = 3;
+  uint32 payload_version = 4;
+  bytes payload = 5;
+}
+
+message SessionObjectChunk {
+  uint64 first_sequence = 1;
+  uint64 last_sequence = 2;
+  bytes validated_payload = 3;
+  uint32 crc32c = 4;
+}
+
+message SessionObjectFooter {
+  uint64 event_count = 1;
+  bytes sealed_summary = 2;
+  string canonical_sha256 = 3;
+  uint32 quality_flags = 4;
+}
+
+message SessionObject {
+  SessionObjectHeader header = 1;
+  repeated SessionObjectEvent events = 2;
+  repeated SessionObjectChunk chunks = 3;
+  SessionObjectFooter footer = 4;
+}

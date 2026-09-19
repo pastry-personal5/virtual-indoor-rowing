@@ -33,3 +33,5 @@ __pycache__/
 *.mobileprovision
 *.p12
 *.key
+# Owner-only Compose bootstrap secret for the loopback development stack.
+Services/development-sync/.env

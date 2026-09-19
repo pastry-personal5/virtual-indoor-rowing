@@ -34,6 +34,18 @@ test: ## Build, then run CTest with failure output enabled.
 format-check: ## Check C++/Objective-C++ formatting without modifying files.
 	$(DEV) format-check
 
+# --- Optional loopback development sync -------------------------------------
+
+.PHONY: development-sync-bootstrap development-sync-up development-sync-down development-sync-reset
+development-sync-bootstrap: ## Generate the owner-only Compose bootstrap secret.
+	$(PYTHON) Scripts/development_sync.py bootstrap
+development-sync-up: ## Start the opt-in loopback-only development sync API.
+	$(PYTHON) Scripts/development_sync.py up
+development-sync-down: ## Stop the development sync API, preserving any volumes.
+	$(PYTHON) Scripts/development_sync.py down
+development-sync-reset: ## Destructively remove only named development-sync Compose volumes.
+	$(PYTHON) Scripts/development_sync.py reset
+
 # --- PM5 diagnostic TUI ------------------------------------------------------
 
 .PHONY: pm5-tui pm5-tui-hil pm5-tui-journal

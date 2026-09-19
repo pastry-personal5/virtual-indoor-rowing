@@ -20,7 +20,7 @@ class FVirtualRowingModule final : public IModuleInterface
 		VirDebugLog(TEXT("StartupModule entered"));
 		VirDebugLog(FString::Printf(TEXT("CommandLine=[%s]"), FCommandLine::Get()));
 		FCoreDelegates::GetOnPostEngineInit().AddLambda([]()
-												   { VirDebugLog(TEXT("OnPostEngineInit fired")); });
+														{ VirDebugLog(TEXT("OnPostEngineInit fired")); });
 		if (FParse::Param(FCommandLine::Get(), TEXT("NativeLinkageProbe")))
 		{
 			VirDebugLog(FString::Printf(TEXT("VirNativeLinkageProbe()=%s"), VirNativeLinkageProbe() ? TEXT("true") : TEXT("false")));

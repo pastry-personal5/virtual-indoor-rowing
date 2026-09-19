@@ -255,12 +255,10 @@ struct FWorkoutSession::FImpl
 				Snapshot.DroppedSampleCount += Buffer.size();
 				Buffer.clear();
 			}
-			RecordEvent(TerminalEventKind(*Change->Disposition), Ns, {});
-			Journal([&]
-					{ Deps.Sink->UpdateSessionState(Machine.GetId(), ERowingSessionState::Ended); });
+			const std::uint64_t TerminalSequence = ++EventSequence;
 			const FWorkoutSummary Summary = BuildSummary();
 			Journal([&]
-					{ Deps.Sink->WriteSummary(Machine.GetId(), WorkoutRuntime::Private::SerializeSessionSummary(Summary), QualityUnion); });
+					{ Deps.Sink->FinalizeSession(Machine.GetId(), TerminalEventKind(*Change->Disposition), TerminalSequence, Ns, {}, WorkoutRuntime::Private::SerializeSessionSummary(Summary), QualityUnion); });
 		}
 		return true;
 	}

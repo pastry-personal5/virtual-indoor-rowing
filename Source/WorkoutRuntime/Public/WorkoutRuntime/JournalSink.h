@@ -34,4 +34,20 @@ class IJournalSink
 	// Samples are in ascending Sequence order and non-empty.
 	virtual void AppendSamples(const FRowingSessionId &Id, const std::vector<FRowingMetricSample> &Samples) = 0;
 	virtual void WriteSummary(const FRowingSessionId &Id, const std::string &Payload, std::uint32_t QualityFlags) = 0;
+
+	// Terminal persistence. Implementations with transactional storage override
+	// this to commit all terminal facts together; the compatibility default keeps
+	// existing simulator/test sinks usable while they migrate.
+	virtual void FinalizeSession(const FRowingSessionId &Id,
+								 LocalData::EJournalEventKind TerminalKind,
+								 std::uint64_t Sequence,
+								 std::uint64_t MonotonicNs,
+								 const std::string &EventPayload,
+								 const std::string &SummaryPayload,
+								 std::uint32_t QualityFlags)
+	{
+		RecordEvent(Id, TerminalKind, Sequence, MonotonicNs, EventPayload);
+		UpdateSessionState(Id, ERowingSessionState::Ended);
+		WriteSummary(Id, SummaryPayload, QualityFlags);
+	}
 };

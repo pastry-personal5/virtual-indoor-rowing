@@ -1,0 +1,56 @@
+openapi: 3.1.0
+info:
+  title: Virtual Indoor Rowing development sync API
+  version: 1.0.0
+  description: Loopback-only development infrastructure; uploaded sessions are never ranked or authoritative race results.
+servers:
+  - url: http://127.0.0.1:8080
+paths:
+  /v1/development/bootstrap:
+    post:
+      summary: Exchange a Compose-generated bootstrap secret for a 24-hour development bearer token.
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/BootstrapRequest'}}}}
+      responses: {'200': {description: Token issued, content: {application/json: {schema: {$ref: '#/components/schemas/BootstrapResponse'}}}}, default: {$ref: '#/components/responses/Problem'}}
+  /v1/sessions/{session_id}:
+    put:
+      security: [{developmentBearer: []}]
+      parameters: [{$ref: '#/components/parameters/SessionId'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SessionCreate'}}}}
+      responses: {'200': {description: Created or replayed}, default: {$ref: '#/components/responses/Problem'}}
+  /v1/sessions/{session_id}/finalize:
+    post:
+      security: [{developmentBearer: []}]
+      parameters: [{$ref: '#/components/parameters/SessionId'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SessionFinalize'}}}}
+      responses: {'200': {description: Finalized or replayed}, default: {$ref: '#/components/responses/Problem'}}
+  /v1/sessions/{session_id}/upload:
+    post:
+      security: [{developmentBearer: []}]
+      parameters: [{$ref: '#/components/parameters/SessionId'}]
+      responses: {'200': {description: Identity-confined presigned upload request}, default: {$ref: '#/components/responses/Problem'}}
+  /v1/sessions/{session_id}/upload-complete:
+    post:
+      security: [{developmentBearer: []}]
+      parameters: [{$ref: '#/components/parameters/SessionId'}]
+      requestBody: {required: false, content: {application/json: {schema: {$ref: '#/components/schemas/UploadComplete'}}}}
+      responses: {'202': {description: Processing queued}, default: {$ref: '#/components/responses/Problem'}}
+  /v1/sessions/{session_id}/processing-status:
+    get:
+      security: [{developmentBearer: []}]
+      parameters: [{$ref: '#/components/parameters/SessionId'}]
+      responses: {'200': {description: Status}, default: {$ref: '#/components/responses/Problem'}}
+components:
+  securitySchemes:
+    developmentBearer: {type: http, scheme: bearer, bearerFormat: opaque}
+  parameters:
+    SessionId: {name: session_id, in: path, required: true, schema: {type: string, format: uuid}}
+    IdempotencyKey: {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 128}}
+  responses:
+    Problem: {description: RFC 9457 problem, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
+  schemas:
+    BootstrapRequest: {type: object, required: [request_version, bootstrap_secret], properties: {request_version: {type: integer, const: 1}, bootstrap_secret: {type: string, minLength: 32}}}
+    BootstrapResponse: {type: object, required: [response_version, development_identity, bearer_token, expires_at], properties: {response_version: {type: integer, const: 1}, development_identity: {type: string}, bearer_token: {type: string}, expires_at: {type: string, format: date-time}}}
+    SessionCreate: {type: object, required: [request_version, disposition, object_sha256], properties: {request_version: {type: integer, const: 1}, disposition: {type: string, enum: [completed, interrupted, aborted]}, object_sha256: {type: string, pattern: '^[a-f0-9]{64}$'}}}
+    SessionFinalize: {type: object, required: [request_version, object_sha256], properties: {request_version: {type: integer, const: 1}, object_sha256: {type: string, pattern: '^[a-f0-9]{64}$'}}}
+    UploadComplete: {type: object, properties: {request_version: {type: integer, const: 1}, size_bytes: {type: integer, minimum: 1}, object_sha256: {type: string, pattern: '^[a-f0-9]{64}$'}, codec: {type: string, enum: [zstd]}, container_version: {type: integer, const: 1}, schema_version: {type: integer, const: 2}}}
+    Problem: {type: object, required: [type, title, status], properties: {type: {type: string, format: uri-reference}, title: {type: string}, status: {type: integer}, detail: {type: string}, instance: {type: string}}}

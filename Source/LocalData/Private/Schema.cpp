@@ -104,6 +104,19 @@ namespace LocalData::Private
 			RecordMigration(Connection, 2, "v2-sessions-summaries-outbox-links-content-devices");
 		}
 
+		void ApplyVersion3(FSqliteConnection &Connection)
+		{
+			Connection.Execute("ALTER TABLE sync_outbox ADD COLUMN state TEXT NOT NULL DEFAULT 'queued';");
+			Connection.Execute("ALTER TABLE sync_outbox ADD COLUMN last_error TEXT;");
+			RecordMigration(Connection, 3, "v3-sync-outbox-state-and-error");
+		}
+
+		void ApplyVersion4(FSqliteConnection &Connection)
+		{
+			Connection.Execute("ALTER TABLE journal_events ADD COLUMN codec TEXT NOT NULL DEFAULT 'raw-v1';");
+			RecordMigration(Connection, 4, "v4-journal-event-codec");
+		}
+
 		// The unlocked check is only a fast path so read-only openers do not
 		// take the write lock. It is repeated under BEGIN IMMEDIATE so two
 		// connections opening the same older database cannot both apply it.
@@ -133,5 +146,7 @@ namespace LocalData::Private
 
 		ApplyMigrationOnce(Connection, 1, ApplyVersion1);
 		ApplyMigrationOnce(Connection, 2, ApplyVersion2);
+		ApplyMigrationOnce(Connection, 3, ApplyVersion3);
+		ApplyMigrationOnce(Connection, 4, ApplyVersion4);
 	}
 } // namespace LocalData::Private

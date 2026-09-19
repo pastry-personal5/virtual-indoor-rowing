@@ -66,3 +66,25 @@ void FLocalDataJournalSink::WriteSummary(const FRowingSessionId &Id, const std::
 	}
 	++Revision;
 }
+
+void FLocalDataJournalSink::FinalizeSession(const FRowingSessionId &Id,
+											LocalData::EJournalEventKind TerminalKind,
+											std::uint64_t Sequence,
+											std::uint64_t MonotonicNs,
+											const std::string &EventPayload,
+											const std::string &SummaryPayload,
+											std::uint32_t QualityFlags)
+{
+	LocalData::FFinalizedSession Finalized;
+	Finalized.TerminalEvent.SessionId = Id.ToCanonicalString();
+	Finalized.TerminalEvent.Sequence = Sequence;
+	Finalized.TerminalEvent.MonotonicNs = MonotonicNs;
+	Finalized.TerminalEvent.Kind = TerminalKind;
+	Finalized.TerminalEvent.PayloadBlob = EventPayload;
+	Finalized.Summary.Id = Id;
+	Finalized.Summary.Revision = NextSummaryRevision.try_emplace(Id.ToCanonicalString(), 1).first->second;
+	Finalized.Summary.MetricsPayload = SummaryPayload;
+	Finalized.Summary.QualityFlags = QualityFlags;
+	Writer.FinalizeSession(Finalized);
+	++NextSummaryRevision[Id.ToCanonicalString()];
+}

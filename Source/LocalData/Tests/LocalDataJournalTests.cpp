@@ -128,7 +128,7 @@ namespace
 		LocalData::Private::FSqliteConnection Connection(Path);
 		EXPECT_TRUE(CountRows(Connection, "SELECT COUNT(*) FROM journal_events WHERE session_id = 'legacy';") == 1);
 		EXPECT_TRUE(CountRows(Connection, "SELECT COUNT(*) FROM sample_chunks WHERE session_id = 'legacy';") == 1);
-		EXPECT_TRUE(CountRows(Connection, "SELECT COUNT(*) FROM schema_migrations;") == 2);
+		EXPECT_TRUE(CountRows(Connection, "SELECT COUNT(*) FROM schema_migrations;") == 4);
 		for (const char *const Table : {"sessions", "session_summaries", "sync_outbox", "cloud_links", "installed_content", "paired_devices"})
 		{
 			const std::string Sql = std::string("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = '") + Table + "';";
@@ -218,6 +218,46 @@ namespace
 		Record.UserScope = "guest";
 		Record.Source = "pm5";
 		return Record;
+	}
+
+	void finalized_session_commits_terminal_summary_and_outbox_atomically()
+	{
+		const auto Path = MakeTempDatabasePath(__func__);
+		FFakeCipher Cipher;
+		const FRowingSessionId Id = MakeSessionId(10);
+		{
+			LocalData::FLocalDataJournalWriter Writer(Path, &Cipher);
+			Writer.CreateSession(MakeSessionRecord(Id));
+			LocalData::FFinalizedSession Finalized;
+			Finalized.TerminalEvent = {Id.ToCanonicalString(), 99, 1234, LocalData::EJournalEventKind::Completed, 1, "terminal"};
+			Finalized.Summary = {Id, 1, "summary", 7};
+			Finalized.ObjectDigestSha256.clear();
+			Writer.FinalizeSession(Finalized);
+			// A restart/retry of the exact immutable object converges without
+			// duplicating terminal evidence or its outbox operation.
+			Writer.FinalizeSession(Finalized);
+		}
+		EXPECT_TRUE(LocalData::ReadSession(Path, Id)->State == ERowingSessionState::Ended);
+		EXPECT_TRUE(LocalData::ReadLatestSessionSummary(Path, Id, Cipher)->MetricsPayload == "summary");
+		const auto Events = LocalData::ReadJournalEvents(Path, Id.ToCanonicalString(), &Cipher);
+		EXPECT_TRUE(Events.size() == 1 && Events[0].PayloadBlob == "terminal");
+		const auto Outbox = LocalData::ReadPendingSyncOutbox(Path);
+		EXPECT_TRUE(Outbox.size() == 1 && Outbox[0].SessionId == Id && Outbox[0].ObjectDigestSha256.size() == 64);
+		const std::string Object = LocalData::ReadSessionObject(Path, Id, Cipher);
+		EXPECT_TRUE(Object.size() > 4 && static_cast<unsigned char>(Object[0]) == 0x28 && static_cast<unsigned char>(Object[1]) == 0xB5 && static_cast<unsigned char>(Object[2]) == 0x2F && static_cast<unsigned char>(Object[3]) == 0xFD);
+
+		const FRowingSessionId Missing = MakeSessionId(11);
+		{
+			LocalData::FLocalDataJournalWriter Writer(Path, &Cipher);
+			LocalData::FFinalizedSession Bad;
+			Bad.TerminalEvent = {Missing.ToCanonicalString(), 1, 1, LocalData::EJournalEventKind::Aborted, 1, "x"};
+			Bad.Summary = {Missing, 1, "x", 0};
+			Bad.ObjectDigestSha256 = std::string(64, 'b');
+			EXPECT_TRUE(ThrowsAny([&]
+								  { Writer.FinalizeSession(Bad); }));
+		}
+		EXPECT_TRUE(LocalData::ReadPendingSyncOutbox(Path).size() == 1);
+		RemoveDatabase(Path);
 	}
 
 	void local_data_sample_chunk_payload_is_encrypted_at_rest()
@@ -761,7 +801,7 @@ namespace
 
 		EXPECT_TRUE(Failed == 0);
 		LocalData::Private::FSqliteConnection Connection(Path);
-		EXPECT_TRUE(CountRows(Connection, "SELECT COUNT(*) FROM schema_migrations WHERE version = 2;") == 1);
+		EXPECT_TRUE(CountRows(Connection, "SELECT COUNT(*) FROM schema_migrations WHERE version = 4;") == 1);
 		RemoveDatabase(Path);
 	}
 } // namespace
@@ -770,6 +810,7 @@ int main()
 {
 	schema_bootstrap_is_idempotent();
 	local_data_schema_migrates_v1_journal_without_data_loss();
+	finalized_session_commits_terminal_summary_and_outbox_atomically();
 	local_data_sample_chunk_payload_is_encrypted_at_rest();
 	local_data_sealed_chunk_is_bound_to_its_identity();
 	local_data_recovery_truncates_corrupt_sealed_chunk_without_a_key();

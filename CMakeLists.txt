@@ -14,6 +14,15 @@ find_library(SQLite3_LIBRARY NAMES sqlite3)
 if(NOT SQLite3_INCLUDE_DIR OR NOT SQLite3_LIBRARY)
 	message(FATAL_ERROR "System SQLite3 (sqlite3.h/libsqlite3) was not found; it ships with the macOS SDK on the ADR-0001 toolchain baseline.")
 endif()
+find_path(ZSTD_INCLUDE_DIR NAMES zstd.h)
+find_library(ZSTD_LIBRARY NAMES zstd)
+find_file(ZSTD_STATIC_LIBRARY NAMES libzstd.a PATHS /opt/homebrew/lib /usr/local/lib)
+if(ZSTD_STATIC_LIBRARY)
+	set(ZSTD_LIBRARY "${ZSTD_STATIC_LIBRARY}")
+endif()
+if(NOT ZSTD_INCLUDE_DIR OR NOT ZSTD_LIBRARY)
+	message(FATAL_ERROR "Zstandard (zstd.h/libzstd) is required for the canonical SessionObject container.")
+endif()
 
 # Phase 1 Milestone 1 (docs/phase-1/01-milestone-1-rowingcore-domain-contract.md)
 # pins the Protobuf toolchain the same way cmake/ninja/git-lfs are pinned in
@@ -184,6 +193,7 @@ protobuf_generate(
 		"${CMAKE_CURRENT_SOURCE_DIR}/Contracts/proto/rowing/v1/session.proto"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Contracts/proto/rowing/v1/telemetry.proto"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Contracts/proto/rowing/v1/session_summary.proto"
+		"${CMAKE_CURRENT_SOURCE_DIR}/Contracts/proto/rowing/v1/session_object.proto"
 	PROTOC_OUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/contracts"
 	${VIR_PROTOBUF_GENERATE_EXTRA_ARGS}
 )
@@ -195,9 +205,9 @@ add_library(LocalData STATIC ${LOCAL_DATA_SOURCES})
 add_library(local_data ALIAS LocalData)
 target_include_directories(LocalData
 	PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/Source/LocalData/Public"
-	PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Source/LocalData/Private" "${SQLite3_INCLUDE_DIR}"
+	PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Source/LocalData/Private" "${SQLite3_INCLUDE_DIR}" "${ZSTD_INCLUDE_DIR}"
 )
-target_link_libraries(LocalData PUBLIC RowingCore RowingDevice PRIVATE "${SQLite3_LIBRARY}" RowingContracts)
+target_link_libraries(LocalData PUBLIC RowingCore RowingDevice PRIVATE "${SQLite3_LIBRARY}" "${ZSTD_LIBRARY}" RowingContracts)
 target_compile_features(LocalData PUBLIC cxx_std_20)
 
 # Phase 1 Milestone 3: Apple-only LocalData cipher adapter (CryptoKit AES-256-GCM
@@ -279,6 +289,16 @@ target_include_directories(WorkoutRuntime
 )
 target_link_libraries(WorkoutRuntime PUBLIC RowingCore RowingDevice LocalData PRIVATE RowingContracts)
 target_compile_features(WorkoutRuntime PUBLIC cxx_std_20)
+
+vir_collect_sources(ONLINE_CLIENT_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Source/OnlineClient/Private")
+add_library(OnlineClient STATIC ${ONLINE_CLIENT_SOURCES})
+target_include_directories(OnlineClient PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/Source/OnlineClient/Public")
+target_link_libraries(OnlineClient PUBLIC LocalData)
+target_compile_features(OnlineClient PUBLIC cxx_std_20)
+if(APPLE)
+	 target_sources(OnlineClient PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Source/OnlineClient/Private/MacHttpTransport.mm")
+	 target_link_libraries(OnlineClient PRIVATE "-framework Foundation")
+endif()
 
 # Phase 1 Milestone 8: deterministic, engine-independent course and rower
 # presentation. It consumes normalized domain facts and never writes them back.
@@ -387,6 +407,11 @@ if(VIR_BUILD_TESTS AND BUILD_TESTING AND NOT VIR_APP_LIBS_ONLY)
 		target_include_directories(local_data_wire_mapping_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Source/LocalData/Private")
 		target_link_libraries(local_data_wire_mapping_tests PRIVATE LocalData RowingDevice)
 		add_test(NAME local_data_wire_mapping_tests COMMAND local_data_wire_mapping_tests)
+	endif()
+	if(TARGET OnlineClient AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Source/OnlineClient/Tests/OnlineClientTests.cpp")
+		add_executable(online_client_tests Source/OnlineClient/Tests/OnlineClientTests.cpp)
+		target_link_libraries(online_client_tests PRIVATE OnlineClient LocalData)
+		add_test(NAME online_client_tests COMMAND online_client_tests)
 	endif()
 	if(TARGET LocalDataMac AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Source/LocalDataMac/Tests/CryptoKitBlobCipherTests.cpp")
 		add_executable(local_data_mac_tests Source/LocalDataMac/Tests/CryptoKitBlobCipherTests.cpp)
@@ -547,6 +572,11 @@ endif()
 # system libraries (SQLite) are declared in VirtualRowing.Build.cs instead.
 if(VIR_APP_LIBS_ONLY)
 	set(VIR_APP_LIB_ROOTS WorkoutRuntime CourseRuntime)
+	# Phase 1 Milestone 10: the opt-in development coordinator is linked into the
+	# app archive; it remains dormant until its process environment enables it.
+	if(TARGET OnlineClient)
+		list(APPEND VIR_APP_LIB_ROOTS OnlineClient)
+	endif()
 	if(TARGET RowingSim)
 		list(APPEND VIR_APP_LIB_ROOTS RowingSim)
 	endif()

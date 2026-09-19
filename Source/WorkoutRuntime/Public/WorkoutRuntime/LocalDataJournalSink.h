@@ -23,6 +23,13 @@ class FLocalDataJournalSink final : public IJournalSink
 	void RecordCapability(const FRowingSessionId &Id, std::uint64_t Sequence, std::uint64_t MonotonicNs, const FRowingMachineInfo &Info) override;
 	void AppendSamples(const FRowingSessionId &Id, const std::vector<FRowingMetricSample> &Samples) override;
 	void WriteSummary(const FRowingSessionId &Id, const std::string &Payload, std::uint32_t QualityFlags) override;
+	void FinalizeSession(const FRowingSessionId &Id,
+						 LocalData::EJournalEventKind TerminalKind,
+						 std::uint64_t Sequence,
+						 std::uint64_t MonotonicNs,
+						 const std::string &EventPayload,
+						 const std::string &SummaryPayload,
+						 std::uint32_t QualityFlags) override;
 
   private:
 	LocalData::FLocalDataJournalWriter &Writer;
