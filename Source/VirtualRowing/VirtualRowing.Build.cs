@@ -1,12 +1,13 @@
 using UnrealBuildTool;
 using System;
+using System.IO;
 
 public class VirtualRowing : ModuleRules
 {
 	public VirtualRowing(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
-		PrivateDependencyModuleNames.AddRange(new[] { "Core", "CoreUObject", "Engine" });
+		PrivateDependencyModuleNames.AddRange(new[] { "Core", "CoreUObject", "Engine", "InputCore", "Slate", "SlateCore", "UMG" });
 		if (Target.Platform == UnrealTargetPlatform.Mac)
 		{
 			PublicFrameworks.AddRange(new[] { "CoreBluetooth", "Foundation" });
@@ -17,6 +18,36 @@ public class VirtualRowing : ModuleRules
 			bEnableObjCAutomaticReferenceCounting = true;
 			PCHUsage = PCHUsageMode.NoPCHs;
 		}
+
+		// Phase 1 Milestone 5: the engine-independent modules (RowingCore, RowingDevice,
+		// LocalData, WorkoutRuntime, the simulator, and static protobuf/abseil) are built by
+		// CMake, not UBT, and arrive as one prebuilt Release arm64 archive from
+		// `make native-app`. Their headers are includable as-is; nothing here compiles
+		// their sources.
+		string RepoRoot = Target.ProjectFile.Directory.FullName;
+		string NativeArchive = Path.Combine(RepoRoot, "Build", "native-app", "lib", "libVirRowingApp.a");
+		if (!File.Exists(NativeArchive))
+		{
+			throw new BuildException("Missing " + NativeArchive + ". Run `make native-app` (or `make unreal-smoke`, which does) before building the VirtualRowing module.");
+		}
+		PublicIncludePaths.AddRange(new[]
+		{
+			Path.Combine(RepoRoot, "Source", "RowingCore", "Public"),
+			Path.Combine(RepoRoot, "Source", "RowingDevice", "Public"),
+			Path.Combine(RepoRoot, "Source", "LocalData", "Public"),
+			Path.Combine(RepoRoot, "Source", "WorkoutRuntime", "Public"),
+			Path.Combine(RepoRoot, "Source", "RowingSim", "include"),
+		});
+		PublicAdditionalLibraries.Add(NativeArchive);
+		// UBT does not treat a prebuilt archive as a link input, so a rebuilt archive alone
+		// would leave a stale module binary. Baking its identity into the compile
+		// definitions makes any archive change recompile and relink this module.
+		FileInfo NativeArchiveInfo = new FileInfo(NativeArchive);
+		PrivateDefinitions.Add("VIR_NATIVE_ARCHIVE_STAMP=" + NativeArchiveInfo.LastWriteTimeUtc.Ticks + "LL");
+		PublicSystemLibraries.Add("sqlite3");
+		// The prebuilt libraries are compiled with C++ exceptions (journal errors are caught
+		// inside WorkoutRuntime) and RTTI; keep this module compatible with both.
+		bEnableExceptions = true;
 
 		string Revision = Environment.GetEnvironmentVariable("VIR_SOURCE_REVISION") ?? "unknown";
 		PublicDefinitions.Add($"VIR_SOURCE_REVISION=TEXT(\"{Revision.Replace("\\\"", "")}\")");

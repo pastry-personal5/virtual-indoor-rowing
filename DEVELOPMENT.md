@@ -36,7 +36,7 @@ Generated native build output is under `Build/native/`. The checked-in `make cle
 
 1. Keep reproducible commands in `Scripts/dev.py` and the root `Makefile`; do not rely on personal shell setup.
 2. Build and test domain code without Unreal where possible. Keep CoreBluetooth and other Apple APIs in Objective-C++ adapter code.
-3. Add deterministic fixtures and simulator/replay scenarios to `Tools/pm5-sim/`. Sanitize fixtures and never include athlete data or serial numbers.
+3. Add deterministic fixtures and simulator/replay scenarios to `Source/RowingSim/`. Sanitize fixtures and never include athlete data or serial numbers.
 4. Use UnrealBuildTool for Unreal modules. Package with `RunUAT.sh`/BuildGraph as specified in the delivery architecture.
 5. Validate protocol/schema compatibility, journal recovery, and idempotency before dependent UI or cloud work.
 6. Run the physical PM5 acceptance procedure in the diagnostic milestone plan; simulator or short diagnostic output alone is insufficient.

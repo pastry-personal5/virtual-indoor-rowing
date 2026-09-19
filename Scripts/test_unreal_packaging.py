@@ -93,8 +93,10 @@ class UnrealShippingPackagingTests(unittest.TestCase):
 			patch.object(dev, "tool_env", return_value={}), \
 			patch.object(dev, "source_revision", return_value="deadbeef"), \
 			patch.object(dev, "write_shipping_provenance"), \
+			patch.object(dev, "native_app", return_value=0) as native_app, \
 			patch.object(dev, "run", side_effect=fake_run):
 			self.assertEqual(dev.unreal_shipping(), 0)
+			native_app.assert_called_once()
 
 		embedded = app / "Contents" / "UE" / "VirtualRowing" / "VirtualRowing.uproject"
 		self.assertTrue(embedded.is_file())
@@ -133,6 +135,25 @@ class UnrealShippingPackagingTests(unittest.TestCase):
 				f"Concept2PM plug-in module ({dev.CONCEPT2PM_MODULE_NAME}) is not linked into the Shipping executable",
 				dev.verify_package(app, self.versions),
 			)
+
+	def test_homebrew_load_commands_reports_only_homebrew_install_names(self) -> None:
+		otool_output = "\n".join([
+			"/x/libVirtualRowing.dylib:",
+			"\t/usr/lib/libsqlite3.dylib (compatibility version 9.0.0, current version 377.0.0)",
+			"\t/opt/homebrew/opt/protobuf/lib/libprotobuf.36.1.0.dylib (compatibility version 36.0.0, current version 36.1.0)",
+			"\t/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation (compatibility version 300.0.0, current version 4109.1.255)",
+		])
+		with patch.object(dev, "capture", return_value=otool_output):
+			self.assertEqual(dev.homebrew_load_commands(self.root / "x"), ["/opt/homebrew/opt/protobuf/lib/libprotobuf.36.1.0.dylib"])
+		with patch.object(dev, "capture", return_value=None):
+			self.assertEqual(dev.homebrew_load_commands(self.root / "x"), [])
+
+	def test_package_verifier_rejects_homebrew_load_commands(self) -> None:
+		app = self.make_app()
+		with patch.object(dev, "binary_architectures", return_value={"arm64"}), \
+			patch.object(dev, "plugin_module_linked", return_value=True), \
+			patch.object(dev, "homebrew_load_commands", return_value=["/opt/homebrew/lib/libabsl_base.2601.0.0.dylib"]):
+			self.assertTrue(any("not self-contained" in value for value in dev.verify_package(app, self.versions)))
 
 	def test_plugin_module_linked_detects_symbol_in_nm_output(self) -> None:
 		with patch.object(dev, "capture", return_value="0000000000000000 t __ZN23FConcept2PMUnrealModuleD1Ev"):

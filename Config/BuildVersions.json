@@ -35,5 +35,19 @@
     "git_lfs": "3.8.0",
     "protobuf_version": "36.1",
     "unreal": "5.8.2 changelist 56702186; Build.version digest ff99fc3dd98e7c7fd2f5700334bc792dfb7baced3828cdee32940bb69581a6a4"
+  },
+  "static_dependencies": {
+    "note": "Phase 1 Milestone 5: pinned sources built statically for the app-bound native libraries (Build/native-app). protobuf's own dependency pin for abseil is used; the protoc that generates code stays the Homebrew build_tools.protobuf.",
+    "protobuf": {
+      "version": "36.1",
+      "url": "https://github.com/protocolbuffers/protobuf/releases/download/v36.1/protobuf-36.1.tar.gz",
+      "sha256": "dc74fa582f559cbd31614ddfefb4868f43c919d7184bde514bb47f90c6025eb8"
+    },
+    "abseil": {
+      "version": "20250512.1",
+      "url": "https://github.com/abseil/abseil-cpp/archive/refs/tags/20250512.1.tar.gz",
+      "sha256": "9b7a064305e9fd94d124ffa6cc358592eb42b5da588fb4e07d09254aa40086db"
+    },
+    "app_deployment_target": "14.0"
   }
 }

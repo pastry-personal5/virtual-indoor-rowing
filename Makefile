@@ -1,4 +1,4 @@
-.PHONY: doctor configure build test format-check pm5-tui unreal-smoke unreal-shipping unreal-package-verify toolchain-bluetooth-probe toolchain-bluetooth-probe-clean release-sign-notarize hil-pm5 pm5-tui-journal clean clean-unreal clean-logs clean-metrics clean-all
+.PHONY: doctor configure build native-app test format-check pm5-tui unreal-smoke unreal-shipping unreal-package-verify toolchain-bluetooth-probe toolchain-bluetooth-probe-clean release-sign-notarize hil-pm5 pm5-tui-journal clean clean-unreal clean-logs clean-metrics clean-all
 
 # Verify the host machine and installed tools against the pinned M1 baseline.
 doctor:
@@ -11,6 +11,12 @@ configure:
 # Configure if needed, then compile all native diagnostic-client targets.
 build:
 	python3 Scripts/dev.py build
+
+# Build the Release, static-protobuf archive (Build/native-app/) that the Unreal
+# VirtualRowing module links. The first configure downloads hash-pinned protobuf and
+# abseil sources, so it needs network access. `make unreal-smoke` runs this first.
+native-app:
+	python3 Scripts/dev.py native-app
 
 # Build the native targets, then run CTest with failure output enabled.
 test:
@@ -59,7 +65,7 @@ hil-pm5:
 pm5-tui-journal:
 	python3 Scripts/dev.py pm5-tui-journal
 
-# Remove generated native build output.
+# Remove generated native build output (Build/native/ and Build/native-app/).
 clean:
 	python3 Scripts/dev.py clean
 

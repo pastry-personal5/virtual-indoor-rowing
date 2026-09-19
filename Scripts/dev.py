@@ -18,6 +18,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 VERSIONS_PATH = ROOT / "Config" / "BuildVersions.json"
 BUILD_DIR = ROOT / "Build" / "native"
+APP_BUILD_DIR = ROOT / "Build" / "native-app"
+APP_MERGED_ARCHIVE = APP_BUILD_DIR / "lib" / "libVirRowingApp.a"
 UNREAL_SHIPPING_DIR = ROOT / "Build" / "unreal-shipping"
 UNREAL_ARCHIVE_DIR = UNREAL_SHIPPING_DIR / "archive"
 UNREAL_PROVENANCE_PATH = UNREAL_SHIPPING_DIR / "provenance.json"
@@ -172,6 +174,17 @@ def check_doctor() -> int:
 		observed = capture([binary, "--version"])
 		failed |= not exact_version(binary, observed, expected)
 
+	static = versions.get("static_dependencies", {})
+	protobuf_pin = static.get("protobuf", {})
+	if protobuf_pin.get("version") != versions["build_tools"]["protobuf"]:
+		print(f"FAIL static protobuf: pinned runtime {protobuf_pin.get('version')} must equal the pinned protoc {versions['build_tools']['protobuf']} so generated code and runtime agree")
+		failed = True
+	for name in ("protobuf", "abseil"):
+		pin = static.get(name, {})
+		pin_ok = bool(pin.get("version")) and re.fullmatch(r"[0-9a-f]{64}", pin.get("sha256", "")) is not None and str(pin.get("url", "")).startswith("https://")
+		print(f"{'OK' if pin_ok else 'FAIL'} static {name}: {'pinned ' + pin['version'] + ' (sha256 verified by CMake at fetch)' if pin_ok else 'version, https url, and sha256 must be recorded in Config/BuildVersions.json'}")
+		failed |= not pin_ok
+
 	lfs = capture(["git", "lfs", "version"])
 	if not lfs:
 		print("FAIL Git LFS: required; install Git LFS and run `git lfs install`")
@@ -242,6 +255,40 @@ def cmake_base_args(versions: dict) -> list[str]:
 		f"-DVIR_APP_BUILD={application_build_number(versions)}",
 		f"-DVIR_SOURCE_REVISION={source_revision()}",
 	]
+
+
+def app_cmake_args(versions: dict) -> list[str]:
+	"""Release, static-protobuf, libraries-only tree that the Unreal module links (Phase 1 Milestone 5)."""
+	return [
+		"cmake",
+		"-S",
+		str(ROOT),
+		"-B",
+		str(APP_BUILD_DIR),
+		"-G",
+		"Ninja",
+		"-DCMAKE_BUILD_TYPE=Release",
+		"-DCMAKE_OSX_ARCHITECTURES=arm64",
+		f"-DCMAKE_OSX_DEPLOYMENT_TARGET={versions['static_dependencies']['app_deployment_target']}",
+		"-DVIR_STATIC_PROTOBUF=ON",
+		"-DVIR_APP_LIBS_ONLY=ON",
+		"-DVIR_BUILD_TESTS=OFF",
+		"-DVIR_BUILD_PM5_TUI=OFF",
+		f"-DVIR_APP_VERSION={versions['application_version']}",
+		f"-DVIR_APP_BUILD={application_build_number(versions)}",
+		f"-DVIR_SOURCE_REVISION={source_revision()}",
+	]
+
+
+def native_app() -> int:
+	"""Build the merged app-bound static archive; the first configure downloads hash-pinned protobuf/abseil sources."""
+	versions = load_versions()
+	ensure_build_tools(versions)
+	env = tool_env(versions)
+	result = run(app_cmake_args(versions), env=env).returncode
+	if result:
+		return result
+	return run(["cmake", "--build", str(APP_BUILD_DIR), "--parallel"], env=env).returncode
 
 
 def configure() -> int:
@@ -420,7 +467,13 @@ def unreal_smoke() -> int:
 	if not project.is_file():
 		print(f"ERROR: Unreal smoke host is missing: {project}", file=sys.stderr)
 		return 1
-	return run([
+	# The VirtualRowing module links the prebuilt CMake archive; build it first so
+	# a missing or stale archive fails here, not inside UBT.
+	native_result = native_app()
+	if native_result:
+		print("ERROR: `make native-app` failed; the Unreal module cannot link without it", file=sys.stderr)
+		return native_result
+	result = run([
 		str(ubt),
 		"UnrealEditor",
 		"Mac",
@@ -428,6 +481,15 @@ def unreal_smoke() -> int:
 		f"-Project={project}",
 		"-WaitMutex",
 	], env=tool_env(versions)).returncode
+	if result:
+		return result
+	# Phase 1 Milestone 5 closing bar: the UBT-built module must not load Homebrew libraries.
+	module = ROOT / "Binaries" / "Mac" / "libUnrealEditor-VirtualRowing.dylib"
+	homebrew = homebrew_load_commands(module) if module.is_file() else []
+	if homebrew:
+		print(f"ERROR: {module.name} is not self-contained; it loads Homebrew libraries: {homebrew}", file=sys.stderr)
+		return 1
+	return 0
 
 
 def unreal_shipping_command(ue_root: Path, project: Path, archive_dir: Path) -> list[str]:
@@ -488,6 +550,12 @@ def unreal_shipping() -> int:
 	if not project.is_file() or not uat.is_file():
 		print("ERROR: Unreal project or RunUAT.sh is missing", file=sys.stderr)
 		return 1
+	# The Shipping module links the prebuilt CMake archive; rebuild it so a stale
+	# archive can never be packaged (UBT does not notice archive changes by itself).
+	native_result = native_app()
+	if native_result:
+		print("ERROR: `make native-app` failed; the Unreal module cannot link without it", file=sys.stderr)
+		return native_result
 	write_shipping_provenance(versions)
 	env = tool_env(versions)
 	env["VIR_SOURCE_REVISION"] = source_revision()
@@ -517,6 +585,20 @@ def unreal_shipping() -> int:
 
 def package_binary_paths(app: Path) -> list[Path]:
 	return [app / "Contents" / "MacOS" / app.stem]
+
+
+HOMEBREW_LOAD_PREFIXES = ("/opt/homebrew/", "/usr/local/")
+
+
+def homebrew_load_commands(binary: Path) -> list[str]:
+	"""Dylib install names in `otool -L` that point into Homebrew. An unreadable binary reports none."""
+	output = capture(["otool", "-L", str(binary)]) or ""
+	found: list[str] = []
+	for line in output.splitlines()[1:]:
+		install_name = line.strip().split(" (", 1)[0]
+		if install_name.startswith(HOMEBREW_LOAD_PREFIXES):
+			found.append(install_name)
+	return found
 
 
 def plugin_module_linked(main: Path, module_name: str) -> bool:
@@ -579,6 +661,9 @@ def verify_package(app: Path, versions: dict) -> list[str]:
 		failures.append(f"Concept2PM plug-in module ({CONCEPT2PM_MODULE_NAME}) is not linked into the Shipping executable")
 	for binary in binaries:
 		if binary.is_file():
+			homebrew = homebrew_load_commands(binary)
+			if homebrew:
+				failures.append(f"{binary.name} is not self-contained: it loads Homebrew libraries {homebrew}")
 			arches = binary_architectures(binary)
 			if arches != {versions["platform"]["architecture"]}:
 				failures.append(f"wrong architecture for {binary.name}: {sorted(arches) if arches else 'unreadable'}")
@@ -738,7 +823,7 @@ def clean_unreal() -> int:
 
 def main() -> int:
 	parser = argparse.ArgumentParser(description=__doc__)
-	parser.add_argument("command", choices=("doctor", "configure", "build", "test", "format-check", "pm5-tui", "unreal-smoke", "unreal-shipping", "unreal-package-verify", "toolchain-bluetooth-probe", "release-sign-notarize", "hil-pm5", "pm5-tui-journal", "clean", "clean-unreal"))
+	parser.add_argument("command", choices=("doctor", "configure", "build", "test", "format-check", "pm5-tui", "unreal-smoke", "unreal-shipping", "unreal-package-verify", "toolchain-bluetooth-probe", "release-sign-notarize", "hil-pm5", "pm5-tui-journal", "native-app", "clean", "clean-unreal"))
 	args = parser.parse_args()
 	if args.command == "doctor":
 		return check_doctor()
@@ -748,6 +833,8 @@ def main() -> int:
 		return build()
 	if args.command == "test":
 		return test()
+	if args.command == "native-app":
+		return native_app()
 	if args.command == "format-check":
 		return format_check()
 	if args.command == "pm5-tui":
@@ -767,8 +854,9 @@ def main() -> int:
 	if args.command == "release-sign-notarize":
 		return release_sign_notarize()
 	if args.command == "clean":
-		if BUILD_DIR.exists():
-			shutil.rmtree(BUILD_DIR)
+		for directory in (BUILD_DIR, APP_BUILD_DIR):
+			if directory.exists():
+				shutil.rmtree(directory)
 		return 0
 	if args.command == "clean-unreal":
 		return clean_unreal()
