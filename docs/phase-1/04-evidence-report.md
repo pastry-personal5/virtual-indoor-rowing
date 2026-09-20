@@ -8,14 +8,14 @@ This report is the Phase 1 evidence index. It distinguishes automated implementa
 
 | Requirement / gate | Required evidence | Current status | Evidence owner or source |
 |---|---|---|---|
-| FR-002 — PM5 discovery, pairing, reconnect | Packaged app with a real supported Model D/PM5; redacted run note | Pass — owner-run real-PM5 discovery, pairing, and reconnection on 2026-09-20 | Milestone 7 owner checklist |
-| FR-003 — live rowing HUD | Real PM5 HUD values plus simulator fixtures | Partial owner-run evidence — the HUD was shown during a real-PM5 run on 2026-09-20; metric agreement with the monitor remains pending | Milestones 5, 7 |
+| FR-002 — PM5 discovery, pairing, reconnect | Packaged app with a real supported Model D/PM5; redacted run note | Verified | Milestone 7 owner checklist; owner-run discovery, pairing, and reconnection passed on 2026-09-20 |
+| FR-003 — live rowing HUD | Real PM5 HUD values plus simulator fixtures | Pending owner run | Milestones 5 and 7; HUD shown during a real-PM5 run on 2026-09-20, but metric agreement with the monitor remains pending |
 | FR-004 — offline Just Row and gray-box route | Packaged simulator route fixtures and a real-device row without account/network | Pending owner run | Milestone 8 + phase gate |
 | FR-007 — durable local history | Six-minute row, journal checkpoint cadence, summary/sample readback | Pending owner run | Milestone 7 owner checklist |
 | Six-minute durability/latency | Redacted aggregate latency, no unexplained meter loss/duplication, ≤1 s checkpoint observation | Pending owner run | Milestone 7 owner checklist |
 | Process-kill recovery | Kill mid-row, relaunch, explicit interrupted recovery, intact journal | Pending owner run | Milestone 7 owner checklist |
 | Development sync contracts/persistence | Go tests, PostgreSQL/MinIO implementation, forward migration and worker tests | Verified | Milestones 9–11 |
-| Packaged unsigned build | `make unreal-shipping` and `make unreal-package-verify` on current tree | Pending owner run | Milestones 7–8 |
+| Packaged unsigned build | `make unreal-shipping` and `make unreal-package-verify` on current tree | Verified | Milestones 7–8; owner-run commands succeeded on 2026-09-20 at revision `c8d78d720daf` on arm64 macOS 26.6.2 with Xcode 26.1.1 and Unreal Engine 5.8.2 |
 | Fresh-install/TCC matrix | Signed/notarized build scenarios | Deferred to Phase 4 | ADR-0009 |
 | Managed-workout hardware acceptance | Distance, time, interval, reject/abort | Deferred to Phase 4 | ADR-0010 |
 | Visual performance spike | Six-minute and 60-minute frame/thermal evidence | Deferred to Phase 4 | ADR-0010 |

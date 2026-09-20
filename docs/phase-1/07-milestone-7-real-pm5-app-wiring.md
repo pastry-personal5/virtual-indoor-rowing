@@ -135,7 +135,9 @@ Implemented on the proposed defaults; the owner may still veto any of them:
 
 Verified in-session: `make test` (26/26, including the three new targets and the extended LocalData recovery test); `make format-check`; `make doctor`; `make native-app`; `make unreal-smoke` (Editor Development target compiles and links the adapter and CryptoKit); `python3 Scripts/test_unreal_packaging.py`; the headless Editor Automation run of `VirtualRowing.WorkoutSubsystem` (11/11, seven existing and four new), after which no `dev.virtualrowing.app` directory or Keychain item existed.
 
-Not verified: the Bluetooth permission prompt and the Keychain in the packaged ad-hoc app; the packaged Shipping link and `make unreal-package-verify` (owner-run; `make unreal-shipping` was not run); the device panel's appearance and focus in a running app (the widget is compiled, not exercised: the Automation run is headless with no viewport); the prerequisite `make pm5-tui-journal` run.
+Not verified during the implementation session: the Bluetooth permission prompt and the Keychain in the packaged ad-hoc app; the packaged Shipping link and `make unreal-package-verify`; the device panel's appearance and focus in a running app (the widget is compiled, not exercised: the Automation run is headless with no viewport); the prerequisite `make pm5-tui-journal` run.
+
+Owner-run evidence update (2026-09-20): `make unreal-shipping` and `make unreal-package-verify` **passed** at revision `c8d78d720daf` on arm64 macOS 26.6.2 with Xcode 26.1.1 and Unreal Engine 5.8.2. This closes the Phase 1 packaged unsigned-build evidence row; the packaged-app interaction and hardware checks remain separate evidence.
 
 Owner-run evidence update (2026-09-20): the owner ran the app with a real PM5 and observed the HUD shown. This records only HUD visibility; PM5-monitor metric agreement, journaling, durability, packaged-app, and other hardware-checklist evidence remain outstanding.
 
@@ -144,5 +146,5 @@ Owner-run evidence update (2026-09-20): real-PM5 discovery, pairing, and reconne
 ## Owner action required
 
 1. **Prerequisite:** run `make pm5-tui-journal` on a real PM5 (closes the outstanding Milestone 2 and 4 confirmations).
-2. `make unreal-shipping`, then `make unreal-package-verify` (checks the new plist text and the Swift and Homebrew load commands on the real Shipping binary), then launch the staged app and run the eight checks in "Owner-run hardware evidence". Records go into a redacted note; the journal, the latency aggregate and any captures are private athlete data and are never committed.
+2. The 2026-09-20 owner run completed `make unreal-shipping` and `make unreal-package-verify` (checking the new plist text and the Swift and Homebrew load commands on the real Shipping binary). Launch the staged app and run the remaining checks in "Owner-run hardware evidence". Records go into a redacted note; the journal, the latency aggregate and any captures are private athlete data and are never committed.
 3. Expected on first Connect: one Bluetooth prompt and one Keychain prompt (the latter may repeat after each rebuild of the ad-hoc bundle; see Risks).
