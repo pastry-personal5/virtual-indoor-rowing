@@ -2,6 +2,7 @@
 
 #include "WorkoutDevicePanelWidget.h"
 #include "WorkoutHudWidget.h"
+#include "CourseSubsystem.h"
 
 #include "Engine/GameInstance.h"
 #include "Engine/LocalPlayer.h"
@@ -719,6 +720,11 @@ void UWorkoutSubsystem::EnsureHud()
 	APlayerController *Controller = GameInstance ? GameInstance->GetFirstLocalPlayerController() : nullptr;
 	if (!Controller || !Controller->IsLocalController())
 		return;
+	if (UWorld *World = Controller->GetWorld())
+	{
+		if (UCourseSubsystem *Course = World->GetSubsystem<UCourseSubsystem>())
+			Course->EnsurePresentation();
+	}
 
 	// A previous widget that fell out of the viewport (for example across a world
 	// change) is replaced, not orphaned.

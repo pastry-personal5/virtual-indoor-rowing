@@ -1,13 +1,16 @@
 #include "GrayBoxCourseActor.h"
 
 #include "Camera/CameraComponent.h"
+#include "Components/DirectionalLightComponent.h"
 #include "Components/SceneComponent.h"
 #include "Components/SplineComponent.h"
+#include "Components/SplineMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/TextRenderComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "UObject/ConstructorHelpers.h"
 
 namespace
 {
@@ -15,11 +18,11 @@ namespace
 	constexpr int32 MarkerCount = 8;
 	constexpr double CourseRadiusX = 65'000.0;
 	constexpr double CourseRadiusY = 18'000.0;
+	constexpr double CameraBehindCm = 1'400.0;
+	constexpr double CameraStarboardCm = 900.0;
+	constexpr double CameraElevationCm = 650.0;
+	constexpr double CameraLookAheadCm = 700.0;
 
-	UMaterialInterface *BasicMaterial()
-	{
-		return LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
-	}
 } // namespace
 
 AGrayBoxCourseActor::AGrayBoxCourseActor()
@@ -35,6 +38,25 @@ AGrayBoxCourseActor::AGrayBoxCourseActor()
 	InspectionCamera->SetupAttachment(SceneRoot);
 	InspectionCamera->SetFieldOfView(50.0f);
 	InspectionCamera->bUsePawnControlRotation = false;
+	// /Engine/Maps/Entry deliberately has no authored lighting. The generated course
+	// uses the engine's lit primitive material, so without a code-owned light every
+	// surface is black even though the actor and camera are valid.
+	CourseLight = CreateDefaultSubobject<UDirectionalLightComponent>(TEXT("CourseLight"));
+	CourseLight->SetupAttachment(SceneRoot);
+	CourseLight->SetMobility(EComponentMobility::Movable);
+	CourseLight->SetRelativeRotation(FRotator(-55.0f, -35.0f, 0.0f));
+	CourseLight->SetIntensity(8.0f);
+	CourseLight->SetLightColor(FLinearColor(1.0f, 0.94f, 0.86f));
+	CourseLight->SetCastShadows(false);
+
+	// Keep the primitive assets as hard CDO references. Runtime LoadObject paths are
+	// not a reliable cooking contract for a code-only actor in a Shipping package.
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> CubeFinder(TEXT("/Engine/BasicShapes/Cube.Cube"));
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> CylinderFinder(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> MaterialFinder(TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
+	CubeMesh = CubeFinder.Object;
+	CylinderMesh = CylinderFinder.Object;
+	CourseMaterial = MaterialFinder.Object;
 }
 
 void AGrayBoxCourseActor::BeginPlay()
@@ -55,9 +77,9 @@ UStaticMeshComponent *AGrayBoxCourseActor::MakeMesh(const TCHAR *Name,
 	Component->SetRelativeScale3D(Scale);
 	Component->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	Component->SetCastShadow(false);
-	if (UMaterialInterface *Material = BasicMaterial())
+	if (CourseMaterial)
 	{
-		UMaterialInstanceDynamic *Dynamic = UMaterialInstanceDynamic::Create(Material, Component);
+		UMaterialInstanceDynamic *Dynamic = UMaterialInstanceDynamic::Create(CourseMaterial, Component);
 		Dynamic->SetVectorParameterValue(TEXT("Color"), Color);
 		Component->SetMaterial(0, Dynamic);
 	}
@@ -70,12 +92,12 @@ void AGrayBoxCourseActor::InitializeCourse()
 {
 	if (bInitialized)
 		return;
-	bInitialized = true;
 
-	UStaticMesh *Cube = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
-	UStaticMesh *Cylinder = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
+	UStaticMesh *Cube = CubeMesh;
+	UStaticMesh *Cylinder = CylinderMesh;
 	if (!Cube || !Cylinder)
 		return;
+	bInitialized = true;
 
 	CourseSpline->ClearSplinePoints(false);
 	for (int32 Index = 0; Index < SplinePointCount; ++Index)
@@ -85,6 +107,34 @@ void AGrayBoxCourseActor::InitializeCourse()
 		CourseSpline->SetSplinePointType(Index, ESplinePointType::Curve, false);
 	}
 	CourseSpline->SetClosedLoop(true, true);
+	for (int32 Index = 0; Index < SplinePointCount; ++Index)
+	{
+		const int32 NextIndex = (Index + 1) % SplinePointCount;
+		USplineMeshComponent *CourseEdge = NewObject<USplineMeshComponent>(this, *FString::Printf(TEXT("CourseEdge%d"), Index));
+		CourseEdge->SetupAttachment(SceneRoot);
+		CourseEdge->SetStaticMesh(Cube);
+		CourseEdge->SetForwardAxis(ESplineMeshAxis::X, false);
+		CourseEdge->SetStartAndEnd(
+			CourseSpline->GetLocationAtSplinePoint(Index, ESplineCoordinateSpace::Local),
+			CourseSpline->GetTangentAtSplinePoint(Index, ESplineCoordinateSpace::Local),
+			CourseSpline->GetLocationAtSplinePoint(NextIndex, ESplineCoordinateSpace::Local),
+			CourseSpline->GetTangentAtSplinePoint(NextIndex, ESplineCoordinateSpace::Local),
+			false);
+		CourseEdge->SetStartScale(FVector2D(0.30f, 0.10f), false);
+		CourseEdge->SetEndScale(FVector2D(0.30f, 0.10f), false);
+		CourseEdge->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		CourseEdge->SetCastShadow(false);
+		if (CourseMaterial)
+		{
+			UMaterialInstanceDynamic *Dynamic = UMaterialInstanceDynamic::Create(CourseMaterial, CourseEdge);
+			Dynamic->SetVectorParameterValue(TEXT("Color"), FLinearColor(0.92f, 0.82f, 0.18f));
+			CourseEdge->SetMaterial(0, Dynamic);
+		}
+		AddInstanceComponent(CourseEdge);
+		CourseEdge->RegisterComponent();
+		CourseEdge->UpdateMesh();
+		CourseEdgeMeshes.Add(CourseEdge);
+	}
 
 	UStaticMeshComponent *Water = MakeMesh(TEXT("Water"), Cube, SceneRoot, FVector(680.0, 205.0, 0.1), FLinearColor(0.03f, 0.20f, 0.35f));
 	Water->SetRelativeLocation(FVector(0.0, 0.0, -10.0));
@@ -166,8 +216,11 @@ void AGrayBoxCourseActor::ApplyPresentation(const FCoursePresentationSnapshot &S
 	RightOar->SetRelativeRotation(FRotator(0.0, -OarYaw, 0.0));
 
 	const FVector BoatLocation = CourseTransform.GetLocation();
-	const FVector CameraLocation = BoatLocation + CourseTransform.GetUnitAxis(EAxis::Y) * 800.0 + FVector(0.0, 0.0, 250.0);
-	FRotator CameraRotation = UKismetMathLibrary::FindLookAtRotation(CameraLocation, BoatLocation + FVector(0.0, 0.0, 90.0));
+	const FVector Forward = CourseTransform.GetUnitAxis(EAxis::X);
+	const FVector Starboard = CourseTransform.GetUnitAxis(EAxis::Y);
+	const FVector CameraLocation = BoatLocation - Forward * CameraBehindCm + Starboard * CameraStarboardCm + FVector(0.0, 0.0, CameraElevationCm);
+	const FVector CameraFocus = BoatLocation + Forward * CameraLookAheadCm + FVector(0.0, 0.0, 90.0);
+	FRotator CameraRotation = UKismetMathLibrary::FindLookAtRotation(CameraLocation, CameraFocus);
 	CameraRotation.Roll = 0.0f;
 	InspectionCamera->SetWorldLocationAndRotation(CameraLocation, CameraRotation);
 }
@@ -196,9 +249,17 @@ float AGrayBoxCourseActor::GetCameraFieldOfViewForTesting() const
 {
 	return InspectionCamera->FieldOfView;
 }
+float AGrayBoxCourseActor::GetCourseLightIntensityForTesting() const
+{
+	return CourseLight ? CourseLight->Intensity : 0.0f;
+}
 int32 AGrayBoxCourseActor::GetMarkerCountForTesting() const
 {
 	return MarkerLabels.Num();
+}
+int32 AGrayBoxCourseActor::GetCourseEdgeSegmentCountForTesting() const
+{
+	return CourseEdgeMeshes.Num();
 }
 bool AGrayBoxCourseActor::HasInputComponentForTesting() const
 {

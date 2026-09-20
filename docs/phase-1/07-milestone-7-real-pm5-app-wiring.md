@@ -135,7 +135,11 @@ Implemented on the proposed defaults; the owner may still veto any of them:
 
 Verified in-session: `make test` (26/26, including the three new targets and the extended LocalData recovery test); `make format-check`; `make doctor`; `make native-app`; `make unreal-smoke` (Editor Development target compiles and links the adapter and CryptoKit); `python3 Scripts/test_unreal_packaging.py`; the headless Editor Automation run of `VirtualRowing.WorkoutSubsystem` (11/11, seven existing and four new), after which no `dev.virtualrowing.app` directory or Keychain item existed.
 
-Not verified: everything against a real PM5 and the real CoreBluetooth adapter; the Bluetooth permission prompt and the Keychain in the packaged ad-hoc app; the packaged Shipping link and `make unreal-package-verify` (owner-run; `make unreal-shipping` was not run); the device panel's appearance and focus in a running app (the widget is compiled, not exercised: the Automation run is headless with no viewport); the prerequisite `make pm5-tui-journal` run.
+Not verified: the Bluetooth permission prompt and the Keychain in the packaged ad-hoc app; the packaged Shipping link and `make unreal-package-verify` (owner-run; `make unreal-shipping` was not run); the device panel's appearance and focus in a running app (the widget is compiled, not exercised: the Automation run is headless with no viewport); the prerequisite `make pm5-tui-journal` run.
+
+Owner-run evidence update (2026-09-20): the owner ran the app with a real PM5 and observed the HUD shown. This records only HUD visibility; PM5-monitor metric agreement, journaling, durability, packaged-app, and other hardware-checklist evidence remain outstanding.
+
+Owner-run evidence update (2026-09-20): real-PM5 discovery, pairing, and reconnection **passed**. This satisfies the recorded FR-002 owner-run outcome; the remaining checklist items above remain independent evidence.
 
 ## Owner action required
 

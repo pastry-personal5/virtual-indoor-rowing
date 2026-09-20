@@ -8,8 +8,8 @@ This report is the Phase 1 evidence index. It distinguishes automated implementa
 
 | Requirement / gate | Required evidence | Current status | Evidence owner or source |
 |---|---|---|---|
-| FR-002 — PM5 discovery, pairing, reconnect | Packaged app with a real supported Model D/PM5; redacted run note | Pending owner run | Milestone 7 owner checklist |
-| FR-003 — live rowing HUD | Real PM5 HUD values plus simulator fixtures | Pending owner run | Milestones 5, 7 |
+| FR-002 — PM5 discovery, pairing, reconnect | Packaged app with a real supported Model D/PM5; redacted run note | Pass — owner-run real-PM5 discovery, pairing, and reconnection on 2026-09-20 | Milestone 7 owner checklist |
+| FR-003 — live rowing HUD | Real PM5 HUD values plus simulator fixtures | Partial owner-run evidence — the HUD was shown during a real-PM5 run on 2026-09-20; metric agreement with the monitor remains pending | Milestones 5, 7 |
 | FR-004 — offline Just Row and gray-box route | Packaged simulator route fixtures and a real-device row without account/network | Pending owner run | Milestone 8 + phase gate |
 | FR-007 — durable local history | Six-minute row, journal checkpoint cadence, summary/sample readback | Pending owner run | Milestone 7 owner checklist |
 | Six-minute durability/latency | Redacted aggregate latency, no unexplained meter loss/duplication, ≤1 s checkpoint observation | Pending owner run | Milestone 7 owner checklist |

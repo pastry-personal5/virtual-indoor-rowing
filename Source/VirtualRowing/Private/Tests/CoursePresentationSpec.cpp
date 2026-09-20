@@ -45,7 +45,8 @@ void FCoursePresentationSpec::Define()
 		TestTrue(TEXT("finish tangent wraps"), Course->GetCourseTangent(0.0).Equals(Course->GetCourseTangent(2'000'000.0), 0.001));
 		TestFalse(TEXT("250 m advances"), Start.GetLocation().Equals(Course->GetCourseTransform(250'000.0).GetLocation(), 1.0));
 		TestFalse(TEXT("1,000 m advances"), Start.GetLocation().Equals(Course->GetCourseTransform(1'000'000.0).GetLocation(), 1.0));
-		TestEqual(TEXT("markers every 250 m"), Course->GetMarkerCountForTesting(), 8); });
+		TestEqual(TEXT("markers every 250 m"), Course->GetMarkerCountForTesting(), 8);
+		TestEqual(TEXT("visible edge covers every spline segment"), Course->GetCourseEdgeSegmentCountForTesting(), 32); });
 
 	It("applies catch drive finish recovery and disconnect-return proxy transforms", [this]()
 	   {
@@ -70,17 +71,19 @@ void FCoursePresentationSpec::Define()
 		Course->ApplyPresentation(Snapshot);
 		TestTrue(TEXT("return reaches catch"), Course->GetSeatRelativeTransformForTesting().Equals(CatchSeat, 0.1)); });
 
-	It("uses a rigid level side camera with no input component", [this]()
+	It("uses a rigid elevated follow camera with no input component", [this]()
 	   {
 		FCoursePresentationSnapshot Snapshot;
 		Snapshot.WrappedCourseDistanceMm = 750'000.0;
 		Course->ApplyPresentation(Snapshot);
 		const FTransform Boat = Course->GetBoatTransformForTesting();
 		const FVector Offset = Course->GetCameraTransformForTesting().GetLocation() - Boat.GetLocation();
-		TestTrue(TEXT("starboard offset"), FMath::IsNearlyEqual(FVector::DotProduct(Offset, Boat.GetUnitAxis(EAxis::Y)), 800.0, 0.1));
-		TestTrue(TEXT("camera elevation"), FMath::IsNearlyEqual(Offset.Z, 250.0, 0.1));
+		TestTrue(TEXT("camera follows behind"), FMath::IsNearlyEqual(FVector::DotProduct(Offset, Boat.GetUnitAxis(EAxis::X)), -1'400.0, 0.1));
+		TestTrue(TEXT("camera has starboard offset"), FMath::IsNearlyEqual(FVector::DotProduct(Offset, Boat.GetUnitAxis(EAxis::Y)), 900.0, 0.1));
+		TestTrue(TEXT("camera elevation keeps route and boat visible"), FMath::IsNearlyEqual(Offset.Z, 650.0, 0.1));
 		TestTrue(TEXT("level horizon"), FMath::IsNearlyZero(Course->GetCameraTransformForTesting().Rotator().Roll, 0.01));
 		TestTrue(TEXT("50 degree field of view"), FMath::IsNearlyEqual(Course->GetCameraFieldOfViewForTesting(), 50.0f));
+		TestTrue(TEXT("code-owned course light illuminates the empty Entry map"), Course->GetCourseLightIntensityForTesting() > 0.0f);
 		TestFalse(TEXT("course actor binds no input"), Course->HasInputComponentForTesting()); });
 
 	It("restricts spawning and the fallback label to their intended states", [this]()
@@ -89,6 +92,9 @@ void FCoursePresentationSpec::Define()
 		TestTrue(TEXT("PIE supported"), UCourseSubsystem::SupportsWorldType(EWorldType::PIE));
 		TestFalse(TEXT("editor unsupported"), UCourseSubsystem::SupportsWorldType(EWorldType::Editor));
 		TestFalse(TEXT("preview unsupported"), UCourseSubsystem::SupportsWorldType(EWorldType::EditorPreview));
+		TestTrue(TEXT("full-screen HUD root is transparent"), FMath::IsNearlyZero(UWorkoutHudWidget::RootBackgroundColor().A));
+		const float PanelAlpha = UWorkoutHudWidget::MetricPanelBackgroundColor().A;
+		TestTrue(TEXT("metric panel remains visibly translucent"), PanelAlpha > 0.0f && PanelAlpha < 0.5f);
 		TestTrue(TEXT("estimated visible"), UWorkoutHudWidget::AnimationLabelVisibility(ECourseAnimationQuality::Estimated) == ESlateVisibility::HitTestInvisible);
 		TestTrue(TEXT("primary hidden"), UWorkoutHudWidget::AnimationLabelVisibility(ECourseAnimationQuality::Primary) == ESlateVisibility::Hidden);
 		TestTrue(TEXT("unavailable hidden"), UWorkoutHudWidget::AnimationLabelVisibility(ECourseAnimationQuality::Unavailable) == ESlateVisibility::Hidden); });

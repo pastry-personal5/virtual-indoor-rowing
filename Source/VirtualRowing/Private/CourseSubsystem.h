@@ -2,7 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/EngineTypes.h"
-#include "Subsystems/GameInstanceSubsystem.h"
+#include "Subsystems/WorldSubsystem.h"
 #include "Tickable.h"
 
 #include "CourseRuntime/CoursePresentation.h"
@@ -11,9 +11,9 @@
 
 class AGrayBoxCourseActor;
 
-/** Pull-only Unreal adapter from the workout snapshot to reversible course motion. */
+/** Pull-only world adapter from the workout snapshot to reversible course motion. */
 UCLASS()
-class VIRTUALROWING_API UCourseSubsystem : public UGameInstanceSubsystem, public FTickableGameObject
+class VIRTUALROWING_API UCourseSubsystem : public UWorldSubsystem, public FTickableGameObject
 {
 	GENERATED_BODY()
 
@@ -28,6 +28,9 @@ class VIRTUALROWING_API UCourseSubsystem : public UGameInstanceSubsystem, public
 	const FCoursePresentationSnapshot &GetPresentation() const;
 	ECourseAnimationQuality GetAnimationQuality() const;
 	AGrayBoxCourseActor *GetCourseActorForTesting() const;
+	// Called before the HUD enters the viewport so the same visible frame has a
+	// world actor and active course camera behind it.
+	void EnsurePresentation();
 	void PumpForTesting(uint64 NowMonotonicNs);
 
   private:

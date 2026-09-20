@@ -15,6 +15,7 @@
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
 #include "Engine/GameInstance.h"
+#include "Engine/World.h"
 #include "Framework/Application/IInputProcessor.h"
 #include "Framework/Application/SlateApplication.h"
 #include "GameFramework/PlayerController.h"
@@ -26,11 +27,11 @@
 
 namespace
 {
-	constexpr int32 MetricFontSize = 72;
-	constexpr int32 LabelFontSize = 24;
-	constexpr int32 BannerFontSize = 32;
-	constexpr float MetricCellWidth = 420.0f;
-	constexpr float LabelCellWidth = 280.0f;
+	constexpr int32 MetricFontSize = 48;
+	constexpr int32 LabelFontSize = 18;
+	constexpr int32 BannerFontSize = 24;
+	constexpr float MetricCellWidth = 300.0f;
+	constexpr float LabelCellWidth = 220.0f;
 
 	FText ToText(const std::string &Value)
 	{
@@ -86,6 +87,8 @@ void UWorkoutHudWidget::NativeOnInitialized()
 		Text->SetFont(FCoreStyle::GetDefaultFontStyle(Typeface, Size));
 		Text->SetJustification(Justification);
 		Text->SetColorAndOpacity(FSlateColor(LiveColor));
+		Text->SetShadowOffset(FVector2D(2.0f, 2.0f));
+		Text->SetShadowColorAndOpacity(FLinearColor(0.0f, 0.0f, 0.0f, 0.9f));
 		return Text;
 	};
 
@@ -151,10 +154,22 @@ void UWorkoutHudWidget::NativeOnInitialized()
 	StartNewButton->OnClicked.AddDynamic(this, &UWorkoutHudWidget::HandleStartNewClicked);
 
 	UBorder *Root = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-	Root->SetBrushColor(FLinearColor(0.02f, 0.03f, 0.05f, 1.0f));
-	Root->SetHorizontalAlignment(HAlign_Center);
+	// The root fills the viewport. It must remain transparent so the gray-box world
+	// and its camera render behind the HUD rather than being covered by this widget.
+	Root->SetBrushColor(RootBackgroundColor());
+	// Keep the presentation's focal area clear. The previous centered 756+ px card
+	// hid the boat in common 1280 px test windows even after its root became clear.
+	Root->SetHorizontalAlignment(HAlign_Left);
 	Root->SetVerticalAlignment(VAlign_Center);
-	Root->AddChild(Column);
+	Root->SetPadding(FMargin(32.0f, 0.0f, 0.0f, 0.0f));
+	UBorder *MetricPanel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+	// Keep the metrics readable under exertion without turning the large center card
+	// back into an apparent full-screen wall. Text shadows provide the contrast that
+	// the former near-opaque fill supplied.
+	MetricPanel->SetBrushColor(MetricPanelBackgroundColor());
+	MetricPanel->SetPadding(FMargin(20.0f));
+	MetricPanel->AddChild(Column);
+	Root->AddChild(MetricPanel);
 	WidgetTree->RootWidget = Root;
 
 	SetIsFocusable(true);
@@ -172,9 +187,9 @@ void UWorkoutHudWidget::NativeTick(const FGeometry &MyGeometry, float InDeltaTim
 	const UWorkoutSubsystem *Subsystem = GetWorkoutSubsystem();
 	if (!Subsystem)
 		return;
-	if (UGameInstance *GameInstance = GetGameInstance())
+	if (UWorld *World = GetWorld())
 	{
-		if (const UCourseSubsystem *Course = GameInstance->GetSubsystem<UCourseSubsystem>())
+		if (const UCourseSubsystem *Course = World->GetSubsystem<UCourseSubsystem>())
 			EstimatedStrokeText->SetVisibility(AnimationLabelVisibility(Course->GetAnimationQuality()));
 	}
 	if (!bHasApplied || Subsystem->GetDisplayGeneration() != AppliedGeneration)
@@ -205,6 +220,16 @@ void UWorkoutHudWidget::NativeTick(const FGeometry &MyGeometry, float InDeltaTim
 ESlateVisibility UWorkoutHudWidget::AnimationLabelVisibility(ECourseAnimationQuality Quality)
 {
 	return Quality == ECourseAnimationQuality::Estimated ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Hidden;
+}
+
+FLinearColor UWorkoutHudWidget::RootBackgroundColor()
+{
+	return FLinearColor(0.0f, 0.0f, 0.0f, 0.0f);
+}
+
+FLinearColor UWorkoutHudWidget::MetricPanelBackgroundColor()
+{
+	return FLinearColor(0.02f, 0.03f, 0.05f, 0.38f);
 }
 
 bool UWorkoutHudWidget::IsActionFocused() const

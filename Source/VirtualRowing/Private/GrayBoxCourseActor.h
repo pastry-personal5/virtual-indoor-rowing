@@ -4,12 +4,14 @@
 #include "GameFramework/Actor.h"
 
 #include "CourseRuntime/CoursePresentation.h"
-
 #include "GrayBoxCourseActor.generated.h"
 
 class UCameraComponent;
+class UDirectionalLightComponent;
 class USceneComponent;
 class USplineComponent;
+class USplineMeshComponent;
+class UMaterialInterface;
 class UStaticMesh;
 class UStaticMeshComponent;
 class UTextRenderComponent;
@@ -35,7 +37,9 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	FTransform GetLeftOarRelativeTransformForTesting() const;
 	FTransform GetCameraTransformForTesting() const;
 	float GetCameraFieldOfViewForTesting() const;
+	float GetCourseLightIntensityForTesting() const;
 	int32 GetMarkerCountForTesting() const;
+	int32 GetCourseEdgeSegmentCountForTesting() const;
 	bool HasInputComponentForTesting() const;
 
   private:
@@ -62,7 +66,17 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	UPROPERTY(Transient)
 	TObjectPtr<UCameraComponent> InspectionCamera;
 	UPROPERTY(Transient)
+	TObjectPtr<UDirectionalLightComponent> CourseLight;
+	UPROPERTY()
+	TObjectPtr<UStaticMesh> CubeMesh;
+	UPROPERTY()
+	TObjectPtr<UStaticMesh> CylinderMesh;
+	UPROPERTY()
+	TObjectPtr<UMaterialInterface> CourseMaterial;
+	UPROPERTY(Transient)
 	TArray<TObjectPtr<UStaticMeshComponent>> EnvironmentMeshes;
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<USplineMeshComponent>> CourseEdgeMeshes;
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UTextRenderComponent>> MarkerLabels;
 

@@ -31,6 +31,8 @@ class VIRTUALROWING_API UWorkoutHudWidget : public UUserWidget
 	// input processor can reach it; never activates the action.
 	void FocusAction();
 	static ESlateVisibility AnimationLabelVisibility(ECourseAnimationQuality Quality);
+	static FLinearColor RootBackgroundColor();
+	static FLinearColor MetricPanelBackgroundColor();
 
   protected:
 	virtual void NativeOnInitialized() override;

@@ -55,7 +55,6 @@ namespace
 
 void UCourseSubsystem::Initialize(FSubsystemCollectionBase &Collection)
 {
-	Collection.InitializeDependency<UWorkoutSubsystem>();
 	Super::Initialize(Collection);
 }
 
@@ -77,7 +76,8 @@ bool UCourseSubsystem::SupportsWorldType(EWorldType::Type WorldType)
 
 bool UCourseSubsystem::IsTickable() const
 {
-	return !IsTemplate(RF_ClassDefaultObject) && GetGameInstance() != nullptr;
+	const UWorld *World = GetWorld();
+	return !IsTemplate(RF_ClassDefaultObject) && World != nullptr && SupportsWorldType(World->WorldType);
 }
 
 TStatId UCourseSubsystem::GetStatId() const
@@ -90,6 +90,11 @@ void UCourseSubsystem::Tick(float)
 	Pump(CourseClockNs());
 }
 
+void UCourseSubsystem::EnsurePresentation()
+{
+	Pump(CourseClockNs());
+}
+
 void UCourseSubsystem::PumpForTesting(uint64 NowMonotonicNs)
 {
 	Pump(NowMonotonicNs);
@@ -98,7 +103,8 @@ void UCourseSubsystem::PumpForTesting(uint64 NowMonotonicNs)
 void UCourseSubsystem::Pump(uint64 NowMonotonicNs)
 {
 	EnsureCourseActor();
-	const UGameInstance *GameInstance = GetGameInstance();
+	const UWorld *World = GetWorld();
+	const UGameInstance *GameInstance = World ? World->GetGameInstance() : nullptr;
 	const UWorkoutSubsystem *Workout = GameInstance ? GameInstance->GetSubsystem<UWorkoutSubsystem>() : nullptr;
 	const FWorkoutSnapshot *WorkoutSnapshot = Workout ? Workout->GetSnapshot() : nullptr;
 	uint64 SampleTimestampNs = 0;
@@ -132,8 +138,7 @@ void UCourseSubsystem::EnsureCourseActor()
 {
 	if (IsRunningCommandlet())
 		return;
-	UGameInstance *GameInstance = GetGameInstance();
-	UWorld *World = GameInstance ? GameInstance->GetWorld() : nullptr;
+	UWorld *World = GetWorld();
 	if (!World || !SupportsWorldType(World->WorldType))
 		return;
 	if (!CourseActor || !IsValid(CourseActor))

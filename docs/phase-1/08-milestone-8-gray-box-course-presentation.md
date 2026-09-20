@@ -1,8 +1,8 @@
 # Phase 1 Milestone 8: gray-box course, boat, and stroke presentation
 
-Status: Implementation complete; Unreal compile/Automation and packaged simulator confirmation outstanding because the host verification gate is blocked  
+Status: Implementation complete; full UBT/Automation and fresh packaged simulator confirmation outstanding because this agent sandbox blocks Unreal's global cache writes
 Owner: Client / Unreal  
-Last reviewed: 2026-09-19
+Last reviewed: 2026-09-20
 
 ## Contract checkpoint
 
@@ -26,15 +26,15 @@ The authority boundary is normative: PM5 cumulative distance remains the measure
 
 ### Unreal presentation
 
-`UCourseSubsystem` is a tickable game-instance subsystem. It spawns only into Game and PIE worlds and refuses commandlets, Editor, preview, and other unrelated worlds. Each tick it pulls `UWorkoutSubsystem::GetSnapshot`, translates a copy into `FCourseTelemetryInput`, updates `CourseRuntime`, and applies the returned value to `AGrayBoxCourseActor`. There is no write path to the workout subsystem.
+`UCourseSubsystem` is a tickable world subsystem. It spawns only into Game and PIE worlds and refuses commandlets, Editor, preview, and other unrelated worlds. Each tick it pulls `UWorkoutSubsystem::GetSnapshot`, translates a copy into `FCourseTelemetryInput`, updates `CourseRuntime`, and applies the returned value to `AGrayBoxCourseActor`. There is no write path to the workout subsystem.
 
 `AGrayBoxCourseActor` generates all presentation at runtime from built-in Unreal primitives:
 
-- a closed elongated oval spline normalized to the 2 km domain;
+- a closed elongated oval spline normalized to the 2 km domain, with 32 runtime-generated, visible spline-mesh edge segments;
 - gray-box water and shore/reference geometry plus eight markers at 250 m intervals;
 - a stationary-at-start single-scull proxy with hull, sliding seat, torso, paired arms, and symmetric oars;
 - boat location and forward tangent from wrapped presented distance;
-- a rigid starboard inspection camera at 8 m lateral offset and 2.5 m elevation, 50 degree field of view, zero roll, no lag, and no input component.
+- a rigid elevated follow camera that keeps the boat, stroke motion, and nearby route geometry human-visible, with a 50 degree field of view, zero roll, no lag, and no input component.
 
 No project `Content/`, Blueprint, skeletal mesh, animation asset, collision, audio, VFX, steering, or configurable camera was added. On session completion distance settles to the final reported target and remains there while the proxy returns to catch.
 
@@ -78,6 +78,8 @@ Implementation-session results:
 - `course_runtime_tests` passed. CTest passed 26/26 when the unrelated Keychain-backed `local_data_mac_tests` was excluded. A complete `make test` had passed 27/27 earlier in the session, then its final rerun was blocked only by `local_data_mac_tests` receiving Keychain `OSStatus 100001`; no Milestone 8 test failed.
 - `make doctor` failed because the Xcode Metal Toolchain component is absent. Consequently `make unreal-smoke` stopped at its doctor prerequisite. A direct UBT compile attempt also could not bypass that gate in this environment: UE 5.8's UBA process was denied shared-memory creation by the execution sandbox before compilation.
 - The headless `VirtualRowing.CoursePresentation` run, `make unreal-shipping`, `make unreal-package-verify`, and the four packaged visual observations were therefore not run. They remain required; compilation or native tests are not substituted for them.
+
+Follow-up (2026-09-20): the owner launched the packaged app with `-SimulatorDevice=random10min`; the HUD metrics updated, but the course presentation was not human-visible. There were several compounding causes. The HUD root border filled the viewport with an opaque dark brush; it is now fully transparent, while a smaller left-aligned metrics panel uses a 38% alpha fill and text shadows. The original spline was only a transform guide; the actor now creates visible spline-mesh edges. `UCourseSubsystem` was a game-instance subsystem whose world lookup could be unavailable during startup; it is now a world subsystem that owns the rendered world's actor and camera, and HUD creation activates it before entering the viewport. Runtime-loaded primitive assets could also be absent from a Shipping cook, so meshes and material are hard actor references. Finally, `/Engine/Maps/Entry` contains no authored light, leaving the lit primitive material black, and an attempted full-course overview made the 4.8 m boat and stroke motion only a few pixels. The actor now supplies a movable directional light and a close elevated follow camera that shows the moving route, boat, and stroke. Automation coverage asserts root/panel alpha, illumination, visible edge segments, and follow-camera framing. The relevant Unreal translation units and module compile and link using the generated response files. Full UBT and packaging attempts were blocked before compilation because this agent sandbox denies Unreal access to its global trace/XML-cache files under `~/Library/Application Support`; a freshly packaged build and the four visual observations remain required before the simulator evidence can pass.
 
 ## Deferred
 
