@@ -6,9 +6,9 @@ namespace OnlineClient
 {
 	namespace
 	{
-		std::string Disposition(const std::filesystem::path &DatabasePath, const FRowingSessionId &Id, LocalData::IBlobCipher &Cipher)
+		std::string Disposition(const std::filesystem::path &DatabasePath, const FRowingSessionId &Id, LocalData::IBlobCipher *Cipher)
 		{
-			const auto Events = LocalData::ReadJournalEvents(DatabasePath, Id.ToCanonicalString(), &Cipher);
+			const auto Events = LocalData::ReadJournalEvents(DatabasePath, Id.ToCanonicalString(), Cipher, true);
 			for (auto It = Events.rbegin(); It != Events.rend(); ++It)
 			{
 				if (It->Kind == LocalData::EJournalEventKind::Completed)
@@ -28,10 +28,17 @@ namespace OnlineClient
 	} // namespace
 
 	FCoordinator::FCoordinator(std::filesystem::path InDatabasePath,
+							   ITransport &InTransport,
+							   FSyncConfig InConfig)
+		: DatabasePath(std::move(InDatabasePath)), Transport(InTransport), Config(std::move(InConfig))
+	{
+	}
+
+	FCoordinator::FCoordinator(std::filesystem::path InDatabasePath,
 							   LocalData::IBlobCipher &InCipher,
 							   ITransport &InTransport,
 							   FSyncConfig InConfig)
-		: DatabasePath(std::move(InDatabasePath)), Cipher(InCipher), Transport(InTransport), Config(std::move(InConfig))
+		: DatabasePath(std::move(InDatabasePath)), Cipher(&InCipher), Transport(InTransport), Config(std::move(InConfig))
 	{
 	}
 

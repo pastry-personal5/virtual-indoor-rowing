@@ -285,8 +285,8 @@ namespace
 		{ return std::uint8_t{1}; };
 		FRealDeviceController Controller(std::move(Deps));
 		EXPECT_TRUE(Controller.Connect());
-		EXPECT_TRUE(H.CipherLoads == 1);
-		EXPECT_TRUE(CipherLoadsAtDiscovery == 1);
+		EXPECT_TRUE(H.CipherLoads == 0);
+		EXPECT_TRUE(CipherLoadsAtDiscovery == 0);
 		EXPECT_TRUE(Controller.GetJournalStatus() == EAppJournalStatus::Saving);
 		EXPECT_TRUE(Controller.GetMode() == ERealDeviceMode::Starting);
 	}
@@ -295,36 +295,23 @@ namespace
 	{
 		FHarness H;
 		H.bCipherFails = true;
-		EXPECT_TRUE(!H.Controller->Connect());
-		EXPECT_TRUE(H.Controller->GetMode() == ERealDeviceMode::JournalDecision);
-		EXPECT_TRUE(H.Controller->GetJournalError() == "keychain denied");
-		EXPECT_TRUE(H.DiscoveriesCreated == 0);
-		// Nothing rows, and nothing is created, until the user confirms.
-		H.Step(5000);
-		EXPECT_TRUE(H.DiscoveriesCreated == 0);
-		EXPECT_TRUE(!std::filesystem::exists(H.Temp.Path));
-
-		H.bRelaunchAvailable = true;
-		EXPECT_TRUE(H.Controller->ConfirmRowWithoutSaving());
-		EXPECT_TRUE(H.Controller->GetJournalStatus() == EAppJournalStatus::NotSaving);
-		H.Step(100);
-		H.Row(1, 15);
-		const FWorkoutSnapshot *Snapshot = H.Controller->GetSnapshot();
-		EXPECT_TRUE(Snapshot != nullptr && Snapshot->State == ERowingSessionState::Active);
-		EXPECT_TRUE(!std::filesystem::exists(H.Temp.Path / "journal"));
+		EXPECT_TRUE(H.Controller->Connect());
+		EXPECT_TRUE(H.Controller->GetJournalStatus() == EAppJournalStatus::Saving);
+		EXPECT_TRUE(H.CipherLoads == 0);
+		EXPECT_TRUE(H.DiscoveriesCreated == 1);
 	}
 
 	void controller_journal_decision_can_be_retried_or_cancelled()
 	{
 		FHarness H;
 		H.bCipherFails = true;
-		EXPECT_TRUE(!H.Controller->Connect());
+		EXPECT_TRUE(H.Controller->Connect());
 		H.Controller->CancelConnect();
 		EXPECT_TRUE(H.Controller->GetMode() == ERealDeviceMode::Idle);
 		EXPECT_TRUE(!H.Controller->ConfirmRowWithoutSaving());
 		H.bCipherFails = false;
-		EXPECT_TRUE(!H.Controller->Connect() == false);
-		EXPECT_TRUE(H.CipherLoads == 2);
+		EXPECT_TRUE(H.Controller->Connect());
+		EXPECT_TRUE(H.CipherLoads == 0);
 		EXPECT_TRUE(H.Controller->GetJournalStatus() == EAppJournalStatus::Saving);
 		EXPECT_TRUE(H.Controller->GetMode() == ERealDeviceMode::Starting);
 	}
@@ -339,9 +326,8 @@ namespace
 		const FWorkoutSnapshot *Snapshot = H.Controller->GetSnapshot();
 		EXPECT_TRUE(Snapshot != nullptr && Snapshot->State == ERowingSessionState::Active);
 		EXPECT_TRUE(Snapshot != nullptr && Snapshot->bJournalHealthy);
-		FTestCipher Cipher;
 		std::size_t Committed = 0;
-		for (const LocalData::FSampleChunk &Chunk : LocalData::ReadSampleChunks(GetAppJournalDatabasePath(H.Temp.Path / "journal"), Snapshot->SessionId.ToCanonicalString(), &Cipher))
+		for (const LocalData::FSampleChunk &Chunk : LocalData::ReadSampleChunks(GetAppJournalDatabasePath(H.Temp.Path / "journal"), Snapshot->SessionId.ToCanonicalString()))
 			Committed += Chunk.Samples.size();
 		EXPECT_TRUE(Committed > 0);
 	}
@@ -523,7 +509,7 @@ namespace
 		EXPECT_TRUE(!H.Controller->HasSession());
 		// A later Connect starts fresh and reuses the open journal.
 		EXPECT_TRUE(H.Controller->Connect());
-		EXPECT_TRUE(H.CipherLoads == 1);
+		EXPECT_TRUE(H.CipherLoads == 0);
 	}
 
 	void controller_reports_an_interrupted_session_once()
@@ -546,8 +532,20 @@ namespace
 		H.ConnectRemembered();
 		H.Row(1, 15);
 		H.Discovery->Live = nullptr;
+		H.Controller->ShutdownGracefully();
 		H.Rebuild();
 		EXPECT_TRUE(!H.Controller->WasInterruptedSessionRecovered());
+	}
+
+	void controller_destruction_does_not_finalize_an_active_row()
+	{
+		FHarness H;
+		H.ConnectRemembered();
+		H.Row(1, 15);
+		H.Discovery->Live = nullptr;
+		H.Controller.reset();
+		H.Rebuild();
+		EXPECT_TRUE(H.Controller->WasInterruptedSessionRecovered());
 	}
 
 	void controller_records_display_latency_and_writes_an_aggregate()
@@ -559,6 +557,7 @@ namespace
 		H.Now += 30 * NsPerMs;
 		H.Controller->Pump();
 		H.Controller->NoteDisplayApplied(H.Now);
+		const FRowingSessionId SessionId = H.Controller->GetSnapshot()->SessionId;
 		EXPECT_TRUE(H.Controller->GetLatency().GetCount() == 1);
 		EXPECT_TRUE(H.Controller->GetLatency().GetMaxNs() == 30 * NsPerMs);
 		// Without a new sample there is nothing to measure.
@@ -577,6 +576,11 @@ namespace
 		for (const auto &Entry : std::filesystem::directory_iterator(H.Temp.Path / "metrics"))
 			bFound = bFound || Entry.path().filename().string().rfind("hud-latency-", 0) == 0;
 		EXPECT_TRUE(bFound);
+		const auto Summary = LocalData::ReadSessionLatencySummary(GetAppJournalDatabasePath(H.Temp.Path / "journal"), SessionId);
+		EXPECT_TRUE(Summary.has_value());
+		EXPECT_TRUE(Summary && Summary->SourceRevision == "test");
+		EXPECT_TRUE(Summary && Summary->SampleCount == 1 && Summary->RetainedCount == 1 && Summary->DroppedCount == 0);
+		EXPECT_TRUE(Summary && Summary->P50Ns == 30 * NsPerMs && Summary->P95Ns == 30 * NsPerMs && Summary->P99Ns == 30 * NsPerMs && Summary->MaxNs == 30 * NsPerMs);
 	}
 } // namespace
 
@@ -601,6 +605,7 @@ int main()
 	controller_cancel_ends_the_session_and_returns_to_idle();
 	controller_reports_an_interrupted_session_once();
 	controller_quit_ends_the_row_cleanly();
+	controller_destruction_does_not_finalize_an_active_row();
 	controller_records_display_latency_and_writes_an_aggregate();
 	return Failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }

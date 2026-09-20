@@ -453,7 +453,7 @@ namespace
 		EXPECT_TRUE(Sink.SummaryPayloads.size() == 1);
 	}
 
-	void workout_session_aborts_on_device_terminated_state()
+	void workout_session_completes_on_device_terminated_state()
 	{
 		FFakeSink Sink;
 		std::unique_ptr<RowingSim::FReplayRowingMachine> Machine;
@@ -463,9 +463,9 @@ namespace
 
 		const FWorkoutSnapshot &Snapshot = Session->GetSnapshot();
 		EXPECT_TRUE(Snapshot.State == ERowingSessionState::Ended);
-		EXPECT_TRUE(Snapshot.Disposition == ERowingSessionDisposition::Aborted);
-		EXPECT_TRUE(Snapshot.EndReason == ERowingSessionStateReason::DeviceTerminated);
-		EXPECT_TRUE(Sink.EventCount(LocalData::EJournalEventKind::Aborted) == 1);
+		EXPECT_TRUE(Snapshot.Disposition == ERowingSessionDisposition::Completed);
+		EXPECT_TRUE(Snapshot.EndReason == ERowingSessionStateReason::DeviceCompleted);
+		EXPECT_TRUE(Sink.EventCount(LocalData::EJournalEventKind::Completed) == 1);
 	}
 
 	void workout_session_ends_when_the_device_reports_the_end_with_reset_meters()
@@ -954,7 +954,7 @@ int main()
 	workout_session_resumes_after_stale_link_without_disconnect();
 	workout_session_interrupts_after_reconnect_window();
 	workout_session_completes_on_device_complete_state();
-	workout_session_aborts_on_device_terminated_state();
+	workout_session_completes_on_device_terminated_state();
 	workout_session_ends_when_the_device_reports_the_end_with_reset_meters();
 	workout_session_ends_when_the_device_returns_to_waiting_to_begin();
 	workout_session_does_not_end_from_an_out_of_order_rejected_sample();

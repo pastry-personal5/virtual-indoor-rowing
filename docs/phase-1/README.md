@@ -1,12 +1,20 @@
 # Delivery Phase 1: walking skeleton
 
-Status: Open (per [ADR-0010](../adr/0010-defer-remaining-phase-0-spike-evidence-to-phase-4.md)); Milestones 1–10 are implemented with automated evidence, while the combined Phase 1 exit-gate evidence remains outstanding where noted.
+Status: Complete — Pass (2026-09-20). All non-deferred Phase 1 exit-gate evidence is verified in [the evidence report](04-evidence-report.md); ADR-deferred evidence remains assigned to Phase 4.
 Owner: A0 — CTO / Principal Architect
 Last reviewed: 2026-09-20
 
 ## Purpose
 
 Delivery Phase 1 turns the Phase 0 diagnostic evidence into the first end-to-end product path: an unsigned, ad-hoc-built internal macOS app that connects to a real PM5, rows a gray-box route, shows live metrics, durably journals every session, survives offline/cloud absence, and uploads to a minimal development API. This is the "walking skeleton" — thin, but end-to-end and real, not a diagnostic tool.
+
+## Current development journal policy
+
+Per [ADR-0012](../adr/0012-plaintext-development-single-user-journals.md),
+development and single-user journals are owner-only plaintext SQLite/WAL data
+from 2026-09-20 onward. This changes neither local durability nor the privacy
+handling of workout data; journals remain private and uncommitted. Encryption
+at rest remains the required future posture for multi-user and release scopes.
 
 ## Relationship to the product delivery plan
 
@@ -73,7 +81,7 @@ Owner-confirmed (2026-09-17): Phase 1 milestones are **not** pre-planned as a fu
 
 - **Milestone 6 — hardening, refactor, and chores** (no build-order step): scoped and implemented 2026-09-19 (automated checks only). Fixes the five defects deferred from Milestones 4 and 5 (real-adapter `Ready`/`Restored` order, `CreateSession` retry, `WriteSummary` commit failure, per-session summary revision, `pm5-tui` driver polling and mid-row End Session), does mechanical splits of `pm5-tui`'s `main.cpp`/`RunMetricsWriter.cpp` and `Scripts/dev.py`, renames `pm5-sim` to `RowingSim`, and clears recorded chores. No new product behavior. See [06-milestone-6-hardening-and-refactor.md](06-milestone-6-hardening-and-refactor.md).
 
-- **Milestone 7 — real PM5 wiring in the Unreal app** (completes the CoreBluetooth adapter's use in the product app; first hardware evidence toward FR-002/003/007 and the exit-gate run; FR-004 still needs the route milestone): scoped and implemented 2026-09-19 (automated checks, Editor-target link and a headless Automation spec; real-PM5 and packaged-app checks are owner-run and outstanding). The adapter and the Keychain cipher now link into the app; a click-to-connect flow (Bluetooth is only created on user action, never in the Editor), a nearest-first PM5 picker and device panel, a Keychain-sealed journal with launch recovery and an explicit journal-unavailable policy, a 1 s checkpoint cadence, and minimal latency instrumentation. Gated by an owner-run `make pm5-tui-journal` prerequisite. See [07-milestone-7-real-pm5-app-wiring.md](07-milestone-7-real-pm5-app-wiring.md).
+- **Milestone 7 — real PM5 wiring in the Unreal app** (completes the CoreBluetooth adapter's use in the product app; first hardware evidence toward FR-002/003/007 and the exit-gate run; FR-004 still needs the route milestone): scoped and implemented 2026-09-19 (automated checks, Editor-target link and a headless Automation spec; real-PM5 and packaged-app checks are owner-run). The adapter links into the app; a click-to-connect flow (Bluetooth is only created on user action, never in the Editor), a nearest-first PM5 picker and device panel, an owner-only journal with launch recovery and an explicit journal-unavailable policy, a sub-second checkpoint target, and session-linked latency instrumentation. ADR-0012 supersedes the milestone's original Keychain-sealed development-journal policy. See [07-milestone-7-real-pm5-app-wiring.md](07-milestone-7-real-pm5-app-wiring.md).
 
 - **Milestone 8 — gray-box course, boat, and stroke presentation** (completes build-order step 5; FR-004/FR-006 presentation slice): implemented 2026-09-19. Adds engine-independent `CourseRuntime`, a Game/PIE-only `UCourseSubsystem`, runtime-generated 2 km oval and primitive single-scull proxy, bounded distance prediction/correction, PM-state and rate-fallback stroke motion, rigid side camera, the conditional `Estimated stroke motion` HUD label, a `state_missing` simulator fixture, `course_runtime_tests`, and `VirtualRowing.CoursePresentation` Automation coverage. The world remains reversible presentation: HUD/journal distance is cumulative PM authority while only spline position wraps. Packaged simulator visual confirmation is outstanding; real-PM5 proof remains part of the combined phase exit gate. See [08-milestone-8-gray-box-course-presentation.md](08-milestone-8-gray-box-course-presentation.md).
 

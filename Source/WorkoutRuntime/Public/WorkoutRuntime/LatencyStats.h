@@ -26,6 +26,10 @@ class FLatencyStats
 	{
 		return Dropped;
 	}
+	std::uint64_t GetRetainedCount() const noexcept
+	{
+		return static_cast<std::uint64_t>(Samples.size());
+	}
 	// Nearest-rank percentile in nanoseconds over the retained samples; 0 when empty.
 	std::uint64_t GetPercentileNs(double Percentile) const;
 	std::uint64_t GetMaxNs() const noexcept

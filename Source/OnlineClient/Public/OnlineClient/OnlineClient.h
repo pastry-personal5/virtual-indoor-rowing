@@ -70,6 +70,9 @@ namespace OnlineClient
 	{
 	  public:
 		FCoordinator(std::filesystem::path DatabasePath,
+					 ITransport &Transport,
+					 FSyncConfig Config);
+		FCoordinator(std::filesystem::path DatabasePath,
 					 LocalData::IBlobCipher &Cipher,
 					 ITransport &Transport,
 					 FSyncConfig Config);
@@ -80,7 +83,7 @@ namespace OnlineClient
 
 	  private:
 		std::filesystem::path DatabasePath;
-		LocalData::IBlobCipher &Cipher;
+		LocalData::IBlobCipher *Cipher = nullptr;
 		ITransport &Transport;
 		FSyncConfig Config;
 		std::string Token;

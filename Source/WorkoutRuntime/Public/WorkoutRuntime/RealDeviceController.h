@@ -15,12 +15,13 @@
 #include <vector>
 
 // The real-device path of the app (Phase 1 Milestone 7,
-// docs/phase-1/07-milestone-7-real-pm5-app-wiring.md): connection flow, the sealed
+// docs/phase-1/07-milestone-7-real-pm5-app-wiring.md): connection flow, the local
 // journal and its failure policy, the session over the attached machine, and the
 // latency aggregate. Engine-independent, single-threaded and poll-driven: the
 // Unreal subsystem owns one and calls Pump() every tick on the game thread, and
-// everything Apple-specific (discovery, Keychain cipher) arrives through the
-// dependency factories, so this is unit-tested with fakes.
+// everything Apple-specific arrives through dependency factories, so this is
+// unit-tested with fakes. The cipher factory remains only as a source-compatible
+// legacy dependency while ADR-0012 journals are plaintext.
 //
 // Nothing here touches Bluetooth or the Keychain until Connect(): construction only
 // looks for an interrupted session in an existing journal (which needs no key).
@@ -63,7 +64,7 @@ struct FRealDeviceDependencies
 	std::string SourceRevision;
 	// False in a build that must never touch Bluetooth (the Unreal Editor). Connect()
 	// then reports EDeviceProblem::TransportUnavailable before it opens the journal
-	// (which could prompt for the Keychain) or creates a discovery.
+	// or creates a discovery.
 	bool bTransportAvailable = true;
 };
 
@@ -71,15 +72,15 @@ class FRealDeviceController final
 {
   public:
 	explicit FRealDeviceController(FRealDeviceDependencies InDependencies);
-	// Ends an active session (so its journal is flushed), writes the latency
-	// aggregate, then tears down session, machine, discovery, journal in that order.
+	// Destruction only releases runtime resources. It never creates a terminal
+	// journal event; an unclean process exit must remain recoverable.
 	~FRealDeviceController();
 
 	FRealDeviceController(const FRealDeviceController &) = delete;
 	FRealDeviceController &operator=(const FRealDeviceController &) = delete;
 
-	// User-initiated start. Opens the journal first (the Keychain may prompt here and
-	// nowhere else), then creates the discovery. On a journal failure it stops in
+	// User-initiated start. Opens the owner-only journal first, then creates the
+	// discovery. On a journal failure it stops in
 	// JournalDecision and returns false; calling Connect() again retries.
 	bool Connect();
 	// From JournalDecision: proceed without a journal. The row is then not saved and
@@ -99,6 +100,9 @@ class FRealDeviceController final
 	// Ends an active session with runtime semantics (Completed, or Interrupted when
 	// it never started or lost its link). Returns false when there is no live session.
 	bool EndSession();
+	// Explicit application shutdown path. Ends an active session cleanly, writes the
+	// latency aggregate, then disconnects. Destruction intentionally does not call it.
+	void ShutdownGracefully();
 	// A fresh session over the still-attached machine; only valid once the previous
 	// one has ended.
 	bool StartNewSession();
@@ -157,8 +161,8 @@ class FRealDeviceController final
 	{
 		return Latency;
 	}
-	// Writes the aggregate to <dir>/metrics and resets it; returns the error text or
-	// empty (also empty when nothing was recorded).
+	// Writes the aggregate to the session journal and <dir>/metrics, then resets it;
+	// returns the error text or empty (also empty when nothing was recorded).
 	std::string FlushLatency();
 
   private:
@@ -167,6 +171,7 @@ class FRealDeviceController final
 	void CreateSession();
 	void ArmRowStopIfRowEnded();
 	IJournalSink &ActiveSink();
+	std::string FlushLatencyForSession(const FRowingSessionId &SessionId);
 
 	FRealDeviceDependencies Deps;
 	FAppJournalRecovery Recovery;

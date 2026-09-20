@@ -77,6 +77,23 @@ namespace LocalData
 		std::uint32_t QualityFlags = 0;
 	};
 
+	// Aggregate software latency observed while applying a real-device sample to
+	// the HUD. This intentionally contains no PM payload, device identifier, or
+	// raw timestamp. One immutable v1 aggregate is retained per local session.
+	struct FSessionLatencySummary
+	{
+		FRowingSessionId Id;
+		std::uint32_t SchemaVersion = 1;
+		std::string SourceRevision;
+		std::uint64_t SampleCount = 0;
+		std::uint64_t RetainedCount = 0;
+		std::uint64_t DroppedCount = 0;
+		std::uint64_t P50Ns = 0;
+		std::uint64_t P95Ns = 0;
+		std::uint64_t P99Ns = 0;
+		std::uint64_t MaxNs = 0;
+	};
+
 	// A durable instruction to upload a finalized session. The payload itself
 	// stays in the encrypted journal; this table contains only technical retry
 	// state and the digest which identifies the immutable SessionObject.
@@ -110,8 +127,8 @@ namespace LocalData
 	{
 	  public:
 		// Cipher is not owned and must outlive the writer. With a cipher,
-		// sample chunks are sealed at rest; without one they are written in
-		// plaintext (Spike B behavior). Session summaries always require a cipher.
+		// sample chunks and summaries are sealed at rest; without one they are
+		// written as owner-only plaintext per ADR-0012.
 		explicit FLocalDataJournalWriter(std::filesystem::path DatabasePath, IBlobCipher *Cipher = nullptr);
 		~FLocalDataJournalWriter();
 
@@ -162,8 +179,8 @@ namespace LocalData
 		void UpdateSessionState(const FRowingSessionId &Id, ERowingSessionState State);
 
 		// Two-phase final-summary write, same staged-commit shape as
-		// StageFinalEvent. Throws if no cipher was supplied. Revisions are
-		// append-only: re-staging an existing (session, revision) fails.
+		// StageFinalEvent. Revisions are append-only: re-staging an existing
+		// (session, revision) fails.
 		void StageSessionSummary(const FSessionSummary &Summary);
 		void CommitStagedSessionSummary();
 
@@ -172,6 +189,10 @@ namespace LocalData
 		// failure rolls back all four writes, leaving the locally durable active
 		// workout untouched for recovery/retry.
 		void FinalizeSession(const FFinalizedSession &Finalized);
+
+		// Persists a technical aggregate after a session has finalized. The
+		// session foreign key prevents orphaned evidence and duplicate writes fail.
+		void RecordSessionLatencySummary(const FSessionLatencySummary &Summary);
 
 		// Rolls back whatever is staged and forgets it, so a commit that keeps
 		// failing cannot wedge every later write. A no-op when nothing is staged.
@@ -204,10 +225,25 @@ namespace LocalData
 	std::optional<FSessionRecord>
 	ReadSession(const std::filesystem::path &DatabasePath, const FRowingSessionId &Id);
 
-	// Returns the highest revision, or nullopt if none. Requires the cipher the
-	// summary was sealed with.
+	// Returns the highest revision, or nullopt if none. A sealed summary requires
+	// its cipher; a plaintext summary does not. Unknown codecs are rejected.
 	std::optional<FSessionSummary>
-	ReadLatestSessionSummary(const std::filesystem::path &DatabasePath, const FRowingSessionId &Id, IBlobCipher &Cipher);
+	ReadLatestSessionSummary(const std::filesystem::path &DatabasePath,
+							 const FRowingSessionId &Id,
+							 IBlobCipher *Cipher = nullptr);
+
+	inline std::optional<FSessionSummary>
+	ReadLatestSessionSummary(const std::filesystem::path &DatabasePath,
+							 const FRowingSessionId &Id,
+							 IBlobCipher &Cipher)
+	{
+		return ReadLatestSessionSummary(DatabasePath, Id, &Cipher);
+	}
+
+	// Reads the v1 technical latency aggregate without needing the journal cipher:
+	// it contains no raw telemetry or device identifiers.
+	std::optional<FSessionLatencySummary>
+	ReadSessionLatencySummary(const std::filesystem::path &DatabasePath, const FRowingSessionId &Id);
 
 	std::vector<FJournalEvent>
 	ReadJournalEvents(const std::filesystem::path &DatabasePath,
@@ -225,10 +261,18 @@ namespace LocalData
 						  const std::string &LastError);
 
 	// Reconstructs the deterministic Zstandard-compressed SessionObject for a
-	// finalized session. The returned bytes hash to the outbox payload_hash.
+	// finalized session. Sealed records require their cipher; plaintext records
+	// do not. The returned bytes hash to the outbox payload_hash.
 	std::string ReadSessionObject(const std::filesystem::path &DatabasePath,
 								  const FRowingSessionId &Id,
-								  IBlobCipher &Cipher);
+								  IBlobCipher *Cipher = nullptr);
+
+	inline std::string ReadSessionObject(const std::filesystem::path &DatabasePath,
+										 const FRowingSessionId &Id,
+										 IBlobCipher &Cipher)
+	{
+		return ReadSessionObject(DatabasePath, Id, &Cipher);
+	}
 
 	struct FLocalDataRecoveryReport
 	{

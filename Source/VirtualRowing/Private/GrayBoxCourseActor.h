@@ -36,6 +36,7 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	FTransform GetTorsoRelativeTransformForTesting() const;
 	FTransform GetLeftOarRelativeTransformForTesting() const;
 	FTransform GetCameraTransformForTesting() const;
+	static float InterpolateOarMotion(float Current, float Target, float DeltaSeconds);
 	float GetCameraFieldOfViewForTesting() const;
 	float GetCourseLightIntensityForTesting() const;
 	int32 GetMarkerCountForTesting() const;
@@ -81,5 +82,8 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	TArray<TObjectPtr<UTextRenderComponent>> MarkerLabels;
 
 	bool bInitialized = false;
+	bool bHasOarPresentation = false;
+	float SmoothedHandsX = 0.0f;
+	float SmoothedOarYaw = 0.0f;
 	UStaticMeshComponent *MakeMesh(const TCHAR *Name, UStaticMesh *Mesh, USceneComponent *Parent, const FVector &Scale, const FLinearColor &Color);
 };

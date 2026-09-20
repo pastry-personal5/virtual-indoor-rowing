@@ -33,6 +33,7 @@
 #include <chrono>
 #include <memory>
 #include <random>
+#include <utility>
 
 DEFINE_LOG_CATEGORY_STATIC(LogWorkoutSubsystem, Log, All);
 
@@ -268,13 +269,17 @@ struct UWorkoutSubsystem::FImpl
 		}
 		// A replaced session can reuse a revision number, so identity is compared too.
 		const std::string SessionKey = Snapshot->SessionId.ToCanonicalString();
-		if (!bHadSnapshot || SessionKey != LastSessionKey)
+		const bool bSessionChanged = !bHadSnapshot || SessionKey != LastSessionKey;
+		if (bSessionChanged)
 			bDisplayDirty = true;
 		bHadSnapshot = true;
 		LastSessionKey = SessionKey;
 		if (!bDisplayDirty && Snapshot->Revision == LastRevision)
 			return false;
-		Display = MakeWorkoutDisplay(*Snapshot);
+		FWorkoutDisplay CurrentDisplay = MakeWorkoutDisplay(*Snapshot);
+		if (!bSessionChanged && Snapshot->LatestSample)
+			CurrentDisplay = RetainLiveMetricValues(Display, std::move(CurrentDisplay), *Snapshot->LatestSample);
+		Display = std::move(CurrentDisplay);
 		LastRevision = Snapshot->Revision;
 		bDisplayDirty = false;
 		++DisplayGeneration;
@@ -348,6 +353,8 @@ void UWorkoutSubsystem::Deinitialize()
 	if (Impl)
 	{
 		// Ends an active row cleanly (journal flushed), then disconnects.
+		if (Impl->Real)
+			Impl->Real->ShutdownGracefully();
 		Impl->Real.reset();
 	}
 	Impl.Reset();
@@ -602,7 +609,7 @@ FWorkoutDevicePanel UWorkoutSubsystem::GetDevicePanel() const
 	switch (Real.GetJournalStatus())
 	{
 	case EAppJournalStatus::Saving:
-		Panel.JournalLine = TEXT("Saving this row to the encrypted local journal.");
+		Panel.JournalLine = TEXT("Saving this row to the owner-only local journal.");
 		break;
 	case EAppJournalStatus::NotSaving:
 		Panel.JournalLine = TEXT("NOT BEING SAVED: this row will not be recorded.");

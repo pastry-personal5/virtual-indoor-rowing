@@ -7,6 +7,7 @@
 #include "Components/SplineMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/TextRenderComponent.h"
+#include "Engine/World.h"
 #include "Engine/StaticMesh.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "Materials/MaterialInstanceDynamic.h"
@@ -22,6 +23,8 @@ namespace
 	constexpr double CameraStarboardCm = 900.0;
 	constexpr double CameraElevationCm = 650.0;
 	constexpr double CameraLookAheadCm = 700.0;
+	constexpr float OarInterpolationSpeed = 16.0f;
+	constexpr float MaxOarInterpolationStepSeconds = 1.0f / 30.0f;
 
 } // namespace
 
@@ -207,14 +210,26 @@ void AGrayBoxCourseActor::ApplyPresentation(const FCoursePresentationSnapshot &S
 	Seat->SetRelativeLocation(FVector(SeatX, 0.0, 72.0));
 	Torso->SetRelativeLocation(FVector(SeatX - 5.0f, 0.0, 135.0));
 	Torso->SetRelativeRotation(FRotator(FMath::Lerp(22.0f, -14.0f, static_cast<float>(Snapshot.TorsoPose)), 0.0, 0.0));
-	const float HandsX = FMath::Lerp(SeatX + 72.0f, SeatX - 58.0f, static_cast<float>(Snapshot.ArmsPose));
-	LeftArm->SetRelativeLocation(FVector(HandsX, -25.0, 148.0));
-	RightArm->SetRelativeLocation(FVector(HandsX, 25.0, 148.0));
-	const float OarYaw = FMath::Lerp(-34.0f, 42.0f, static_cast<float>(Snapshot.OarPose));
-	LeftOar->SetRelativeLocation(FVector(HandsX, -155.0, 105.0));
-	RightOar->SetRelativeLocation(FVector(HandsX, 155.0, 105.0));
-	LeftOar->SetRelativeRotation(FRotator(0.0, OarYaw, 0.0));
-	RightOar->SetRelativeRotation(FRotator(0.0, -OarYaw, 0.0));
+	const float TargetHandsX = FMath::Lerp(SeatX + 72.0f, SeatX - 58.0f, static_cast<float>(Snapshot.ArmsPose));
+	const float TargetOarYaw = FMath::Lerp(-34.0f, 42.0f, static_cast<float>(Snapshot.OarPose));
+	const float WorldDeltaSeconds = GetWorld() ? GetWorld()->GetDeltaSeconds() : 0.0f;
+	if (!bHasOarPresentation)
+	{
+		bHasOarPresentation = true;
+		SmoothedHandsX = TargetHandsX;
+		SmoothedOarYaw = TargetOarYaw;
+	}
+	else
+	{
+		SmoothedHandsX = InterpolateOarMotion(SmoothedHandsX, TargetHandsX, WorldDeltaSeconds);
+		SmoothedOarYaw = InterpolateOarMotion(SmoothedOarYaw, TargetOarYaw, WorldDeltaSeconds);
+	}
+	LeftArm->SetRelativeLocation(FVector(TargetHandsX, -25.0, 148.0));
+	RightArm->SetRelativeLocation(FVector(TargetHandsX, 25.0, 148.0));
+	LeftOar->SetRelativeLocation(FVector(SmoothedHandsX, -155.0, 105.0));
+	RightOar->SetRelativeLocation(FVector(SmoothedHandsX, 155.0, 105.0));
+	LeftOar->SetRelativeRotation(FRotator(0.0, SmoothedOarYaw, 0.0));
+	RightOar->SetRelativeRotation(FRotator(0.0, -SmoothedOarYaw, 0.0));
 
 	const FVector BoatLocation = CourseTransform.GetLocation();
 	const FVector Forward = CourseTransform.GetUnitAxis(EAxis::X);
@@ -224,6 +239,12 @@ void AGrayBoxCourseActor::ApplyPresentation(const FCoursePresentationSnapshot &S
 	FRotator CameraRotation = UKismetMathLibrary::FindLookAtRotation(CameraLocation, CameraFocus);
 	CameraRotation.Roll = 0.0f;
 	InspectionCamera->SetWorldLocationAndRotation(CameraLocation, CameraRotation);
+}
+
+float AGrayBoxCourseActor::InterpolateOarMotion(float Current, float Target, float DeltaSeconds)
+{
+	const float BoundedDeltaSeconds = FMath::Clamp(DeltaSeconds, 0.0f, MaxOarInterpolationStepSeconds);
+	return FMath::FInterpTo(Current, Target, BoundedDeltaSeconds, OarInterpolationSpeed);
 }
 
 FTransform AGrayBoxCourseActor::GetBoatTransformForTesting() const

@@ -11,7 +11,9 @@
 // already-formatted values and never formats numbers itself. Nothing here
 // invents a value: a metric the device did not report is the fixed placeholder,
 // never zero, and values frozen by a link gap are flagged stale, never
-// interpolated.
+// interpolated. The HUD may retain the most recent device fact for a temporarily
+// absent optional field while the connection remains live; see
+// RetainLiveMetricValues.
 
 // The placeholder every absent metric renders as.
 inline constexpr const char *WorkoutDisplayPlaceholder = "--";
@@ -66,6 +68,13 @@ struct FWorkoutDisplay
 	std::string HeartRate;
 	bool bHeartRateSupplied = false;
 
+	// Presentation-only age markers for bounded sparse-packet retention. They are
+	// never rendered or persisted and use the adapter's monotonic timebase.
+	std::uint64_t PaceObservedMonotonicNs = 0;
+	std::uint64_t WattsObservedMonotonicNs = 0;
+	std::uint64_t StrokeRateObservedMonotonicNs = 0;
+	std::uint64_t HeartRateObservedMonotonicNs = 0;
+
 	// True when the shown values may be older than the present: the link is lost,
 	// stale, or reconnecting. The last device values stay visible, flagged.
 	bool bValuesStale = false;
@@ -86,6 +95,14 @@ struct FWorkoutDisplay
 FWorkoutDisplay MakeNoDeviceDisplay();
 
 FWorkoutDisplay MakeWorkoutDisplay(const FWorkoutSnapshot &Snapshot);
+
+// A PM5 general-status sample can arrive without its optional companion packet.
+// Retain the prior displayed device fact only for that short, live omission;
+// explicit device values (including an invalid/zero pace), a stale link, and a
+// new session are never masked. The caller owns the session-identity boundary.
+FWorkoutDisplay RetainLiveMetricValues(const FWorkoutDisplay &Previous,
+									   FWorkoutDisplay Current,
+									   const FRowingMetricSample &CurrentSample);
 
 // Exposed for tests and for other formatters that must agree with the HUD.
 std::string FormatWorkoutElapsed(std::uint64_t ElapsedMs);

@@ -1,7 +1,7 @@
 {
   "$schema": "./PM5Capabilities.schema.json",
   "schema_version": 1,
-  "profile_version": 6,
+  "profile_version": 7,
   "profiles": [
     {
       "monitor_model": "PM5",
@@ -61,6 +61,16 @@
           ]
         },
         {
+          "short_id": "0x0033",
+          "required_properties": ["notify"],
+          "allowed_packet_lengths": [20],
+          "implemented_fields": [
+            "source_elapsed",
+            "average_power",
+            "calories"
+          ]
+        },
+        {
           "short_id": "0x0036",
           "required_properties": ["notify"],
           "allowed_packet_lengths": [15, 18],
@@ -79,8 +89,8 @@
       "stale_after_ms": 500,
       "blocking_warning_after_ms": 1500,
       "source_spec_sha256": "7ee2513c1084082092f3cfb8c9437682912535c549a7b948e5aba5321d562e48",
-      "evidence_reference": "M1 PM5/634/178.069 profile v6; 2026-09-14 local HIL probe observed 15-byte 0x0036, and Concept2 PM CSAFE Communication Definition rev 0.34 BLE GATT table, printed pp. 17-18 and 21-22",
-      "approved_on": "2026-09-14"
+      "evidence_reference": "M1 PM5/634/178.069 profile v7; Concept2 PM CSAFE Communication Definition rev 0.34 BLE GATT table, printed pp. 17-18 and 21-22; 2026-09-20 owner HIL found missing HUD power without 0x0033 subscription",
+      "approved_on": "2026-09-20"
     }
   ]
 }

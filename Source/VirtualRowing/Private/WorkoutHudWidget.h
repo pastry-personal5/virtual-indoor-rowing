@@ -33,6 +33,7 @@ class VIRTUALROWING_API UWorkoutHudWidget : public UUserWidget
 	static ESlateVisibility AnimationLabelVisibility(ECourseAnimationQuality Quality);
 	static FLinearColor RootBackgroundColor();
 	static FLinearColor MetricPanelBackgroundColor();
+	static const TCHAR *MetricAccuracyNotice();
 
   protected:
 	virtual void NativeOnInitialized() override;
@@ -55,6 +56,8 @@ class VIRTUALROWING_API UWorkoutHudWidget : public UUserWidget
 	TObjectPtr<UTextBlock> BannerText;
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> ConnectionText;
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> MetricAccuracyText;
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> EstimatedStrokeText;
 	UPROPERTY(Transient)

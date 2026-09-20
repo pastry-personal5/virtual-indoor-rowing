@@ -48,6 +48,16 @@ namespace
 		}
 		assert(RequiresGeneralStatusNotify);
 		assert(RequiresAdditionalStatus1Notify);
+
+		bool SubscribesToAveragePower = false;
+		for (const FPM5CharacteristicProfile &Characteristic : Evaluation.Profile->Characteristics)
+		{
+			if (Characteristic.ShortId == AdditionalStatus2 &&
+				Characteristic.RequiresNotify &&
+				Characteristic.AllowedPacketLengths == std::vector<std::size_t>{20})
+				SubscribesToAveragePower = true;
+		}
+		assert(SubscribesToAveragePower);
 	}
 
 	void concept2pm_unreviewed_identity_rejected_against_reviewed_profiles()

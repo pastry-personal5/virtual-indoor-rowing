@@ -99,6 +99,17 @@ void FCoursePresentationSpec::Define()
 		TestTrue(TEXT("primary hidden"), UWorkoutHudWidget::AnimationLabelVisibility(ECourseAnimationQuality::Primary) == ESlateVisibility::Hidden);
 		TestTrue(TEXT("unavailable hidden"), UWorkoutHudWidget::AnimationLabelVisibility(ECourseAnimationQuality::Unavailable) == ESlateVisibility::Hidden); });
 
+	It("shows a persistent preliminary metric-accuracy disclosure", [this]()
+	   { TestEqual(TEXT("metric accuracy notice"), FString(UWorkoutHudWidget::MetricAccuracyNotice()), FString(TEXT("Metric-display accuracy is preliminary and may be limited."))); });
+
+	It("smooths oar transforms without allowing a stalled frame to snap", [this]()
+	   {
+		const float FirstStep = AGrayBoxCourseActor::InterpolateOarMotion(-34.0f, 42.0f, 1.0f / 60.0f);
+		TestTrue(TEXT("oar advances"), FirstStep > -34.0f);
+		TestTrue(TEXT("oar does not reach target in one normal frame"), FirstStep < 42.0f);
+		const float StalledStep = AGrayBoxCourseActor::InterpolateOarMotion(-34.0f, 42.0f, 1.0f);
+		TestTrue(TEXT("stalled frame remains bounded away from target"), StalledStep < 42.0f); });
+
 	It("cannot mutate authoritative workout facts", [this]()
 	   {
 		const uint64 OfficialDistance = 2'250'000;

@@ -122,14 +122,15 @@ Authorization tests include owner, unrelated user, blocked user, expired entitle
 | RDS/Redis/S3/SQS/logs/backups | service-managed encryption with environment-specific KMS keys |
 | External OAuth tokens | per-record data key/envelope encryption; ciphertext, key version, provider metadata |
 | macOS refresh token | Keychain |
-| Local fitness payloads | AES-256-GCM per blob/chunk with per-profile Keychain key; owner-only files, FileVault encouraged |
+| Development/single-user local fitness payloads | Owner-only plaintext SQLite/WAL journal; FileVault encouraged; see [ADR-0012](../adr/0012-plaintext-development-single-user-journals.md) |
+| Future multi-user/release local fitness payloads | AES-256-GCM per blob/chunk with per-profile Keychain key; owner-only files, FileVault encouraged |
 | Update archives/feed | Developer ID/notarization plus separate EdDSA signing |
 | Content manifest | offline signing key and embedded verification public key |
 | Operator audit | append-only records and restricted retention store/export |
 
 Separate production/non-production keys and accounts. Release/update keys are not present on ordinary developer laptops or general CI runners. Signing requires protected environment approval, produces a transparency record (source revision, dependencies, hashes, signer, notarization ID), and supports documented rotation.
 
-Local encryption uses platform cryptographic primitives, fresh random nonces, authenticated associated identity/version data, and a key per local profile. Keychain key deletion is part of explicit local data deletion. It limits exposure from copied database/WAL files but is not claimed to resist malware or another process controlling an unlocked user account.
+For development and single-user runs, [ADR-0012](../adr/0012-plaintext-development-single-user-journals.md) replaces local encryption with owner-only plaintext journals so evidence can be inspected directly. The encrypted per-profile design remains required before a multi-user, shared-device, beta, or production scope. It uses platform cryptographic primitives, fresh random nonces, authenticated associated identity/version data, and a key per local profile. Keychain key deletion is part of explicit local data deletion. It limits exposure from copied database/WAL files but is not claimed to resist malware or another process controlling an unlocked user account.
 
 Secrets Manager stores service/provider secrets with automatic rotation where supported. Applications retrieve at runtime through task identity; secrets are never committed, baked into images, printed by CI, or passed on a command line that logs process arguments.
 

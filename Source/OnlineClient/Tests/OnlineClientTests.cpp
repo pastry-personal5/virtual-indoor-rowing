@@ -73,8 +73,8 @@ namespace
 
 int main()
 {
-	const auto Path = std::filesystem::temp_directory_path() / "online_client_test.sqlite3";
 	std::error_code Error;
+	const auto Path = std::filesystem::temp_directory_path() / "online_client_test.sqlite3";
 	std::filesystem::remove(Path, Error);
 	FCipher Cipher;
 	const FRowingSessionId Id = FRowingSessionId::GenerateV7(1'700'000'000'000ULL, []
@@ -105,5 +105,33 @@ int main()
 	std::filesystem::remove(Path, Error);
 	std::filesystem::remove(Path.string() + "-wal", Error);
 	std::filesystem::remove(Path.string() + "-shm", Error);
+
+	const auto PlaintextPath = std::filesystem::temp_directory_path() / "online_client_plaintext_test.sqlite3";
+	std::filesystem::remove(PlaintextPath, Error);
+	const FRowingSessionId PlaintextId = FRowingSessionId::GenerateV7(1'700'000'000'001ULL, []
+																	  { static std::uint8_t Byte = 33; return Byte++; });
+	{
+		LocalData::FLocalDataJournalWriter Writer(PlaintextPath);
+		LocalData::FSessionRecord Session;
+		Session.Id = PlaintextId;
+		Session.UserScope = "guest";
+		Session.Source = "pm5";
+		Writer.CreateSession(Session);
+		Writer.RecordJournalEvent({PlaintextId.ToCanonicalString(), 1, 1, LocalData::EJournalEventKind::CapabilityObserved, 1, "capability"});
+		LocalData::FFinalizedSession Finalized;
+		Finalized.TerminalEvent = {PlaintextId.ToCanonicalString(), 2, 2, LocalData::EJournalEventKind::Completed, 1, {}};
+		Finalized.Summary = {PlaintextId, 1, "summary", 0};
+		Writer.FinalizeSession(Finalized);
+	}
+	const auto PlaintextPending = LocalData::ReadPendingSyncOutbox(PlaintextPath);
+	FTransport PlaintextTransport;
+	PlaintextTransport.Digest = PlaintextPending.front().ObjectDigestSha256;
+	OnlineClient::FCoordinator PlaintextCoordinator(PlaintextPath, PlaintextTransport, Config);
+	EXPECT_TRUE(PlaintextCoordinator.ProcessOnce());
+	EXPECT_TRUE(!PlaintextTransport.Object.empty() && static_cast<unsigned char>(PlaintextTransport.Object[0]) == 0x28);
+	EXPECT_TRUE(LocalData::ReadPendingSyncOutbox(PlaintextPath).empty());
+	std::filesystem::remove(PlaintextPath, Error);
+	std::filesystem::remove(PlaintextPath.string() + "-wal", Error);
+	std::filesystem::remove(PlaintextPath.string() + "-shm", Error);
 	return Failures == 0 ? 0 : 1;
 }

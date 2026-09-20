@@ -33,7 +33,9 @@ namespace
 
 	// Whether the device's own workout state says the workout is over. Only meaningful while the
 	// session is Active, which needed an Active workout state to begin with: a PM5 that ends a
-	// Just Row can report Complete/Terminated, or drop straight back to WaitingToBegin.
+	// Just Row can report Complete/Terminated, or drop straight back to WaitingToBegin. A
+	// monitor-side end after an active local row is a completed local workout; it is not the
+	// application's explicit abort path.
 	std::optional<ERowingSessionStateReason> DeviceEndReason(const FRowingMetricSample &Sample)
 	{
 		switch (Sample.WorkoutState)
@@ -47,7 +49,7 @@ namespace
 					   ? std::optional<ERowingSessionStateReason>(ERowingSessionStateReason::DeviceCompleted)
 					   : std::nullopt;
 		case ERowingWorkoutState::Terminated:
-			return ERowingSessionStateReason::DeviceTerminated;
+			return ERowingSessionStateReason::DeviceCompleted;
 		default:
 			return std::nullopt;
 		}
@@ -350,6 +352,12 @@ struct FWorkoutSession::FImpl
 	void Accept(const FRowingMetricSample &Sample, std::uint64_t Ns)
 	{
 		EnsureSessionRow();
+		// Pump() drains a batch of adapter events before its normal Tick(). Flush
+		// before accepting a late event so that the batch cannot extend one chunk
+		// beyond the checkpoint deadline.
+		if (!Buffer.empty() && Ns >= BufferStartNs &&
+			(Ns - BufferStartNs) / NanosecondsPerMillisecond >= Config.FlushIntervalMs)
+			Flush(Ns);
 		if (Buffer.empty())
 			BufferStartNs = Ns;
 		Buffer.push_back(Sample);

@@ -17,9 +17,8 @@ FRealDeviceController::FRealDeviceController(FRealDeviceDependencies InDependenc
 
 FRealDeviceController::~FRealDeviceController()
 {
-	// A quit ends the row cleanly so the journal is flushed and terminal; a crash is
-	// the recovery path, not this one.
-	EndAndDropSession();
+	// Never finalize durable workout state from a destructor. A process that exits
+	// without the explicit application-shutdown path must be recoverable on relaunch.
 	Connector.Stop();
 }
 
@@ -150,6 +149,7 @@ void FRealDeviceController::EndAndDropSession()
 {
 	if (!Session)
 		return;
+	const FRowingSessionId SessionId = Session->GetSnapshot().SessionId;
 	if (IRowingMachine *Machine = Connector.GetMachine())
 	{
 		// Bring the session up to date so the final snapshot has everything the device delivered.
@@ -158,7 +158,7 @@ void FRealDeviceController::EndAndDropSession()
 			Session->Ingest(Event);
 	}
 	Session->End(Deps.Clock());
-	FlushLatency();
+	FlushLatencyForSession(SessionId);
 	Session.reset();
 	++LocalGeneration;
 }
@@ -167,12 +167,19 @@ bool FRealDeviceController::EndSession()
 {
 	if (!Session)
 		return false;
+	const FRowingSessionId SessionId = Session->GetSnapshot().SessionId;
 	Pump();
 	const bool bEnded = Session->End(Deps.Clock());
 	ArmRowStopIfRowEnded();
-	FlushLatency();
+	FlushLatencyForSession(SessionId);
 	++LocalGeneration;
 	return bEnded;
+}
+
+void FRealDeviceController::ShutdownGracefully()
+{
+	EndAndDropSession();
+	Connector.Stop();
 }
 
 bool FRealDeviceController::StartNewSession()
@@ -300,10 +307,41 @@ void FRealDeviceController::NoteDisplayApplied(std::uint64_t NowNs)
 
 std::string FRealDeviceController::FlushLatency()
 {
+	if (!Session)
+		return {};
+	return FlushLatencyForSession(Session->GetSnapshot().SessionId);
+}
+
+std::string FRealDeviceController::FlushLatencyForSession(const FRowingSessionId &SessionId)
+{
 	if (Latency.GetCount() == 0)
 		return {};
+	if (Journal)
+	{
+		LocalData::FSessionLatencySummary Summary;
+		Summary.Id = SessionId;
+		Summary.SourceRevision = Deps.SourceRevision;
+		Summary.SampleCount = Latency.GetCount();
+		Summary.RetainedCount = Latency.GetRetainedCount();
+		Summary.DroppedCount = Latency.GetDroppedCount();
+		Summary.P50Ns = Latency.GetPercentileNs(50.0);
+		Summary.P95Ns = Latency.GetPercentileNs(95.0);
+		Summary.P99Ns = Latency.GetPercentileNs(99.0);
+		Summary.MaxNs = Latency.GetMaxNs();
+		try
+		{
+			Journal->RecordSessionLatencySummary(Summary);
+		}
+		catch (const std::exception &Failure)
+		{
+			return Failure.what();
+		}
+	}
 	const std::string Name = "hud-latency-" + std::to_string(Deps.UnixTimeMs ? Deps.UnixTimeMs() : 0) + ".json";
 	std::string Error = WriteOwnerOnlyFile(Deps.AppDataDirectory / "metrics", Name, Latency.ToJson(Deps.SourceRevision));
-	Latency.Reset();
+	// Once the journal aggregate is durable, a metrics-file failure must not cause
+	// a retry to collide with the immutable per-session row.
+	if (Error.empty() || Journal)
+		Latency.Reset();
 	return Error;
 }

@@ -117,6 +117,30 @@ namespace LocalData::Private
 			RecordMigration(Connection, 4, "v4-journal-event-codec");
 		}
 
+		void ApplyVersion5(FSqliteConnection &Connection)
+		{
+			Connection.Execute("CREATE TABLE IF NOT EXISTS session_latency_summaries ("
+							   "session_id BLOB PRIMARY KEY CHECK (length(session_id) = 16) REFERENCES sessions(session_id),"
+							   "schema_version INTEGER NOT NULL,"
+							   "source_revision TEXT NOT NULL,"
+							   "sample_count INTEGER NOT NULL,"
+							   "retained_count INTEGER NOT NULL,"
+							   "dropped_count INTEGER NOT NULL,"
+							   "p50_ns INTEGER NOT NULL,"
+							   "p95_ns INTEGER NOT NULL,"
+							   "p99_ns INTEGER NOT NULL,"
+							   "max_ns INTEGER NOT NULL,"
+							   "recorded_at TEXT NOT NULL"
+							   ");");
+			RecordMigration(Connection, 5, "v5-session-latency-summaries");
+		}
+
+		void ApplyVersion6(FSqliteConnection &Connection)
+		{
+			Connection.Execute("ALTER TABLE session_summaries ADD COLUMN codec TEXT NOT NULL DEFAULT 'raw-v1+sealed';");
+			RecordMigration(Connection, 6, "v6-session-summary-codec");
+		}
+
 		// The unlocked check is only a fast path so read-only openers do not
 		// take the write lock. It is repeated under BEGIN IMMEDIATE so two
 		// connections opening the same older database cannot both apply it.
@@ -148,5 +172,7 @@ namespace LocalData::Private
 		ApplyMigrationOnce(Connection, 2, ApplyVersion2);
 		ApplyMigrationOnce(Connection, 3, ApplyVersion3);
 		ApplyMigrationOnce(Connection, 4, ApplyVersion4);
+		ApplyMigrationOnce(Connection, 5, ApplyVersion5);
+		ApplyMigrationOnce(Connection, 6, ApplyVersion6);
 	}
 } // namespace LocalData::Private

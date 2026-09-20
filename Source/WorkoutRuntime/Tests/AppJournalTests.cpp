@@ -117,6 +117,12 @@ namespace
 			Machine->PublishTelemetry(MakeSample(Index));
 			Pump();
 		}
+		void QueueSampleAfter(std::uint64_t Ms, std::uint64_t Index)
+		{
+			Now += Ms * NsPerMs;
+			Machine->AdvanceTo(Now);
+			Machine->PublishTelemetry(MakeSample(Index));
+		}
 		std::unique_ptr<RowingSim::FMockRowingMachine> Machine;
 		std::unique_ptr<FWorkoutSession> Session;
 		std::uint64_t Now = 0;
@@ -144,18 +150,18 @@ namespace
 		EXPECT_TRUE((Permissions & std::filesystem::perms::owner_all) == std::filesystem::perms::owner_all);
 	}
 
-	void app_journal_open_reports_a_key_failure_and_creates_nothing()
+	void app_journal_open_does_not_load_a_cipher_for_plaintext_policy()
 	{
 		FTempDirectory Temp;
 		FAppJournal::FOpenResult Thrown = FAppJournal::Open(Temp.Path, []() -> std::unique_ptr<LocalData::IBlobCipher>
 															{ throw LocalData::FBlobCipherError("keychain denied"); });
-		EXPECT_TRUE(Thrown.Journal == nullptr);
-		EXPECT_TRUE(Thrown.Error == "keychain denied");
+		EXPECT_TRUE(Thrown.Journal != nullptr);
+		EXPECT_TRUE(Thrown.Error.empty());
 		FAppJournal::FOpenResult Null = FAppJournal::Open(Temp.Path, []() -> std::unique_ptr<LocalData::IBlobCipher>
 														  { return nullptr; });
-		EXPECT_TRUE(Null.Journal == nullptr);
-		EXPECT_TRUE(!Null.Error.empty());
-		EXPECT_TRUE(!std::filesystem::exists(Temp.Path));
+		EXPECT_TRUE(Null.Journal != nullptr);
+		EXPECT_TRUE(Null.Error.empty());
+		EXPECT_TRUE(std::filesystem::exists(Temp.Path));
 	}
 
 	void app_journal_row_checkpoints_within_one_second()
@@ -166,23 +172,20 @@ namespace
 		if (!Opened.Journal)
 			return;
 		FRow Row(Opened.Journal->GetSink());
-		// Fewer samples than the count trigger: only the 1 s time trigger can flush.
-		for (std::uint64_t Index = 1; Index <= 5; ++Index)
-		{
-			Row.Step(100);
-			Row.Sample(Index);
-		}
-		FTestCipher Cipher;
+		// Queue a whole adapter batch without ticking the session between events.
+		// With the old post-drain-only flush this produced one 1,100 ms chunk.
+		for (std::uint64_t Index = 1; Index <= 12; ++Index)
+			Row.QueueSampleAfter(100, Index);
 		const std::string Id = Row.Session->GetSnapshot().SessionId.ToCanonicalString();
-		EXPECT_TRUE(LocalData::ReadSampleChunks(GetAppJournalDatabasePath(Temp.Path), Id, &Cipher).empty());
-		for (std::uint64_t Index = 6; Index <= 12; ++Index)
-		{
-			Row.Step(100);
-			Row.Sample(Index);
-		}
+		EXPECT_TRUE(LocalData::ReadSampleChunks(GetAppJournalDatabasePath(Temp.Path), Id).empty());
+		Row.Pump();
 		std::size_t Committed = 0;
-		for (const LocalData::FSampleChunk &Chunk : LocalData::ReadSampleChunks(GetAppJournalDatabasePath(Temp.Path), Id, &Cipher))
+		for (const LocalData::FSampleChunk &Chunk : LocalData::ReadSampleChunks(GetAppJournalDatabasePath(Temp.Path), Id))
+		{
 			Committed += Chunk.Samples.size();
+			if (!Chunk.Samples.empty())
+				EXPECT_TRUE(Chunk.Samples.back().SourceElapsedMs - Chunk.Samples.front().SourceElapsedMs <= 1000);
+		}
 		EXPECT_TRUE(Committed > 0);
 	}
 
@@ -215,7 +218,7 @@ namespace
 	{
 		const FWorkoutSessionConfig Real = MakeAppSessionConfig(true);
 		EXPECT_TRUE(!Real.bPollMachine);
-		EXPECT_TRUE(Real.FlushIntervalMs <= 1000);
+		EXPECT_TRUE(Real.FlushIntervalMs < 1000);
 		const FWorkoutSessionConfig Simulator = MakeAppSessionConfig(false);
 		EXPECT_TRUE(!Simulator.bPollMachine);
 	}
@@ -269,7 +272,7 @@ int main()
 {
 	app_journal_recovery_creates_nothing_when_no_database_exists();
 	app_journal_open_creates_an_owner_only_directory_and_database();
-	app_journal_open_reports_a_key_failure_and_creates_nothing();
+	app_journal_open_does_not_load_a_cipher_for_plaintext_policy();
 	app_journal_row_checkpoints_within_one_second();
 	app_journal_abandoned_row_is_recovered_by_the_next_launch();
 	app_session_config_matches_the_journaling_policy();

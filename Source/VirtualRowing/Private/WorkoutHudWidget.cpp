@@ -122,6 +122,9 @@ void UWorkoutHudWidget::NativeOnInitialized()
 
 	ConnectionText = MakeText(TEXT(""), LabelFontSize, ETextJustify::Center, "Regular");
 	Column->AddChildToVerticalBox(ConnectionText)->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 16.0f));
+	MetricAccuracyText = MakeText(MetricAccuracyNotice(), LabelFontSize, ETextJustify::Center, "Regular");
+	MetricAccuracyText->SetColorAndOpacity(FSlateColor(StaleColor));
+	Column->AddChildToVerticalBox(MetricAccuracyText)->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 8.0f));
 	EstimatedStrokeText = MakeText(TEXT("Estimated stroke motion"), LabelFontSize, ETextJustify::Center, "Regular");
 	EstimatedStrokeText->SetVisibility(ESlateVisibility::Hidden);
 	Column->AddChildToVerticalBox(EstimatedStrokeText)->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 8.0f));
@@ -230,6 +233,11 @@ FLinearColor UWorkoutHudWidget::RootBackgroundColor()
 FLinearColor UWorkoutHudWidget::MetricPanelBackgroundColor()
 {
 	return FLinearColor(0.02f, 0.03f, 0.05f, 0.38f);
+}
+
+const TCHAR *UWorkoutHudWidget::MetricAccuracyNotice()
+{
+	return TEXT("Metric-display accuracy is preliminary and may be limited.");
 }
 
 bool UWorkoutHudWidget::IsActionFocused() const

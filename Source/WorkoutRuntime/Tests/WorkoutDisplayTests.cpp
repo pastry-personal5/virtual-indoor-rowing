@@ -22,6 +22,7 @@ namespace
 	{
 		FRowingMetricSample Sample;
 		Sample.Sequence = 12;
+		Sample.ReceivedMonotonicNs = 1'000'000'000ULL;
 		Sample.SourceElapsedMs = 754300;
 		Sample.DistanceMm = 2834567;
 		Sample.PaceMsPer500M = 125300;
@@ -110,6 +111,45 @@ namespace
 		Snapshot.LatestSample->StrokePowerW.reset();
 		Snapshot.LatestSample->AveragePowerW.reset();
 		EXPECT_TRUE(MakeWorkoutDisplay(Snapshot).Watts == WorkoutDisplayPlaceholder);
+	}
+
+	void workout_display_retains_live_device_values_across_sparse_samples()
+	{
+		const FWorkoutDisplay Previous = MakeWorkoutDisplay(MakeActiveSnapshot());
+		FWorkoutSnapshot Sparse = MakeActiveSnapshot();
+		Sparse.LatestSample->ReceivedMonotonicNs += 100'000'000ULL;
+		Sparse.LatestSample->DistanceMm += 100;
+		Sparse.LatestSample->PaceMsPer500M.reset();
+		Sparse.LatestSample->StrokeRateDeciSpm.reset();
+		Sparse.LatestSample->StrokePowerW.reset();
+		Sparse.LatestSample->AveragePowerW.reset();
+		Sparse.LatestSample->HeartRateBpm.reset();
+		const FWorkoutDisplay Stable = RetainLiveMetricValues(Previous, MakeWorkoutDisplay(Sparse), *Sparse.LatestSample);
+		EXPECT_TRUE(Stable.Distance == "2834");
+		EXPECT_TRUE(Stable.Pace == "2:05");
+		EXPECT_TRUE(Stable.StrokeRate == "22");
+		EXPECT_TRUE(Stable.Watts == "187");
+		EXPECT_TRUE(Stable.bHeartRateSupplied && Stable.HeartRate == "142");
+
+		// A supplied zero pace is a real PM5 idle value and must not be hidden by
+		// the previous pace.
+		Sparse.LatestSample->PaceMsPer500M = 0;
+		const FWorkoutDisplay IdlePace = RetainLiveMetricValues(Previous, MakeWorkoutDisplay(Sparse), *Sparse.LatestSample);
+		EXPECT_TRUE(IdlePace.Pace == WorkoutDisplayPlaceholder);
+
+		Sparse.ConnectionState = ERowingConnectionState::Stale;
+		const FWorkoutDisplay Stale = RetainLiveMetricValues(Previous, MakeWorkoutDisplay(Sparse), *Sparse.LatestSample);
+		EXPECT_TRUE(Stale.Pace == WorkoutDisplayPlaceholder);
+		EXPECT_TRUE(Stale.StrokeRate == WorkoutDisplayPlaceholder);
+
+		Sparse.ConnectionState = ERowingConnectionState::Ready;
+		Sparse.LatestSample->PaceMsPer500M.reset();
+		Sparse.LatestSample->ReceivedMonotonicNs = 3'000'000'000ULL;
+		const FWorkoutDisplay Expired = RetainLiveMetricValues(Previous, MakeWorkoutDisplay(Sparse), *Sparse.LatestSample);
+		EXPECT_TRUE(Expired.Pace == WorkoutDisplayPlaceholder);
+		EXPECT_TRUE(Expired.StrokeRate == WorkoutDisplayPlaceholder);
+		EXPECT_TRUE(Expired.Watts == WorkoutDisplayPlaceholder);
+		EXPECT_TRUE(!Expired.bHeartRateSupplied);
 	}
 
 	void workout_display_marks_values_stale_when_input_frozen()
@@ -238,6 +278,7 @@ int main()
 	workout_display_formats_active_snapshot();
 	workout_display_uses_placeholder_for_absent_metrics();
 	workout_display_falls_back_to_average_power_when_no_stroke_power();
+	workout_display_retains_live_device_values_across_sparse_samples();
 	workout_display_marks_values_stale_when_input_frozen();
 	workout_display_omits_heart_rate_when_not_supplied();
 	workout_display_reports_journal_unhealthy();

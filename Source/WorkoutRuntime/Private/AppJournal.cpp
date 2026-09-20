@@ -43,14 +43,13 @@ FAppJournal::FOpenResult FAppJournal::Open(const std::filesystem::path &Director
 	FOpenResult Result;
 	try
 	{
-		if (!MakeCipher)
-			throw std::runtime_error("no cipher factory");
 		std::unique_ptr<FAppJournal> Journal(new FAppJournal());
-		Journal->Cipher = MakeCipher();
-		if (!Journal->Cipher)
-			throw std::runtime_error("the journal key could not be loaded");
+		// ADR-0012: development and single-user journals are deliberately
+		// plaintext. Retain the factory argument temporarily for source
+		// compatibility with callers while ensuring it is never invoked.
+		(void)MakeCipher;
 		EnsureOwnerOnlyDirectory(Directory);
-		Journal->Writer = std::make_unique<LocalData::FLocalDataJournalWriter>(GetAppJournalDatabasePath(Directory), Journal->Cipher.get());
+		Journal->Writer = std::make_unique<LocalData::FLocalDataJournalWriter>(GetAppJournalDatabasePath(Directory));
 		Journal->Sink = std::make_unique<FLocalDataJournalSink>(*Journal->Writer);
 		Result.Journal = std::move(Journal);
 	}
@@ -64,13 +63,17 @@ FAppJournal::FOpenResult FAppJournal::Open(const std::filesystem::path &Director
 
 FAppJournal::~FAppJournal()
 {
-	// Members are released in reverse order of construction: sink, writer, cipher.
+	// Members are released in reverse order of construction: sink, then writer.
 	Sink.reset();
 	Writer.reset();
-	Cipher.reset();
 }
 
 IJournalSink &FAppJournal::GetSink() noexcept
 {
 	return *Sink;
+}
+
+void FAppJournal::RecordSessionLatencySummary(const LocalData::FSessionLatencySummary &Summary)
+{
+	Writer->RecordSessionLatencySummary(Summary);
 }

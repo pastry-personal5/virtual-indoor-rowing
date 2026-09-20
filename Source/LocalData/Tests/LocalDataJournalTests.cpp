@@ -128,8 +128,8 @@ namespace
 		LocalData::Private::FSqliteConnection Connection(Path);
 		EXPECT_TRUE(CountRows(Connection, "SELECT COUNT(*) FROM journal_events WHERE session_id = 'legacy';") == 1);
 		EXPECT_TRUE(CountRows(Connection, "SELECT COUNT(*) FROM sample_chunks WHERE session_id = 'legacy';") == 1);
-		EXPECT_TRUE(CountRows(Connection, "SELECT COUNT(*) FROM schema_migrations;") == 4);
-		for (const char *const Table : {"sessions", "session_summaries", "sync_outbox", "cloud_links", "installed_content", "paired_devices"})
+		EXPECT_TRUE(CountRows(Connection, "SELECT COUNT(*) FROM schema_migrations;") == 6);
+		for (const char *const Table : {"sessions", "session_summaries", "session_latency_summaries", "sync_outbox", "cloud_links", "installed_content", "paired_devices"})
 		{
 			const std::string Sql = std::string("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = '") + Table + "';";
 			EXPECT_TRUE(CountRows(Connection, Sql.c_str()) == 1);
@@ -257,6 +257,32 @@ namespace
 								  { Writer.FinalizeSession(Bad); }));
 		}
 		EXPECT_TRUE(LocalData::ReadPendingSyncOutbox(Path).size() == 1);
+		RemoveDatabase(Path);
+	}
+
+	void plaintext_finalized_session_round_trips_and_rejects_unknown_summary_codec()
+	{
+		const auto Path = MakeTempDatabasePath(__func__);
+		const FRowingSessionId Id = MakeSessionId(12);
+		{
+			LocalData::FLocalDataJournalWriter Writer(Path);
+			Writer.CreateSession(MakeSessionRecord(Id));
+			LocalData::FFinalizedSession Finalized;
+			Finalized.TerminalEvent = {Id.ToCanonicalString(), 1, 1234, LocalData::EJournalEventKind::Completed, 1, {}};
+			Finalized.Summary = {Id, 1, "plaintext-summary", 3};
+			Writer.FinalizeSession(Finalized);
+		}
+		const auto Summary = LocalData::ReadLatestSessionSummary(Path, Id);
+		EXPECT_TRUE(Summary.has_value() && Summary->MetricsPayload == "plaintext-summary");
+		EXPECT_TRUE(!LocalData::ReadSessionObject(Path, Id).empty());
+		{
+			LocalData::Private::FSqliteConnection Connection(Path);
+			Connection.Execute("UPDATE session_summaries SET codec = 'mystery-v9';");
+		}
+		EXPECT_TRUE(ThrowsAny([&]
+							  { LocalData::ReadLatestSessionSummary(Path, Id); }));
+		EXPECT_TRUE(ThrowsAny([&]
+							  { LocalData::ReadSessionObject(Path, Id); }));
 		RemoveDatabase(Path);
 	}
 
@@ -811,6 +837,7 @@ int main()
 	schema_bootstrap_is_idempotent();
 	local_data_schema_migrates_v1_journal_without_data_loss();
 	finalized_session_commits_terminal_summary_and_outbox_atomically();
+	plaintext_finalized_session_round_trips_and_rejects_unknown_summary_codec();
 	local_data_sample_chunk_payload_is_encrypted_at_rest();
 	local_data_sealed_chunk_is_bound_to_its_identity();
 	local_data_recovery_truncates_corrupt_sealed_chunk_without_a_key();

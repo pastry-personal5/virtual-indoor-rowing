@@ -83,6 +83,8 @@ Follow-up (2026-09-20): the owner launched the packaged app with `-SimulatorDevi
 
 Owner-run evidence update (2026-09-20): `make unreal-shipping` and `make unreal-package-verify` **passed** at revision `c8d78d720daf` on the pinned host. The four packaged simulator visual observations above remain pending and are not implied by the packaging pass.
 
+Owner-run finding (2026-09-20): during normal real-PM5 recovery, the oars looked unsmooth. `CourseRuntime` already derives a continuous recovery phase, but `AGrayBoxCourseActor` directly assigned the resulting hand position and oar yaw to mesh components, making short telemetry/frame cadence irregularities visible at the oar. The actor now applies bounded presentation-only interpolation to the oar handle position and yaw, snapping only the initial pose; arms, PM telemetry, session state, journal values, and authoritative distance remain unchanged. A rebuilt packaged real-PM5 visual check remains required.
+
 ## Deferred
 
 Route selection, authored production assets, content manifests, collision/gameplay physics, wake/VFX, audio, remote boats, user cameras, and performance certification are later work. QA-001 certification remains deferred to Phase 4 under ADR-0010; this milestone guards functional behavior and obvious game-thread regressions only.

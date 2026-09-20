@@ -152,7 +152,7 @@ namespace LocalData
 
 		std::string BuildSessionObjectBytes(FSqliteConnection &Connection,
 											const FFinalizedSession &Finalized,
-											IBlobCipher &Cipher)
+											IBlobCipher *Cipher)
 		{
 			rowing::v1::SessionObject Object;
 			auto *Header = Object.mutable_header();
@@ -176,8 +176,15 @@ namespace LocalData
 				Event->set_payload_version(static_cast<std::uint32_t>(Events.ColumnInt64(3)));
 				const std::string Kind = Events.ColumnText(2);
 				std::string Payload = Events.ColumnBlob(4);
-				if (!Payload.empty() && Events.ColumnText(5) == "raw-v1+sealed")
-					Payload = Cipher.Open(Payload, EventAssociatedData({Finalized.TerminalEvent.SessionId, Event->sequence(), Event->monotonic_ns(), JournalEventKindFromString(Kind), Event->payload_version(), {}}));
+				const std::string Codec = Events.ColumnText(5);
+				if (!Payload.empty() && Codec == SealedCodec)
+				{
+					if (Cipher == nullptr)
+						throw FBlobCipherError("sealed journal event requires a cipher");
+					Payload = Cipher->Open(Payload, EventAssociatedData({Finalized.TerminalEvent.SessionId, Event->sequence(), Event->monotonic_ns(), JournalEventKindFromString(Kind), Event->payload_version(), {}}));
+				}
+				else if (Codec != PlainCodec && Codec != SealedCodec)
+					throw Private::FSqliteError("journal_events.codec has unknown value: " + Codec);
 				Event->set_payload(Payload);
 				bTerminalAlreadyStored = bTerminalAlreadyStored || (Event->sequence() == Finalized.TerminalEvent.Sequence && Kind == JournalEventKindToString(Finalized.TerminalEvent.Kind));
 			}
@@ -199,8 +206,15 @@ namespace LocalData
 				Chunk->set_first_sequence(static_cast<std::uint64_t>(Chunks.ColumnInt64(0)));
 				Chunk->set_last_sequence(static_cast<std::uint64_t>(Chunks.ColumnInt64(1)));
 				std::string Payload = Chunks.ColumnBlob(3);
-				if (Chunks.ColumnText(2) == SealedCodec)
-					Payload = Cipher.Open(Payload, ChunkAssociatedData(Finalized.TerminalEvent.SessionId, Chunk->first_sequence(), Chunk->last_sequence()));
+				const std::string Codec = Chunks.ColumnText(2);
+				if (Codec == SealedCodec)
+				{
+					if (Cipher == nullptr)
+						throw FBlobCipherError("sealed sample chunk requires a cipher");
+					Payload = Cipher->Open(Payload, ChunkAssociatedData(Finalized.TerminalEvent.SessionId, Chunk->first_sequence(), Chunk->last_sequence()));
+				}
+				else if (Codec != PlainCodec)
+					throw Private::FSqliteError("sample_chunks.codec has unknown value: " + Codec);
 				Chunk->set_validated_payload(Payload);
 				Chunk->set_crc32c(static_cast<std::uint32_t>(Chunks.ColumnInt64(4)));
 			}
@@ -440,20 +454,17 @@ namespace LocalData
 
 	void FLocalDataJournalWriter::StageSessionSummary(const FSessionSummary &Summary)
 	{
-		if (Impl->Cipher == nullptr)
-		{
-			throw FBlobCipherError("StageSessionSummary requires a cipher");
-		}
 		Impl->StageInTransaction([&]
 								 {
-			const std::string Sealed = Impl->Cipher->Seal(Summary.MetricsPayload, SummaryAssociatedData(Summary.Id, Summary.Revision));
+			const std::string Stored = Impl->Cipher != nullptr ? Impl->Cipher->Seal(Summary.MetricsPayload, SummaryAssociatedData(Summary.Id, Summary.Revision)) : Summary.MetricsPayload;
 			auto Statement = Impl->Connection.Prepare(
-				"INSERT INTO session_summaries (session_id, revision, metrics_blob, quality_flags, finalized_at) "
-				"VALUES (?, ?, ?, ?, datetime('now'));");
+				"INSERT INTO session_summaries (session_id, revision, metrics_blob, quality_flags, finalized_at, codec) "
+				"VALUES (?, ?, ?, ?, datetime('now'), ?);");
 			Statement.BindBlob(1, SessionIdBlob(Summary.Id));
 			Statement.BindInt64(2, static_cast<std::int64_t>(Summary.Revision));
-			Statement.BindBlob(3, Sealed);
+			Statement.BindBlob(3, Stored);
 			Statement.BindInt64(4, static_cast<std::int64_t>(Summary.QualityFlags));
+			Statement.BindText(5, Impl->Cipher != nullptr ? "raw-v1+sealed" : "raw-v1");
 			Statement.Step(); });
 	}
 
@@ -464,8 +475,6 @@ namespace LocalData
 
 	void FLocalDataJournalWriter::FinalizeSession(const FFinalizedSession &Finalized)
 	{
-		if (Impl->Cipher == nullptr)
-			throw FBlobCipherError("FinalizeSession requires a cipher");
 		if (Finalized.TerminalEvent.Kind != EJournalEventKind::Completed &&
 			Finalized.TerminalEvent.Kind != EJournalEventKind::Interrupted &&
 			Finalized.TerminalEvent.Kind != EJournalEventKind::Aborted)
@@ -485,7 +494,7 @@ namespace LocalData
 		}
 		std::string ObjectDigest = Finalized.ObjectDigestSha256;
 		if (ObjectDigest.empty())
-			ObjectDigest = Sha256Hex(BuildSessionObjectBytes(Impl->Connection, Finalized, *Impl->Cipher));
+			ObjectDigest = Sha256Hex(BuildSessionObjectBytes(Impl->Connection, Finalized, Impl->Cipher));
 		const bool bDigestIsLowercaseHex = ObjectDigest.size() == 64 &&
 										   std::all_of(ObjectDigest.begin(), ObjectDigest.end(), [](unsigned char Character)
 													   { return (Character >= '0' && Character <= '9') || (Character >= 'a' && Character <= 'f'); });
@@ -500,18 +509,44 @@ namespace LocalData
 			End.Step();
 			if (Impl->Connection.ChangedRowCount() != 1)
 				throw Private::FSqliteError("FinalizeSession: no such session");
-			const std::string Sealed = Impl->Cipher->Seal(Finalized.Summary.MetricsPayload, SummaryAssociatedData(Finalized.Summary.Id, Finalized.Summary.Revision));
-			auto Summary = Impl->Connection.Prepare("INSERT INTO session_summaries (session_id, revision, metrics_blob, quality_flags, finalized_at) VALUES (?, ?, ?, ?, datetime('now')); ");
+			const std::string Stored = Impl->Cipher != nullptr ? Impl->Cipher->Seal(Finalized.Summary.MetricsPayload, SummaryAssociatedData(Finalized.Summary.Id, Finalized.Summary.Revision)) : Finalized.Summary.MetricsPayload;
+			auto Summary = Impl->Connection.Prepare("INSERT INTO session_summaries (session_id, revision, metrics_blob, quality_flags, finalized_at, codec) VALUES (?, ?, ?, ?, datetime('now'), ?); ");
 			Summary.BindBlob(1, SessionIdBlob(Finalized.Summary.Id));
 			Summary.BindInt64(2, static_cast<std::int64_t>(Finalized.Summary.Revision));
-			Summary.BindBlob(3, Sealed);
+			Summary.BindBlob(3, Stored);
 			Summary.BindInt64(4, static_cast<std::int64_t>(Finalized.Summary.QualityFlags));
+			Summary.BindText(5, Impl->Cipher != nullptr ? "raw-v1+sealed" : "raw-v1");
 			Summary.Step();
 			auto Outbox = Impl->Connection.Prepare("INSERT INTO sync_outbox (operation_id, aggregate_id, kind, attempt, next_attempt_at, payload_hash, state) VALUES (?, ?, 'session_object_v1', 0, datetime('now'), ?, 'queued');");
 			Outbox.BindText(1, OperationId);
 			Outbox.BindBlob(2, SessionIdBlob(Finalized.Summary.Id));
 			Outbox.BindText(3, ObjectDigest);
 			Outbox.Step(); });
+	}
+
+	void FLocalDataJournalWriter::RecordSessionLatencySummary(const FSessionLatencySummary &Summary)
+	{
+		if (Summary.SchemaVersion != 1)
+			throw Private::FSqliteError("RecordSessionLatencySummary has unsupported schema version");
+		if (Summary.RetainedCount > Summary.SampleCount || Summary.DroppedCount != Summary.SampleCount - Summary.RetainedCount)
+			throw Private::FSqliteError("RecordSessionLatencySummary has inconsistent sample counts");
+		Impl->InTransaction([&]
+							{
+			auto Statement = Impl->Connection.Prepare(
+				"INSERT INTO session_latency_summaries "
+				"(session_id, schema_version, source_revision, sample_count, retained_count, dropped_count, p50_ns, p95_ns, p99_ns, max_ns, recorded_at) "
+				"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now')); ");
+			Statement.BindBlob(1, SessionIdBlob(Summary.Id));
+			Statement.BindInt64(2, static_cast<std::int64_t>(Summary.SchemaVersion));
+			Statement.BindText(3, Summary.SourceRevision);
+			Statement.BindInt64(4, static_cast<std::int64_t>(Summary.SampleCount));
+			Statement.BindInt64(5, static_cast<std::int64_t>(Summary.RetainedCount));
+			Statement.BindInt64(6, static_cast<std::int64_t>(Summary.DroppedCount));
+			Statement.BindInt64(7, static_cast<std::int64_t>(Summary.P50Ns));
+			Statement.BindInt64(8, static_cast<std::int64_t>(Summary.P95Ns));
+			Statement.BindInt64(9, static_cast<std::int64_t>(Summary.P99Ns));
+			Statement.BindInt64(10, static_cast<std::int64_t>(Summary.MaxNs));
+			Statement.Step(); });
 	}
 
 	void FLocalDataJournalWriter::AbandonStaged() noexcept
@@ -604,12 +639,12 @@ namespace LocalData
 	}
 
 	std::optional<FSessionSummary>
-	ReadLatestSessionSummary(const std::filesystem::path &DatabasePath, const FRowingSessionId &Id, IBlobCipher &Cipher)
+	ReadLatestSessionSummary(const std::filesystem::path &DatabasePath, const FRowingSessionId &Id, IBlobCipher *Cipher)
 	{
 		Private::FSqliteConnection Connection(DatabasePath);
 		Private::EnsureSchema(Connection);
 		auto Statement = Connection.Prepare(
-			"SELECT revision, metrics_blob, quality_flags FROM session_summaries "
+			"SELECT revision, metrics_blob, quality_flags, codec FROM session_summaries "
 			"WHERE session_id = ? ORDER BY revision DESC LIMIT 1;");
 		Statement.BindBlob(1, SessionIdBlob(Id));
 		if (!Statement.Step())
@@ -619,8 +654,43 @@ namespace LocalData
 		FSessionSummary Summary;
 		Summary.Id = Id;
 		Summary.Revision = static_cast<std::uint32_t>(Statement.ColumnInt64(0));
-		Summary.MetricsPayload = Cipher.Open(Statement.ColumnBlob(1), SummaryAssociatedData(Id, Summary.Revision));
+		const std::string Codec = Statement.ColumnText(3);
+		if (Codec == "raw-v1")
+			Summary.MetricsPayload = Statement.ColumnBlob(1);
+		else if (Codec == "raw-v1+sealed")
+		{
+			if (Cipher == nullptr)
+				throw FBlobCipherError("sealed session summary requires a cipher");
+			Summary.MetricsPayload = Cipher->Open(Statement.ColumnBlob(1), SummaryAssociatedData(Id, Summary.Revision));
+		}
+		else
+			throw Private::FSqliteError("session_summaries.codec has unknown value: " + Codec);
 		Summary.QualityFlags = static_cast<std::uint32_t>(Statement.ColumnInt64(2));
+		return Summary;
+	}
+
+	std::optional<FSessionLatencySummary>
+	ReadSessionLatencySummary(const std::filesystem::path &DatabasePath, const FRowingSessionId &Id)
+	{
+		Private::FSqliteConnection Connection(DatabasePath);
+		Private::EnsureSchema(Connection);
+		auto Statement = Connection.Prepare(
+			"SELECT schema_version, source_revision, sample_count, retained_count, dropped_count, p50_ns, p95_ns, p99_ns, max_ns "
+			"FROM session_latency_summaries WHERE session_id = ?;");
+		Statement.BindBlob(1, SessionIdBlob(Id));
+		if (!Statement.Step())
+			return std::nullopt;
+		FSessionLatencySummary Summary;
+		Summary.Id = Id;
+		Summary.SchemaVersion = static_cast<std::uint32_t>(Statement.ColumnInt64(0));
+		Summary.SourceRevision = Statement.ColumnText(1);
+		Summary.SampleCount = static_cast<std::uint64_t>(Statement.ColumnInt64(2));
+		Summary.RetainedCount = static_cast<std::uint64_t>(Statement.ColumnInt64(3));
+		Summary.DroppedCount = static_cast<std::uint64_t>(Statement.ColumnInt64(4));
+		Summary.P50Ns = static_cast<std::uint64_t>(Statement.ColumnInt64(5));
+		Summary.P95Ns = static_cast<std::uint64_t>(Statement.ColumnInt64(6));
+		Summary.P99Ns = static_cast<std::uint64_t>(Statement.ColumnInt64(7));
+		Summary.MaxNs = static_cast<std::uint64_t>(Statement.ColumnInt64(8));
 		return Summary;
 	}
 
@@ -706,7 +776,7 @@ namespace LocalData
 				throw Private::FSqliteError("UpdateSyncOutbox: no such operation"); });
 	}
 
-	std::string ReadSessionObject(const std::filesystem::path &DatabasePath, const FRowingSessionId &Id, IBlobCipher &Cipher)
+	std::string ReadSessionObject(const std::filesystem::path &DatabasePath, const FRowingSessionId &Id, IBlobCipher *Cipher)
 	{
 		Private::FSqliteConnection Connection(DatabasePath);
 		Private::EnsureSchema(Connection);
@@ -722,8 +792,15 @@ namespace LocalData
 		Terminal.Kind = JournalEventKindFromString(EventQuery.ColumnText(2));
 		Terminal.PayloadVersion = static_cast<std::uint32_t>(EventQuery.ColumnInt64(3));
 		Terminal.PayloadBlob = EventQuery.ColumnBlob(4);
-		if (!Terminal.PayloadBlob.empty() && EventQuery.ColumnText(5) == "raw-v1+sealed")
-			Terminal.PayloadBlob = Cipher.Open(Terminal.PayloadBlob, EventAssociatedData(Terminal));
+		const std::string TerminalCodec = EventQuery.ColumnText(5);
+		if (!Terminal.PayloadBlob.empty() && TerminalCodec == "raw-v1+sealed")
+		{
+			if (Cipher == nullptr)
+				throw FBlobCipherError("sealed terminal journal event requires a cipher");
+			Terminal.PayloadBlob = Cipher->Open(Terminal.PayloadBlob, EventAssociatedData(Terminal));
+		}
+		else if (TerminalCodec != "raw-v1" && TerminalCodec != "raw-v1+sealed")
+			throw Private::FSqliteError("journal_events.codec has unknown value: " + TerminalCodec);
 		if (Terminal.Kind != EJournalEventKind::Completed && Terminal.Kind != EJournalEventKind::Interrupted && Terminal.Kind != EJournalEventKind::Aborted)
 			throw Private::FSqliteError("ReadSessionObject: session is not finalized");
 		const auto Summary = ReadLatestSessionSummary(DatabasePath, Id, Cipher);

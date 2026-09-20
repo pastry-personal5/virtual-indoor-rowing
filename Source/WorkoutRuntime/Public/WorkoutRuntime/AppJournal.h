@@ -9,11 +9,10 @@
 #include <memory>
 #include <string>
 
-// The app's sealed workout journal (Phase 1 Milestone 7,
-// docs/phase-1/07-milestone-7-real-pm5-app-wiring.md). Engine-independent: the
-// Keychain-backed cipher arrives through a factory, so this builds and tests
-// without Apple frameworks. Only real-device sessions use it; a simulator run never
-// opens one, so it never creates a database or a Keychain item.
+// The app's owner-only workout journal (Phase 1 Milestone 7,
+// docs/phase-1/07-milestone-7-real-pm5-app-wiring.md). Development and
+// single-user journals are plaintext under ADR-0012. Only real-device sessions
+// use it; a simulator run never opens one or creates a database.
 
 // Creates the directory (and parents) and restricts it to the owner. Throws
 // std::filesystem::filesystem_error on failure.
@@ -49,9 +48,9 @@ class FAppJournal final
 		std::string Error;
 	};
 
-	// Loads the key through the factory (which may touch the Keychain and may block
-	// on a system prompt, so call it at a user-initiated moment), creates the
-	// directory if needed, and opens the writer. Never throws.
+	// Creates the owner-only directory if needed and opens a plaintext development
+	// journal per ADR-0012. The factory is retained only for caller compatibility
+	// and is never invoked. Never throws.
 	static FOpenResult Open(const std::filesystem::path &Directory, const FCipherFactory &MakeCipher);
 
 	~FAppJournal();
@@ -59,12 +58,12 @@ class FAppJournal final
 	FAppJournal &operator=(const FAppJournal &) = delete;
 
 	IJournalSink &GetSink() noexcept;
+	void RecordSessionLatencySummary(const LocalData::FSessionLatencySummary &Summary);
 
   private:
 	FAppJournal() = default;
 
-	// Order matters: the sink references the writer, which references the cipher.
-	std::unique_ptr<LocalData::IBlobCipher> Cipher;
+	// The sink references the writer.
 	std::unique_ptr<LocalData::FLocalDataJournalWriter> Writer;
 	std::unique_ptr<IJournalSink> Sink;
 };

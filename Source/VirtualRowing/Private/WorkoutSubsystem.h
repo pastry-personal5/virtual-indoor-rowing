@@ -49,7 +49,7 @@ struct FWorkoutDevicePanel
  * docs/phase-1/07-milestone-7-real-pm5-app-wiring.md). Game-thread only: it owns
  * either the simulator machine and its FWorkoutSession, or, without
  * -SimulatorDevice, an FRealDeviceController that owns the Bluetooth connection
- * flow, the sealed journal and the session. It drains the machine every tick and
+ * flow, the owner-only journal and the session. It drains the machine every tick and
  * forwards each event to the session, and exposes the latest display value as a
  * pull. It never falls back from one path to the other, so simulated data is never
  * mistaken for a real device. Nothing touches Bluetooth or the Keychain until the

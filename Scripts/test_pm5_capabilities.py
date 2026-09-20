@@ -86,7 +86,7 @@ class PM5CapabilityManifestTests(unittest.TestCase):
 	def test_checked_in_manifest_generates_reviewed_pm5_allow_list(self) -> None:
 		manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
 		normalized = validate_manifest(manifest)
-		self.assertEqual(normalized["profile_version"], 6)
+		self.assertEqual(normalized["profile_version"], 7)
 		self.assertEqual(len(normalized["profiles"]), 1)
 		profile = normalized["profiles"][0]
 		self.assertEqual(profile["model"], "PM5")
@@ -95,13 +95,18 @@ class PM5CapabilityManifestTests(unittest.TestCase):
 		self.assertEqual(profile["support_state"], "Allowed")
 		self.assertEqual(
 			[(characteristic["id"], characteristic["lengths"]) for characteristic in profile["characteristics"]],
-			[(0x0031, [19]), (0x0032, [17]), (0x0034, []), (0x0035, [20]), (0x0036, [15, 18])],
+			[(0x0031, [19]), (0x0032, [17]), (0x0033, [20]), (0x0034, []), (0x0035, [20]), (0x0036, [15, 18])],
 		)
 		header = render_header(manifest)
 		self.assertIn("GetGeneratedPM5CapabilityProfiles()", header)
 		self.assertIn("Profiles.reserve(1);", header)
 		self.assertIn('Profile.MonitorModel = "PM5";', header)
-		self.assertIn("Profile.Version = 6U;", header)
+		self.assertIn("Profile.Version = 7U;", header)
+		self.assertIn(
+			"0x0033U, false, true, ToPM5CharacteristicProperties(EPM5CharacteristicProperty::Notify), {20}",
+			header,
+		)
+		self.assertIn("ERowingMetric::AveragePower", header)
 		self.assertIn(
 			"0x0034U, false, false, ToPM5CharacteristicProperties(EPM5CharacteristicProperty::Read) | ToPM5CharacteristicProperties(EPM5CharacteristicProperty::Write), {}",
 			header,
