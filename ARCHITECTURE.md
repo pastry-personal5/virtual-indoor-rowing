@@ -2,7 +2,7 @@
 
 ## Purpose and baseline
 
-Virtual Indoor Rowing (VIR) is an offline-capable macOS rowing application. Launch supports an Apple-silicon Mac running macOS Tahoe 26.6.2 or later, Unreal Engine 5.8 at an approved patch, and a Concept2 Model D with a PM5 connected by BLE. Exact toolchain and distribution decisions are in [ADR-0001](docs/adr/0001-platform-and-toolchain.md) and [ADR-0006](docs/adr/0006-macos-distribution.md).
+Virtual Indoor Rowing (VIR) is an offline-capable macOS rowing application. The completed Phase 1 build supports an Apple-silicon Mac running macOS Tahoe 26.6.2 or later, Unreal Engine 5.8 at an approved patch, and a Concept2 Model D with a PM5 connected by BLE. Phase 2 is planned, not started. Exact toolchain and distribution decisions are in [ADR-0001](docs/adr/0001-platform-and-toolchain.md), [ADR-0006](docs/adr/0006-macos-distribution.md), and [ADR-0008](docs/adr/0008-defer-macos-signing-to-phase-4.md).
 
 The product is useful without a network connection. Online history, social features, and ranked races add services but must never prevent a local workout from completing.
 
@@ -46,7 +46,7 @@ Only validated device facts can affect a local workout. A disconnect freezes off
 
 ## Persistence and cloud
 
-SQLite in WAL mode holds the local event journal, outbox, and non-secret preferences. Keychain holds refresh tokens and device-bound secrets. PostgreSQL holds durable cloud records; immutable compressed sample/replay objects live in object storage. Redis is only ephemeral presence, leases, queues, and caches. Queue consumers and finalization paths are idempotent.
+SQLite in WAL mode holds the local event journal, outbox, and non-secret preferences. Development and single-user journals are owner-only plaintext under [ADR-0012](docs/adr/0012-plaintext-development-single-user-journals.md); encryption returns before any multi-user or release scope. Keychain holds refresh tokens and device-bound secrets when those capabilities exist. PostgreSQL holds durable cloud records; immutable compressed sample/replay objects live in object storage. Redis is only ephemeral presence, leases, queues, and caches. Queue consumers and finalization paths are idempotent.
 
 Contracts are versioned. Protobuf is canonical for real-time and object events; OpenAPI defines control APIs. Persisted schemas, protocol fields, and rulesets are backward compatible for the supported client window. See [data and protocols](docs/architecture/06-data-and-protocols.md).
 
@@ -58,7 +58,7 @@ A race room is a deterministic, single-owner event loop. It accepts sequenced me
 
 - Use least-privilege, short-lived credentials, TLS, and platform key storage; never commit secrets, signing identities, PM serial numbers, or production captures.
 - Keep raw telemetry and health-adjacent data minimal, consented, redacted in diagnostics, and subject to retention/deletion policy.
-- Ship a signed, notarized Developer ID application with a signed update channel. Do not update during an active workout.
+- Developer ID signing, notarization, and the executable update channel begin in Phase 4; Phase 0–3 artifacts are unsigned ad-hoc builds. Signed content manifests remain a separate Phase 2 requirement. Do not update during an active workout.
 - Pin toolchains and dependencies. Treat a release as the application, content, contracts, capability matrix, cloud deployment, migrations, and runbooks together.
 
 The detailed requirements are in [security](docs/architecture/07-security-privacy-safety.md) and [delivery and operations](docs/architecture/08-delivery-and-operations.md).

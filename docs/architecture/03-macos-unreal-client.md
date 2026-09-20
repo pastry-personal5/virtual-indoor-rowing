@@ -167,7 +167,9 @@ Minimum local tables:
 
 Raw OAuth tokens and raw PM serial numbers do not belong in SQLite. The macOS CoreBluetooth peripheral identifier is local-only. A raw serial is held only as long as needed for connection confirmation and optional server pseudonymization; it is never written to ordinary logs.
 
-Fitness summary payloads and compressed sample chunks are encrypted with AES-256-GCM using a per-local-profile data key stored in Keychain. Nonces are unique per blob and the session/chunk identity is authenticated as associated data. Only minimal indexing/technical state remains in plaintext SQLite. Use Apple's reviewed cryptographic APIs behind a native adapter—never a custom cipher. The database and WAL also use owner-only filesystem permissions; FileVault remains valuable for whole-device protection.
+Before multi-user or release scope, fitness summary payloads and compressed sample chunks use AES-256-GCM with a per-local-profile Keychain data key. Nonces are unique and the session/chunk identity is authenticated associated data. Use Apple's reviewed cryptographic APIs behind a native adapter—never a custom cipher. The database and WAL also use owner-only filesystem permissions; FileVault remains valuable for whole-device protection.
+
+For development and single-user scope, [ADR-0012](../adr/0012-plaintext-development-single-user-journals.md) supersedes that encryption requirement with owner-only plaintext SQLite/WAL journals. It does not relax durability, privacy handling, or the requirement to restore encryption before multi-user or release scope.
 
 Sample events are batched into independently checksummed chunks, normally one second each. This keeps append overhead bounded and makes corruption local rather than invalidating a whole session. A recovery scan accepts complete chunks, truncates only an incomplete tail, recomputes the provisional summary, and sets `recovered_after_unclean_exit`.
 

@@ -1,8 +1,8 @@
 # Phased delivery plan
 
-Status: Initial reference
+Status: Active reference
 Owner: CTO / product
-Last reviewed: 2026-09-13
+Last reviewed: 2026-09-20
 
 ## Strategy
 
@@ -21,7 +21,7 @@ Every delivery phase shall contain one or more milestones and may contain many. 
 | Delivery phase | Product outcome | Investment level in proposed ADR-0007 |
 |---|---|---|
 | Phase 0 — evidence and foundation | Retire critical feasibility risks and establish the technical and product evidence base | Foundation |
-| Phase 1 — walking skeleton | Deliver a trustworthy signed internal end-to-end rowing instrument | Foundation |
+| Phase 1 — walking skeleton | Deliver a trustworthy internal end-to-end rowing instrument | Foundation; complete 2026-09-20 |
 | Phase 2 — solo alpha and content pipeline | Deliver a repeatable, polished offline solo product | Solo product |
 | Phase 3 — accounts, sync, and private beta | Add connected value without weakening offline completion | Connected beta |
 | Phase 4 — real-time group rows and ranked racing | Add server-authoritative social and competitive rowing | Social/racing beta |
