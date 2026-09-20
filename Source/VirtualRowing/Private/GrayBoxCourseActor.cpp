@@ -38,6 +38,7 @@ AGrayBoxCourseActor::AGrayBoxCourseActor()
 	InspectionCamera->SetupAttachment(SceneRoot);
 	InspectionCamera->SetFieldOfView(50.0f);
 	InspectionCamera->bUsePawnControlRotation = false;
+	InspectionCamera->SetActive(true);
 	// /Engine/Maps/Entry deliberately has no authored lighting. The generated course
 	// uses the engine's lit primitive material, so without a code-owned light every
 	// surface is black even though the actor and camera are valid.
