@@ -118,19 +118,19 @@ The fresh-install/permission-denial/repair pass is deferred to Phase 4 per [ADR-
 
 - Polished onboarding, settings, exertion HUD, accessibility and safe mode.
 - Just Row routes, checkpoints/segments, one production-quality environment.
-- Structured time/distance/interval plans and cues; PM managed mode where proven.
+- App-guided structured time/distance/interval plans and cues. PM-managed workout programming is deferred.
 - Session summaries, history, personal bests, local ghosts, FIT export.
 - Signed content pipeline, download/install/rollback, shader/PSO warm-up.
 - Full PM simulator corpus, firmware matrix, HIL rig, thermal/performance gates.
 
 ### Exit gate
 
-- Invited alpha users can install, pair, row for four weeks without engineering assistance for normal flows.
-- QA-001/002/003/004/009/010/011/012 pass on the reference setup.
+- Internal alpha users can install, pair, and row for four weeks without engineering assistance for normal flows.
+- QA-001/002/003/004/009/010/011 pass on the reference setup. QA-012 (executable signing, notarization, and update-channel safety) is a Phase 4 requirement under ADR-0008; Phase 2 validates signed content manifests, download/install/rollback, and safe-route fallback instead.
 - At least 100 varied test workouts produce no unexplained loss/duplication and agree with PM display within resolution.
 - Content validator and last-known-good/safe route are release-blocking.
 - Training/safety copy has rowing-domain and product review.
-- A repeated-use external cohort has measured activation, return rows, support burden, and willingness to pay. Founders explicitly approve or replan connected-product investment from that evidence.
+- The repeated-use internal alpha cohort has measured activation, return rows, support burden, and willingness to pay. Founders explicitly approve or replan connected-product investment from that evidence.
 
 ## Phase 3 — accounts, sync, and private beta (6–10 weeks)
 

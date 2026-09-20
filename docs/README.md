@@ -7,6 +7,8 @@
 | [architecture/](architecture/) | Normative product and engineering specifications by concern |
 | [adr/](adr/) | Architecture decisions; accepted decisions change only through a superseding ADR |
 | [phase-0/](phase-0/) | Bounded diagnostic milestones contributing to delivery Phase 0 |
+| [phase-1/](phase-1/) | Walking-skeleton milestones and evidence for delivery Phase 1 |
+| [phase-2/](phase-2/) | Planned solo-alpha milestones and evidence for delivery Phase 2 |
 | [archive/research/](archive/research/) | Dated research evidence; not requirements |
 
 Read the architecture documents in numeric order when a detailed decision is needed. Capitalized Phase 0–5 references use the [delivery-phase definitions](architecture/10-delivery-plan.md#delivery-phase-definitions). The supported baseline is macOS Tahoe 26.6.2+ on Apple silicon; [ADR-0001](adr/0001-platform-and-toolchain.md) is authoritative.

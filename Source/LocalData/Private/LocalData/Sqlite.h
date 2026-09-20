@@ -2,7 +2,7 @@
 
 // The only file in this module that includes sqlite3.h. Public headers
 // never see sqlite3 types, per Scripts/check_public_header_dependencies.py
-// and CLAUDE.md's rule that RowingCore-adjacent contracts stay
+// and AGENTS.md's rule that RowingCore-adjacent contracts stay
 // database-runtime-independent above the adapter seam.
 #include <sqlite3.h>
 
