@@ -1,0 +1,91 @@
+{
+  "schema_version": 2,
+  "content_set_id": "han-river-alpha-1",
+  "reviewer": "content-owner-pending",
+  "assets": [
+    {
+      "asset_id": "han-river-route-definition",
+      "kind": "route-metadata",
+      "source": "VIR-authored WGS84 virtual waterline and landmark beat data; landmark anchors verified against Wikidata CC0 structured data",
+      "license": "VIR original work",
+      "license_version": "VIR-1",
+      "license_url": "https://github.com/pastry-personal5/virtual-indoor-rowing",
+      "creator": "Virtual Indoor Rowing",
+      "canonical_source_url": "https://github.com/pastry-personal5/virtual-indoor-rowing",
+      "source_hash": "route metadata is source-controlled; package hash is assigned only by the deterministic cook",
+      "modification_description": "Original virtual waterline and landmark beat data.",
+      "share_alike_release": "not applicable",
+      "attribution": "none"
+    },
+    {
+      "asset_id": "han-river-blue-hour-key-art-v1",
+      "kind": "concept-art",
+      "source": "OpenAI-generated original concept art; 2026-09-20",
+      "license": "VIR original work",
+      "license_version": "VIR-1",
+      "license_url": "https://github.com/pastry-personal5/virtual-indoor-rowing",
+      "creator": "Virtual Indoor Rowing",
+      "canonical_source_url": "https://github.com/pastry-personal5/virtual-indoor-rowing",
+      "source_hash": "sha256:e0f54cadc1bbfacafde9daa0baa18387b16985aa556e107697c0fcaae9196bee",
+      "modification_description": "Original generated concept art; review/key-art reference only.",
+      "share_alike_release": "not applicable",
+      "attribution": "none"
+    },
+    {
+      "asset_id": "banpo-bridge-moonlight-rainbow-fountain-reference",
+      "kind": "third-party-reference-bitmap",
+      "source": "Wikimedia Commons File:Banpo Bridge Moonlight Rainbow Fountain at night - 2023-08-14.jpg, Wvdp",
+      "license": "CC0 1.0 Universal",
+      "license_version": "1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "creator": "Wvdp",
+      "canonical_source_url": "https://commons.wikimedia.org/wiki/File:Banpo_Bridge_Moonlight_Rainbow_Fountain_at_night_-_2023-08-14.jpg",
+      "source_hash": "sha256:76863c14e05e15367da7dbcbaab959933d33d08f041763bcccaf759392bb24f7",
+      "modification_description": "Preview retained as unshipped art reference; no package adaptation.",
+      "share_alike_release": "not applicable",
+      "attribution": "CC0; source and creator retained in LICENSES.md"
+    },
+    {
+      "asset_id": "nodeul-station-view-reference",
+      "kind": "third-party-reference-bitmap",
+      "source": "Wikimedia Commons File:Nodeul Station View.jpg, Aspere",
+      "license": "CC0 1.0 Universal",
+      "license_version": "1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "creator": "Aspere",
+      "canonical_source_url": "https://commons.wikimedia.org/wiki/File:Nodeul_Station_View.jpg",
+      "source_hash": "sha256:e525ea9fb3e96b86c06d8faf75120e6a9e257442c53b7df2058d6c71d6d7fe08",
+      "modification_description": "Preview retained as unshipped art reference; no package adaptation.",
+      "share_alike_release": "not applicable",
+      "attribution": "CC0; source and creator retained in LICENSES.md"
+    },
+    {
+      "asset_id": "han-river-daytime-skyline-pickpik-reference",
+      "kind": "third-party-reference-bitmap",
+      "source": "PickPik: City with clouds during daytime, https://www.pickpik.com/scenery-han-river-seoul-sky-river-cloud-122032",
+      "license": "Public Domain (as labelled on the PickPik source page)",
+      "license_version": "source-page designation",
+      "license_url": "https://www.pickpik.com/scenery-han-river-seoul-sky-river-cloud-122032",
+      "creator": "Not stated on source page",
+      "canonical_source_url": "https://www.pickpik.com/scenery-han-river-seoul-sky-river-cloud-122032",
+      "source_hash": "sha256:42f16f4e30762e26d561f491b6ffaef34392990c4d19ed842cc14ec92ab87388",
+      "modification_description": "Preview retained as unshipped art reference; no package adaptation.",
+      "share_alike_release": "not applicable",
+      "attribution": "Source page retained in LICENSES.md; unshipped art reference only"
+    },
+    {
+      "asset_id": "yeouido-skyscraper-pickpik-reference",
+      "kind": "third-party-reference-bitmap",
+      "source": "PickPik: High-rise building with glass windows near body of water, https://www.pickpik.com/seoul-skyscraper-building-architecture-yeoido-sky-39939",
+      "license": "Public Domain (as labelled on the PickPik source page)",
+      "license_version": "source-page designation",
+      "license_url": "https://www.pickpik.com/seoul-skyscraper-building-architecture-yeoido-sky-39939",
+      "creator": "Not stated on source page",
+      "canonical_source_url": "https://www.pickpik.com/seoul-skyscraper-building-architecture-yeoido-sky-39939",
+      "source_hash": "sha256:6c56e9d96a2b5ac8e587a2a01b7ed662ca2767369ef83908d9fae353e1726765",
+      "modification_description": "Preview retained as unshipped art reference; no package adaptation.",
+      "share_alike_release": "not applicable",
+      "attribution": "Source page retained in LICENSES.md; unshipped art reference only"
+    }
+  ]
+}

@@ -1,0 +1,82 @@
+syntax = "proto3";
+
+package rowing.v1;
+
+// Engine-independent route metadata. Unreal package paths are deliberately
+// absent: presentation resolves stable IDs only after the content set mounts.
+message RouteCheckpointV1 {
+  string checkpoint_id = 1;
+  uint64 distance_mm = 2;
+}
+
+message ClientCompatibilityV1 {
+  uint32 minimum_build = 1;
+  uint32 maximum_build = 2;
+  uint32 content_schema = 3;
+  uint32 route_schema = 4;
+}
+
+message RouteDefinitionV1 {
+  uint32 schema_version = 1;
+  string route_id = 2;
+  string semantic_version = 3;
+  string content_set_id = 4;
+  uint64 length_mm = 5;
+  bool is_closed = 6;
+  repeated RouteCheckpointV1 checkpoints = 7;
+  ClientCompatibilityV1 compatibility = 8;
+  string display_name_key = 9;
+  string description_key = 10;
+  bytes metadata_sha256 = 11;
+}
+
+message ContentManifestUnsignedV1 {
+  uint32 schema_version = 1;
+  uint64 catalog_revision = 2;
+  int64 issued_at_unix_seconds = 3;
+  int64 expires_at_unix_seconds = 4;
+  ClientCompatibilityV1 compatibility = 5;
+  RouteDefinitionV1 route = 6;
+  string package_url = 7;
+  bytes package_sha256 = 8;
+  uint64 compressed_size_bytes = 9;
+  uint64 uncompressed_size_bytes = 10;
+  bytes inventory_sha256 = 11;
+  bool withdrawn = 12;
+  string withdrawal_reason_key = 13;
+}
+
+// The signature is over unsigned_payload exactly as stored. Verification also
+// requires that the payload is the deterministic protobuf serialization of its
+// parsed value, preventing alternate encodings from becoming signed aliases.
+message ContentManifestEnvelopeV1 {
+  uint32 envelope_version = 1;
+  bytes unsigned_payload = 2;
+  string key_id = 3;
+  bytes signature = 4;
+}
+
+message ContentLicenseRecordV1 {
+	string license_name = 1;
+	string license_version = 2;
+	string license_url = 3;
+	string creator = 4;
+	string canonical_source_url = 5;
+	bytes source_sha256 = 6;
+	string modification_description = 7;
+	string share_alike_release = 8;
+}
+
+message ContentInventoryEntryV1 {
+	string relative_path = 1;
+	string asset_class = 2;
+	uint64 size_bytes = 3;
+	bytes sha256 = 4;
+	ContentLicenseRecordV1 license = 5;
+}
+
+message ContentInventoryV1 {
+  uint32 schema_version = 1;
+  string content_set_id = 2;
+  repeated ContentInventoryEntryV1 entries = 3;
+}

@@ -11,6 +11,7 @@ Saved/
 /Build/native/
 /Build/native-app/
 /Build/unreal-shipping/
+/Build/content-origin-fixture/
 !/Build/Mac/Resources/Info.Template.plist
 /Build/Mac/FileOpenOrder/
 /Build/Mac/*.PackageVersionCounter

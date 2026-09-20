@@ -2,9 +2,11 @@
 
 #include "RowingCore/RowingSession.h"
 #include "RowingCore/RowingTelemetry.h"
+#include "ContentRuntime/ContentManifest.h"
 
 #include <cstdint>
 #include <optional>
+#include <string>
 
 inline constexpr std::uint64_t CourseLengthMm = 2'000'000ULL;
 inline constexpr std::uint64_t CoursePredictionLimitNs = 250'000'000ULL;
@@ -40,11 +42,13 @@ struct FCourseTelemetryInput
 
 struct FCoursePresentationSnapshot
 {
+	std::string RouteId = "route.standard.2k";
 	std::uint64_t MeasuredDistanceMm = 0;
 	double PredictedDistanceMm = 0.0;
 	double PresentedDistanceMm = 0.0;
 	std::uint64_t CompletedLap = 0;
 	double WrappedCourseDistanceMm = 0.0;
+	bool bRouteComplete = false;
 
 	// 0 is catch and 1 is finish. Component channels encode a deterministic
 	// legs/seat -> torso -> arms drive; reading them backwards reverses recovery.
@@ -62,6 +66,11 @@ class FCoursePresentationRuntime final
 	FCoursePresentationSnapshot Update(const FCourseTelemetryInput &Input,
 									   std::uint64_t NowMonotonicNs);
 	void Reset() noexcept;
+	void SelectRoute(const ContentRuntime::FRouteDefinition &InRoute);
+	const ContentRuntime::FRouteDefinition &GetRoute() const noexcept
+	{
+		return Route;
+	}
 	const FCoursePresentationSnapshot &GetSnapshot() const noexcept
 	{
 		return Snapshot;
@@ -69,6 +78,7 @@ class FCoursePresentationRuntime final
 
   private:
 	FCoursePresentationSnapshot Snapshot;
+	ContentRuntime::FRouteDefinition Route = ContentRuntime::BuiltInStandardRouteDefinition();
 	FRowingSessionId SessionId;
 	bool bHasSession = false;
 	bool bHasDistance = false;

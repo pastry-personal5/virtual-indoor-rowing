@@ -27,6 +27,9 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	virtual void BeginPlay() override;
 
 	void InitializeCourse();
+	// Called before the first initialization. The actor consumes only the stable
+	// route definition, never a downloaded Unreal package path.
+	void ConfigureRoute(const ContentRuntime::FRouteDefinition &Route);
 	void ApplyPresentation(const FCoursePresentationSnapshot &Snapshot);
 
 	FTransform GetCourseTransform(double WrappedDistanceMm) const;
@@ -82,6 +85,7 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	TArray<TObjectPtr<UTextRenderComponent>> MarkerLabels;
 
 	bool bInitialized = false;
+	ContentRuntime::FRouteDefinition Route = ContentRuntime::BuiltInStandardRouteDefinition();
 	bool bHasOarPresentation = false;
 	float SmoothedHandsX = 0.0f;
 	float SmoothedOarYaw = 0.0f;

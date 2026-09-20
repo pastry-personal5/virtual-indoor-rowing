@@ -59,10 +59,15 @@ class VIRTUALROWING_API UWorkoutDevicePanelWidget : public UUserWidget
 	void HandleCandidate3();
 	UFUNCTION()
 	void HandleCandidate4();
+	UFUNCTION()
+	void HandleStandardCourseClicked();
+	UFUNCTION()
+	void HandleHanCourseClicked();
 
 	void SelectCandidate(int32 Index);
 	UWorkoutSubsystem *GetWorkoutSubsystem() const;
 	void ApplyPanel(const FWorkoutDevicePanel &Panel);
+	void SyncCourseSelection(const FWorkoutDevicePanel &Panel);
 	void ApplyFocusCue();
 	UButton *GetPrimaryButton(const FWorkoutDevicePanel &Panel) const;
 
@@ -72,6 +77,12 @@ class VIRTUALROWING_API UWorkoutDevicePanelWidget : public UUserWidget
 	TObjectPtr<UTextBlock> MessageText;
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> JournalText;
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> CourseHeadingText;
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> CourseSelectionText;
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> HanAvailabilityText;
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> ScanLabel;
 	UPROPERTY(Transient)
@@ -86,6 +97,10 @@ class VIRTUALROWING_API UWorkoutDevicePanelWidget : public UUserWidget
 	TObjectPtr<UButton> RetryButton;
 	UPROPERTY(Transient)
 	TObjectPtr<UButton> ConfirmButton;
+	UPROPERTY(Transient)
+	TObjectPtr<UButton> StandardCourseButton;
+	UPROPERTY(Transient)
+	TObjectPtr<UButton> HanCourseButton;
 	UPROPERTY(Transient)
 	TObjectPtr<UButton> ScanButton;
 	UPROPERTY(Transient)

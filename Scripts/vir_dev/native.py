@@ -118,6 +118,18 @@ def format_check() -> int:
 	return result.returncode
 
 
+def format_sources() -> int:
+	"""Apply the pinned formatter to project-owned native sources."""
+	versions = common.load_versions()
+	env = common.tool_env(versions)
+	clang_format = shutil.which("clang-format", path=env.get("PATH")) or common.capture(["xcrun", "--find", "clang-format"], env=env)
+	if not clang_format:
+		print("ERROR: clang-format is required; install the formatter shipped with the pinned Xcode", file=sys.stderr)
+		return 1
+	sources = [str(path) for directory in ("Source", "Plugins/Concept2PM", "Tools", "Tests") for suffix in ("*.h", "*.hpp", "*.cpp", "*.cc", "*.cxx", "*.mm", "*.m") for path in (common.ROOT / directory).rglob(suffix) if not any(part in {"Binaries", "DerivedDataCache", "Intermediate", "Saved"} for part in path.parts)]
+	return common.run([clang_format, "-i", *sources], env=env).returncode
+
+
 def clean() -> int:
 	for directory in (common.BUILD_DIR, common.APP_BUILD_DIR):
 		if directory.exists():

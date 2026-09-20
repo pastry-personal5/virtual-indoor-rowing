@@ -1,6 +1,7 @@
 #include "CourseSubsystem.h"
 
 #include "GrayBoxCourseActor.h"
+#include "ContentSubsystem.h"
 #include "WorkoutSubsystem.h"
 
 #include "Engine/GameInstance.h"
@@ -105,6 +106,17 @@ void UCourseSubsystem::Pump(uint64 NowMonotonicNs)
 	EnsureCourseActor();
 	const UWorld *World = GetWorld();
 	const UGameInstance *GameInstance = World ? World->GetGameInstance() : nullptr;
+	const UContentSubsystem *Content = GameInstance ? GameInstance->GetSubsystem<UContentSubsystem>() : nullptr;
+	if (Content)
+	{
+		const ContentRuntime::FRouteDefinition &Route = Content->GetSelectedRoute();
+		const FString RouteKey = UTF8_TO_TCHAR((Route.RouteId + ":" + Route.SemanticVersion + ":" + Route.ContentSetId).c_str());
+		if (RouteKey != LastRouteKey)
+		{
+			Runtime.SelectRoute(Route);
+			LastRouteKey = RouteKey;
+		}
+	}
 	const UWorkoutSubsystem *Workout = GameInstance ? GameInstance->GetSubsystem<UWorkoutSubsystem>() : nullptr;
 	const FWorkoutSnapshot *WorkoutSnapshot = Workout ? Workout->GetSnapshot() : nullptr;
 	uint64 SampleTimestampNs = 0;
@@ -146,6 +158,11 @@ void UCourseSubsystem::EnsureCourseActor()
 		CourseActor = World->SpawnActor<AGrayBoxCourseActor>();
 		if (!CourseActor)
 			return;
+		if (UGameInstance *GameInstance = World->GetGameInstance())
+		{
+			if (UContentSubsystem *Content = GameInstance->GetSubsystem<UContentSubsystem>())
+				CourseActor->ConfigureRoute(Content->GetSelectedRoute());
+		}
 		CourseActor->InitializeCourse();
 	}
 	// The controller can appear after the subsystem's first tick. Reasserting the

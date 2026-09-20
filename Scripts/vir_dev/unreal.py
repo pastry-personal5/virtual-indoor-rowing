@@ -38,6 +38,11 @@ def unreal_smoke() -> int:
 		"Development",
 		f"-Project={project}",
 		"-WaitMutex",
+		# The managed runner may deny UnrealBuildTool's default per-user log
+		# rotation. Keep this compile smoke test read-only outside the worktree.
+		"-NoLog",
+		# An explicit XmlConfigCache is load-only in UBT. Omitting it lets UBT
+		# generate and maintain the project-local cache under Intermediate/.
 	], env=common.tool_env(versions)).returncode
 	if result:
 		return result

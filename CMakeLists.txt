@@ -138,6 +138,10 @@ if(BUILD_TESTING)
 		NAME unreal_shipping_command_and_package_verifier_tests
 		COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/test_unreal_packaging.py"
 	)
+	add_test(
+		NAME content_origin_canary
+		COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/content_canary.py" canary
+	)
 endif()
 
 function(vir_collect_sources out_var directory)
@@ -194,9 +198,32 @@ protobuf_generate(
 		"${CMAKE_CURRENT_SOURCE_DIR}/Contracts/proto/rowing/v1/telemetry.proto"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Contracts/proto/rowing/v1/session_summary.proto"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Contracts/proto/rowing/v1/session_object.proto"
+		"${CMAKE_CURRENT_SOURCE_DIR}/Contracts/proto/rowing/v1/content.proto"
 	PROTOC_OUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/contracts"
 	${VIR_PROTOBUF_GENERATE_EXTRA_ARGS}
 )
+
+# Phase 2 Milestone 1: engine-independent signed content and route contracts.
+# Protobuf stays private to the implementation; public consumers see stable
+# domain values and a platform-neutral signature-verifier interface.
+vir_collect_sources(CONTENT_RUNTIME_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Source/ContentRuntime/Private")
+add_library(ContentRuntime STATIC ${CONTENT_RUNTIME_SOURCES})
+add_library(content_runtime ALIAS ContentRuntime)
+target_include_directories(ContentRuntime PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/Source/ContentRuntime/Public")
+target_link_libraries(ContentRuntime PRIVATE RowingContracts)
+target_compile_features(ContentRuntime PUBLIC cxx_std_20)
+
+if(APPLE)
+	add_library(ContentRuntimeMacCryptoKitShim STATIC Source/ContentRuntimeMac/Private/Ed25519CryptoKit.swift)
+	if(CMAKE_OSX_DEPLOYMENT_TARGET AND CMAKE_OSX_ARCHITECTURES)
+		target_compile_options(ContentRuntimeMacCryptoKitShim PRIVATE -target "${CMAKE_OSX_ARCHITECTURES}-apple-macos${CMAKE_OSX_DEPLOYMENT_TARGET}")
+	endif()
+	add_library(ContentRuntimeMac STATIC Source/ContentRuntimeMac/Private/CryptoKitContentVerifier.cpp)
+	target_include_directories(ContentRuntimeMac PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/Source/ContentRuntimeMac/Public")
+	target_link_libraries(ContentRuntimeMac PUBLIC ContentRuntime PRIVATE ContentRuntimeMacCryptoKitShim)
+	target_compile_features(ContentRuntimeMac PUBLIC cxx_std_20)
+	set_target_properties(ContentRuntimeMac PROPERTIES LINKER_LANGUAGE CXX)
+endif()
 
 # Phase 0 Milestone 4 Spike B: bounded local-durability journal spike
 # (docs/phase-0/07-milestone-4-spikes.md). Depends only on RowingCore.
@@ -207,7 +234,7 @@ target_include_directories(LocalData
 	PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/Source/LocalData/Public"
 	PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Source/LocalData/Private" "${SQLite3_INCLUDE_DIR}" "${ZSTD_INCLUDE_DIR}"
 )
-target_link_libraries(LocalData PUBLIC RowingCore RowingDevice PRIVATE "${SQLite3_LIBRARY}" "${ZSTD_LIBRARY}" RowingContracts)
+target_link_libraries(LocalData PUBLIC RowingCore RowingDevice ContentRuntime PRIVATE "${SQLite3_LIBRARY}" "${ZSTD_LIBRARY}" RowingContracts)
 target_compile_features(LocalData PUBLIC cxx_std_20)
 
 # Phase 1 Milestone 3: Apple-only LocalData cipher adapter (CryptoKit AES-256-GCM
@@ -306,7 +333,7 @@ vir_collect_sources(COURSE_RUNTIME_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Source/C
 add_library(CourseRuntime STATIC ${COURSE_RUNTIME_SOURCES})
 add_library(course_runtime ALIAS CourseRuntime)
 target_include_directories(CourseRuntime PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/Source/CourseRuntime/Public")
-target_link_libraries(CourseRuntime PUBLIC RowingCore)
+target_link_libraries(CourseRuntime PUBLIC RowingCore ContentRuntime)
 target_compile_features(CourseRuntime PUBLIC cxx_std_20)
 
 vir_collect_sources(ROWING_SIM_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Source/RowingSim/src")
@@ -408,6 +435,11 @@ if(VIR_BUILD_TESTS AND BUILD_TESTING AND NOT VIR_APP_LIBS_ONLY)
 		target_link_libraries(local_data_wire_mapping_tests PRIVATE LocalData RowingDevice)
 		add_test(NAME local_data_wire_mapping_tests COMMAND local_data_wire_mapping_tests)
 	endif()
+	if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Source/LocalData/Tests/ContentRepositoryTests.cpp")
+		add_executable(content_repository_tests Source/LocalData/Tests/ContentRepositoryTests.cpp)
+		target_link_libraries(content_repository_tests PRIVATE LocalData ContentRuntime)
+		add_test(NAME content_repository_tests COMMAND content_repository_tests)
+	endif()
 	if(TARGET OnlineClient AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Source/OnlineClient/Tests/OnlineClientTests.cpp")
 		add_executable(online_client_tests Source/OnlineClient/Tests/OnlineClientTests.cpp)
 		target_link_libraries(online_client_tests PRIVATE OnlineClient LocalData)
@@ -452,6 +484,17 @@ if(VIR_BUILD_TESTS AND BUILD_TESTING AND NOT VIR_APP_LIBS_ONLY)
 		add_executable(course_runtime_tests Source/CourseRuntime/Tests/CoursePresentationTests.cpp)
 		target_link_libraries(course_runtime_tests PRIVATE CourseRuntime)
 		add_test(NAME course_runtime_tests COMMAND course_runtime_tests)
+	endif()
+	if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Source/ContentRuntime/Tests/ContentRuntimeTests.cpp")
+		add_executable(content_runtime_tests Source/ContentRuntime/Tests/ContentRuntimeTests.cpp)
+		target_link_libraries(content_runtime_tests PRIVATE ContentRuntime RowingContracts)
+		add_test(NAME content_runtime_tests COMMAND content_runtime_tests)
+	endif()
+	if(TARGET ContentRuntimeMac AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Source/ContentRuntimeMac/Tests/CryptoKitContentVerifierTests.cpp")
+		add_executable(content_runtime_mac_tests Source/ContentRuntimeMac/Tests/CryptoKitContentVerifierTests.cpp)
+		target_link_libraries(content_runtime_mac_tests PRIVATE ContentRuntimeMac)
+		set_target_properties(content_runtime_mac_tests PROPERTIES LINKER_LANGUAGE CXX)
+		add_test(NAME content_runtime_mac_tests COMMAND content_runtime_mac_tests)
 	endif()
 	if(TARGET Concept2PMCore)
 		file(GLOB_RECURSE CONCEPT2_TEST_SOURCES CONFIGURE_DEPENDS
@@ -555,7 +598,7 @@ if(VIR_BUILD_TESTS AND BUILD_TESTING AND NOT VIR_APP_LIBS_ONLY)
 endif()
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang|GNU")
-foreach(target RowingCore RowingDevice LocalData LocalDataMac WorkoutRuntime CourseRuntime Concept2PMCore Concept2PMMac RowingSim durability-spike)
+foreach(target RowingCore RowingDevice ContentRuntime ContentRuntimeMac LocalData LocalDataMac WorkoutRuntime CourseRuntime Concept2PMCore Concept2PMMac RowingSim durability-spike)
 	if(TARGET "${target}")
 		get_target_property(target_type "${target}" TYPE)
 		if(target_type STREQUAL "INTERFACE_LIBRARY")
@@ -574,7 +617,7 @@ endif()
 # is explicitly merged because LocalData consumes it through a private CMake
 # dependency, which static libraries do not propagate to UBT.
 if(VIR_APP_LIBS_ONLY)
-	set(VIR_APP_LIB_ROOTS WorkoutRuntime CourseRuntime)
+	set(VIR_APP_LIB_ROOTS WorkoutRuntime CourseRuntime ContentRuntime)
 	# Phase 1 Milestone 10: the opt-in development coordinator is linked into the
 	# app archive; it remains dormant until its process environment enables it.
 	if(TARGET OnlineClient)
@@ -590,6 +633,9 @@ if(VIR_APP_LIBS_ONLY)
 			list(APPEND VIR_APP_LIB_ROOTS ${vir_real_device_target})
 		endif()
 	endforeach()
+	if(TARGET ContentRuntimeMac)
+		list(APPEND VIR_APP_LIB_ROOTS ContentRuntimeMac)
+	endif()
 
 	function(vir_collect_static_archives target visited_var archives_var)
 		get_target_property(aliased "${target}" ALIASED_TARGET)

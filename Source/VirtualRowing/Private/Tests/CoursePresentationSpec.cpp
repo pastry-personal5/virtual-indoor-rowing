@@ -1,6 +1,7 @@
 #include "Misc/AutomationTest.h"
 
 #include "CourseSubsystem.h"
+#include "ContentSubsystem.h"
 #include "GrayBoxCourseActor.h"
 #include "WorkoutHudWidget.h"
 
@@ -120,6 +121,14 @@ void FCoursePresentationSpec::Define()
 		Course->ApplyPresentation(Presentation);
 		TestEqual(TEXT("local official distance unchanged"), OfficialDistance, 2'250'000ULL);
 		TestEqual(TEXT("presentation input remains cumulative"), Presentation.MeasuredDistanceMm, OfficialDistance); });
+
+	It("allows peer course selection only while the route is available and no workout is active", [this]()
+	   {
+		TestTrue(TEXT("Standard is selectable while idle"), UContentSubsystem::CanSelectRoute(TEXT("route.standard.2k"), false, false));
+		TestFalse(TEXT("Han is unavailable before validated content activates"), UContentSubsystem::CanSelectRoute(TEXT("route.han-river.5k"), false, false));
+		TestTrue(TEXT("Han is selectable after validated content activates"), UContentSubsystem::CanSelectRoute(TEXT("route.han-river.5k"), true, false));
+		TestFalse(TEXT("Standard selection is blocked during a workout"), UContentSubsystem::CanSelectRoute(TEXT("route.standard.2k"), true, true));
+		TestFalse(TEXT("unknown route is not selectable"), UContentSubsystem::CanSelectRoute(TEXT("route.unknown"), true, false)); });
 }
 
 #endif // WITH_DEV_AUTOMATION_TESTS

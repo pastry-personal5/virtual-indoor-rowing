@@ -19,7 +19,7 @@ help: ## List the available targets.
 
 # --- Native build and test ---------------------------------------------------
 
-.PHONY: doctor configure build test format-check phase1-check development-sync-test
+.PHONY: doctor configure build test format format-check phase1-check development-sync-test
 
 doctor: ## Verify the host and installed tools against Config/BuildVersions.json.
 	$(DEV) doctor
@@ -35,6 +35,9 @@ test: ## Build, then run CTest with failure output enabled.
 
 format-check: ## Check C++/Objective-C++ formatting without modifying files.
 	$(DEV) format-check
+
+format: ## Apply the pinned C++/Objective-C++ formatter.
+	$(DEV) format
 
 phase1-check: ## Validate Phase 1 milestone numbering, links, and evidence statuses.
 	$(PYTHON) Scripts/check_phase1_packet.py
@@ -73,7 +76,7 @@ pm5-tui-journal: ## Launch the TUI with the opt-in Keychain-sealed workout journ
 
 # --- Unreal ------------------------------------------------------------------
 
-.PHONY: unreal-native-app unreal-smoke unreal-shipping unreal-package-verify unreal-bluetooth-probe unreal-bluetooth-probe-clean
+.PHONY: unreal-native-app unreal-smoke unreal-shipping unreal-package-verify unreal-bluetooth-probe unreal-bluetooth-probe-clean content-canary content-fixture
 
 # The first configure downloads hash-pinned protobuf and abseil sources (network).
 unreal-native-app: ## Build the Release static archive (Build/native-app/) the Unreal module links.
@@ -87,6 +90,12 @@ unreal-shipping: ## BuildCookRun the unsigned arm64 Shipping diagnostic host.
 
 unreal-package-verify: ## Inspect the staged Shipping .app only (no sign/notarize/launch).
 	$(DEV) unreal-package-verify
+
+content-canary: ## Run the deterministic Phase 2 origin/download/fallback/rollback canary.
+	$(DEV) content-canary
+
+content-fixture: ## Generate the local deterministic content-origin fixture (not Shipping evidence).
+	$(DEV) content-fixture
 
 unreal-bluetooth-probe: ## Run the bounded CoreBluetooth/TCC diagnostic in the staged app.
 	$(DEV) unreal-bluetooth-probe

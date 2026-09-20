@@ -128,8 +128,8 @@ namespace
 		LocalData::Private::FSqliteConnection Connection(Path);
 		EXPECT_TRUE(CountRows(Connection, "SELECT COUNT(*) FROM journal_events WHERE session_id = 'legacy';") == 1);
 		EXPECT_TRUE(CountRows(Connection, "SELECT COUNT(*) FROM sample_chunks WHERE session_id = 'legacy';") == 1);
-		EXPECT_TRUE(CountRows(Connection, "SELECT COUNT(*) FROM schema_migrations;") == 6);
-		for (const char *const Table : {"sessions", "session_summaries", "session_latency_summaries", "sync_outbox", "cloud_links", "installed_content", "paired_devices"})
+		EXPECT_TRUE(CountRows(Connection, "SELECT COUNT(*) FROM schema_migrations;") == 7);
+		for (const char *const Table : {"sessions", "session_summaries", "session_latency_summaries", "sync_outbox", "cloud_links", "installed_content", "paired_devices", "content_catalog_state", "content_downloads"})
 		{
 			const std::string Sql = std::string("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = '") + Table + "';";
 			EXPECT_TRUE(CountRows(Connection, Sql.c_str()) == 1);

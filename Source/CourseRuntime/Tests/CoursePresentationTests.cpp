@@ -82,6 +82,33 @@ namespace
 		assert(Near(Runtime.Update(Input, 4'000'000'000ULL).PresentedDistanceMm, 42'000.0));
 	}
 
+	void TestOpenRouteEndpointDoesNotCapOfficialProgress()
+	{
+		FCoursePresentationRuntime Runtime;
+		ContentRuntime::FRouteDefinition Han;
+		Han.SchemaVersion = ContentRuntime::RouteDefinitionSchemaV1;
+		Han.RouteId = "route.han-river.5k";
+		Han.LengthMm = 5'000'000;
+		Han.bClosed = false;
+		Runtime.SelectRoute(Han);
+		auto Input = ActiveInput(5'250'000);
+		Input.SampleMonotonicNs = 1'000'000'000ULL;
+		const auto Snapshot = Runtime.Update(Input, 1'000'000'000ULL);
+		assert(Snapshot.RouteId == "route.han-river.5k");
+		assert(Snapshot.MeasuredDistanceMm == 5'250'000);
+		assert(Snapshot.PredictedDistanceMm == 5'250'000);
+		assert(Snapshot.PresentedDistanceMm == 5'250'000);
+		assert(Snapshot.WrappedCourseDistanceMm == 5'000'000);
+		assert(Snapshot.bRouteComplete);
+		assert(Snapshot.CompletedLap == 0);
+
+		Input.MeasuredDistanceMm = 6'000'000;
+		const auto Continued = Runtime.Update(Input, 2'000'000'000ULL);
+		assert(Continued.MeasuredDistanceMm == 6'000'000);
+		assert(Continued.WrappedCourseDistanceMm == 5'000'000);
+		assert(Continued.bRouteComplete);
+	}
+
 	void TestStrokeSourcesAndBiomechanics()
 	{
 		FCoursePresentationRuntime Runtime;
@@ -174,6 +201,7 @@ int main()
 {
 	TestCourseWrapping();
 	TestPredictionAndSpring();
+	TestOpenRouteEndpointDoesNotCapOfficialProgress();
 	TestStrokeSourcesAndBiomechanics();
 	TestStrokeFallbackTimingAndStops();
 	std::cout << "course presentation tests passed\n";

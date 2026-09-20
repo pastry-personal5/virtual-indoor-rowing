@@ -38,6 +38,7 @@ class VIRTUALROWING_API UCourseSubsystem : public UWorldSubsystem, public FTicka
 	UPROPERTY(Transient)
 	TObjectPtr<AGrayBoxCourseActor> CourseActor;
 	FString LastSampleKey;
+	FString LastRouteKey;
 	uint64 SampleObservedNs = 0;
 
 	void EnsureCourseActor();

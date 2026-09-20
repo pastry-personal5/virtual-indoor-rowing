@@ -1,0 +1,37 @@
+{
+  "type": "FeatureCollection",
+  "name": "VIR Han River 5K — Banpo to Wonhyo virtual waterline",
+  "crs": {
+    "type": "name",
+    "properties": {
+      "name": "urn:ogc:def:crs:OGC:1.3:CRS84"
+    }
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "route_id": "route.han-river.5k",
+        "route_version": "1.0.0",
+        "length_m": 5000,
+        "direction": "westbound",
+        "geometry_method": "authored virtual waterline registered to named WGS84 landmarks",
+        "navigation_notice": "Virtual presentation route only. It is not a navigational chart or permission to row on the Han River."
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [126.996000, 37.511500],
+          [126.990000, 37.510500],
+          [126.982200, 37.511200],
+          [126.974000, 37.513000],
+          [126.966000, 37.516000],
+          [126.957800, 37.515900],
+          [126.952000, 37.518000],
+          [126.946000, 37.522000],
+          [126.943340, 37.523000]
+        ]
+      }
+    }
+  ]
+}

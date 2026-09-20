@@ -20,11 +20,11 @@ the phase gate has passed.
 | Area | Phase 2 decision |
 |---|---|
 | Alpha | CEO on the reference Model D/PM5 for four weeks; at least four completed rows and a recorded willingness-to-pay judgment |
-| Route | One downloadable Han River representation plus a cooked, low-detail outdoor safe route |
+| Route | A downloadable 5 km Han River vertical slice plus a cooked-in 2 km Standard fallback route; both are peer course choices when Han River is usable |
 | Training | One beginner-friendly, fixed-time, app-guided plan; no PM-managed programming |
 | Local value | Chronological history, pace trend, private personal-best ghost, and user-selected FIT export |
 | Product UX | Skippable safety/setup, Settings, exertion HUD polish, text scaling, high contrast, and safe-mode boot |
-| Content | Controlled internal catalog with a versioned signed manifest, resumable download, validation, atomic activation, rollback, and fallback |
+| Content | Public-read internal static catalog with a versioned signed manifest, resumable download, validation, next-launch atomic activation, rollback, and Standard fallback |
 | Evidence | 100 varied workouts, with deterministic simulator coverage plus reference-hardware evidence; CEO approves training/safety copy |
 
 Downloaded content is data only. It must be signature-, hash-, size-, path-,
@@ -32,20 +32,16 @@ and compatibility-validated before activation; it cannot contain executable
 code, scripts, native plug-ins, or Blueprint bytecode. A content, renderer, or
 network failure must leave the local menu, safe route, and local workout usable.
 
-## Proposed milestones
+## Scoped milestone
 
 | Milestone | Bounded outcome |
 |---|---|
-| 1 — alpha baseline and observability | Reproducible performance, latency, durability, startup, reconnect, simulator, and HIL evidence baseline without regressing Phase 1 invariants. |
-| 2 — onboarding, settings, and safe operation | Accessible setup/settings, exertion HUD polish, and safe-mode fallback. |
-| 3 — app-guided fixed-time workout | Versioned plan, monotonic cues, explicit app-guided provenance, and no CSAFE plan commands. |
-| 4 — local history, ghost, and FIT | Finalized-session history/detail, pace trend, local PB ghost, and on-demand selected-file export. |
-| 5 — Han River content and validator | Rights/reference record, route definition, production environment, and cook/budget/route validation. |
-| 6 — signed content catalog, install, and rollback | Staged download, verification, atomic activation, last-known-good selection, and safe failure behavior. |
-| 7 — alpha hardening and evidence | Four-week alpha and consolidated exit-gate evidence; findings may reopen earlier work. |
+| [Phase 2 Milestone 1](01-milestone-1-han-river-content-fallback.md) — Han River content delivery with Standard fallback | A data-only, signed Han River delivery path with a cooked Standard route that remains usable through content, renderer, network, storage, and catalog failure. |
 
-Each milestone needs its own scope checkpoint and gate. This sequence may be
-replanned without changing the delivery-phase outcome or its normative gate.
+Only the current milestone is scoped. Later Phase 2 milestones are planned
+individually, before work begins; no speculative sequencing or scope is
+recorded here. Passing this milestone records incremental progress only and
+does not pass the Phase 2 exit gate.
 
 ## Exit gate
 

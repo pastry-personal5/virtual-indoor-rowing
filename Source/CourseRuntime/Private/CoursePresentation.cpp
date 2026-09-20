@@ -48,6 +48,7 @@ namespace
 void FCoursePresentationRuntime::Reset() noexcept
 {
 	Snapshot = {};
+	Snapshot.RouteId = Route.RouteId;
 	SessionId = {};
 	bHasSession = false;
 	bHasDistance = false;
@@ -62,6 +63,14 @@ void FCoursePresentationRuntime::Reset() noexcept
 	bReturningToCatch = false;
 	CatchReturnStartedNs = 0;
 	CatchReturnStartPose = 0.0;
+}
+
+void FCoursePresentationRuntime::SelectRoute(const ContentRuntime::FRouteDefinition &InRoute)
+{
+	if (InRoute.RouteId.empty() || InRoute.LengthMm == 0 || InRoute.SchemaVersion != ContentRuntime::RouteDefinitionSchemaV1)
+		throw ContentRuntime::FContentValidationError(ContentRuntime::EContentError::InvalidRoute, "course runtime requires a valid route definition");
+	Route = InRoute;
+	Reset();
 }
 
 FCoursePresentationSnapshot FCoursePresentationRuntime::Update(
@@ -132,8 +141,19 @@ FCoursePresentationSnapshot FCoursePresentationRuntime::Update(
 	}
 
 	const double NonNegativeDistance = std::max(0.0, Snapshot.PresentedDistanceMm);
-	Snapshot.CompletedLap = static_cast<std::uint64_t>(NonNegativeDistance / static_cast<double>(CourseLengthMm));
-	Snapshot.WrappedCourseDistanceMm = std::fmod(NonNegativeDistance, static_cast<double>(CourseLengthMm));
+	const double RouteLength = static_cast<double>(Route.LengthMm);
+	if (Route.bClosed)
+	{
+		Snapshot.CompletedLap = static_cast<std::uint64_t>(NonNegativeDistance / RouteLength);
+		Snapshot.WrappedCourseDistanceMm = std::fmod(NonNegativeDistance, RouteLength);
+		Snapshot.bRouteComplete = false;
+	}
+	else
+	{
+		Snapshot.CompletedLap = 0;
+		Snapshot.WrappedCourseDistanceMm = std::min(NonNegativeDistance, RouteLength);
+		Snapshot.bRouteComplete = Snapshot.MeasuredDistanceMm >= Route.LengthMm;
+	}
 	UpdateStroke(Input, NowMonotonicNs);
 	return Snapshot;
 }

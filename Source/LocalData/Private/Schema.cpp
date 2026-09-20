@@ -141,6 +141,36 @@ namespace LocalData::Private
 			RecordMigration(Connection, 6, "v6-session-summary-codec");
 		}
 
+		void ApplyVersion7(FSqliteConnection &Connection)
+		{
+			Connection.Execute("ALTER TABLE installed_content ADD COLUMN route_id TEXT;");
+			Connection.Execute("ALTER TABLE installed_content ADD COLUMN catalog_revision INTEGER NOT NULL DEFAULT 0;");
+			Connection.Execute("ALTER TABLE installed_content ADD COLUMN issued_at_unix_seconds INTEGER NOT NULL DEFAULT 0;");
+			Connection.Execute("ALTER TABLE installed_content ADD COLUMN expires_at_unix_seconds INTEGER NOT NULL DEFAULT 0;");
+			Connection.Execute("ALTER TABLE installed_content ADD COLUMN install_path TEXT;");
+			Connection.Execute("ALTER TABLE installed_content ADD COLUMN failure_category TEXT;");
+			Connection.Execute("CREATE UNIQUE INDEX installed_content_one_active "
+							   "ON installed_content(status) WHERE status = 'active';");
+			Connection.Execute("CREATE UNIQUE INDEX installed_content_one_last_known_good "
+							   "ON installed_content(status) WHERE status = 'last_known_good';");
+			Connection.Execute("CREATE TABLE content_catalog_state ("
+							   "singleton INTEGER PRIMARY KEY CHECK (singleton = 1),"
+							   "accepted_revision INTEGER NOT NULL,"
+							   "manifest_hash TEXT NOT NULL,"
+							   "accepted_at TEXT NOT NULL"
+							   ");");
+			Connection.Execute("CREATE TABLE content_downloads ("
+							   "content_set_id TEXT PRIMARY KEY,"
+							   "package_url TEXT NOT NULL,"
+							   "staging_path TEXT NOT NULL,"
+							   "expected_size_bytes INTEGER NOT NULL CHECK (expected_size_bytes > 0),"
+							   "received_size_bytes INTEGER NOT NULL CHECK (received_size_bytes >= 0),"
+							   "entity_tag TEXT NOT NULL,"
+							   "updated_at TEXT NOT NULL"
+							   ");");
+			RecordMigration(Connection, 7, "v7-content-install-catalog-download-state");
+		}
+
 		// The unlocked check is only a fast path so read-only openers do not
 		// take the write lock. It is repeated under BEGIN IMMEDIATE so two
 		// connections opening the same older database cannot both apply it.
@@ -174,5 +204,6 @@ namespace LocalData::Private
 		ApplyMigrationOnce(Connection, 4, ApplyVersion4);
 		ApplyMigrationOnce(Connection, 5, ApplyVersion5);
 		ApplyMigrationOnce(Connection, 6, ApplyVersion6);
+		ApplyMigrationOnce(Connection, 7, ApplyVersion7);
 	}
 } // namespace LocalData::Private

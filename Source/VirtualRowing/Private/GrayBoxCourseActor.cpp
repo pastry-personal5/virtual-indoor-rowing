@@ -69,6 +69,13 @@ void AGrayBoxCourseActor::BeginPlay()
 	InitializeCourse();
 }
 
+void AGrayBoxCourseActor::ConfigureRoute(const ContentRuntime::FRouteDefinition &InRoute)
+{
+	if (bInitialized || InRoute.RouteId.empty() || InRoute.LengthMm == 0)
+		return;
+	Route = InRoute;
+}
+
 UStaticMeshComponent *AGrayBoxCourseActor::MakeMesh(const TCHAR *Name,
 													UStaticMesh *Mesh,
 													USceneComponent *Parent,
@@ -104,16 +111,29 @@ void AGrayBoxCourseActor::InitializeCourse()
 	bInitialized = true;
 
 	CourseSpline->ClearSplinePoints(false);
-	for (int32 Index = 0; Index < SplinePointCount; ++Index)
+	const int32 PointCount = Route.bClosed ? SplinePointCount : SplinePointCount + 1;
+	for (int32 Index = 0; Index < PointCount; ++Index)
 	{
-		const double Angle = 2.0 * UE_PI * static_cast<double>(Index) / static_cast<double>(SplinePointCount);
-		CourseSpline->AddSplinePoint(FVector(CourseRadiusX * FMath::Cos(Angle), CourseRadiusY * FMath::Sin(Angle), 20.0), ESplineCoordinateSpace::Local, false);
-		CourseSpline->SetSplinePointType(Index, ESplinePointType::Curve, false);
+		if (Route.bClosed)
+		{
+			const double Angle = 2.0 * UE_PI * static_cast<double>(Index) / static_cast<double>(SplinePointCount);
+			CourseSpline->AddSplinePoint(FVector(CourseRadiusX * FMath::Cos(Angle), CourseRadiusY * FMath::Sin(Angle), 20.0), ESplineCoordinateSpace::Local, false);
+			CourseSpline->SetSplinePointType(Index, ESplinePointType::Curve, false);
+		}
+		else
+		{
+			const double Alpha = static_cast<double>(Index) / static_cast<double>(PointCount - 1);
+			const double X = FMath::Lerp(-250'000.0, 250'000.0, Alpha);
+			const double Y = 8'000.0 * FMath::Sin(Alpha * 2.0 * UE_PI) + 2'000.0 * FMath::Sin(Alpha * 8.0 * UE_PI);
+			CourseSpline->AddSplinePoint(FVector(X, Y, 20.0), ESplineCoordinateSpace::Local, false);
+			CourseSpline->SetSplinePointType(Index, ESplinePointType::Curve, false);
+		}
 	}
-	CourseSpline->SetClosedLoop(true, true);
-	for (int32 Index = 0; Index < SplinePointCount; ++Index)
+	CourseSpline->SetClosedLoop(Route.bClosed, true);
+	const int32 EdgeCount = Route.bClosed ? PointCount : PointCount - 1;
+	for (int32 Index = 0; Index < EdgeCount; ++Index)
 	{
-		const int32 NextIndex = (Index + 1) % SplinePointCount;
+		const int32 NextIndex = Route.bClosed ? (Index + 1) % PointCount : Index + 1;
 		USplineMeshComponent *CourseEdge = NewObject<USplineMeshComponent>(this, *FString::Printf(TEXT("CourseEdge%d"), Index));
 		CourseEdge->SetupAttachment(SceneRoot);
 		CourseEdge->SetStaticMesh(Cube);
@@ -150,7 +170,8 @@ void AGrayBoxCourseActor::InitializeCourse()
 		EnvironmentMeshes.Add(Shore);
 	}
 
-	for (int32 Index = 0; Index < MarkerCount; ++Index)
+	const int32 RouteMarkerCount = Route.bClosed ? MarkerCount : FMath::FloorToInt(static_cast<double>(Route.LengthMm) / 250'000.0);
+	for (int32 Index = 0; Index < RouteMarkerCount; ++Index)
 	{
 		const int32 MarkerMetres = (Index + 1) * 250;
 		const double DistanceMm = static_cast<double>(MarkerMetres) * 1000.0;
@@ -187,8 +208,10 @@ FTransform AGrayBoxCourseActor::GetCourseTransform(double WrappedDistanceMm) con
 {
 	if (!CourseSpline || CourseSpline->GetSplineLength() <= 0.0f)
 		return FTransform::Identity;
-	const double Wrapped = FMath::Fmod(FMath::Max(0.0, WrappedDistanceMm), static_cast<double>(CourseLengthMm));
-	const float SplineDistance = static_cast<float>(Wrapped / static_cast<double>(CourseLengthMm) * CourseSpline->GetSplineLength());
+	const double RouteDistance = Route.bClosed
+									 ? FMath::Fmod(FMath::Max(0.0, WrappedDistanceMm), static_cast<double>(Route.LengthMm))
+									 : FMath::Clamp(WrappedDistanceMm, 0.0, static_cast<double>(Route.LengthMm));
+	const float SplineDistance = static_cast<float>(RouteDistance / static_cast<double>(Route.LengthMm) * CourseSpline->GetSplineLength());
 	const FVector Location = CourseSpline->GetLocationAtDistanceAlongSpline(SplineDistance, ESplineCoordinateSpace::World);
 	const FVector Tangent = CourseSpline->GetDirectionAtDistanceAlongSpline(SplineDistance, ESplineCoordinateSpace::World).GetSafeNormal();
 	return FTransform(Tangent.Rotation(), Location);

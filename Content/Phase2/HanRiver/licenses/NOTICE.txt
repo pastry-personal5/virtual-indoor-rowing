@@ -1,0 +1,18 @@
+Virtual Indoor Rowing — Han River content licenses and credits
+
+This notice travels with the signed Han River package. The package's signed
+content inventory is the authoritative list of shipped assets and hashes.
+
+VIR-authored route metadata, original assets, and generated art remain
+proprietary VIR material unless an inventory record says otherwise. A CC
+BY-SA asset and any crop, retouch, texture, mesh, or other adaptation of it
+remain available under the same or a compatible CC BY-SA license. This
+share-alike boundary applies to that source image and its adaptations only;
+it does not relicense unrelated VIR code, route logic, or original assets.
+
+There are no CC BY-SA assets in this reference-only Han River source snapshot.
+When one is promoted into a cooked package, this section must be replaced with
+one entry containing the asset path, creator, canonical source URL, exact
+license/version and license URL, source SHA-256, modifications made, and the
+compatible share-alike release designation, followed by the applicable license
+text or stable reference.

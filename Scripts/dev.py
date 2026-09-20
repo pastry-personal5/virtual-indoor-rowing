@@ -9,12 +9,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from vir_dev import doctor, native, release, tui, unreal  # noqa: E402
+from vir_dev import content, doctor, native, release, tui, unreal  # noqa: E402
 
 
 def main() -> int:
 	parser = argparse.ArgumentParser(description=__doc__)
-	parser.add_argument("command", choices=("doctor", "configure", "build", "test", "format-check", "pm5-tui", "unreal-smoke", "unreal-shipping", "unreal-package-verify", "unreal-bluetooth-probe", "release-sign-notarize", "pm5-tui-hil", "pm5-tui-journal", "unreal-native-app", "clean", "clean-unreal"))
+	parser.add_argument("command", choices=("doctor", "configure", "build", "test", "format-check", "format", "pm5-tui", "unreal-smoke", "unreal-shipping", "unreal-package-verify", "unreal-bluetooth-probe", "release-sign-notarize", "pm5-tui-hil", "pm5-tui-journal", "unreal-native-app", "content-canary", "content-fixture", "clean", "clean-unreal"))
 	args = parser.parse_args()
 	if args.command == "doctor":
 		return doctor.check_doctor()
@@ -28,6 +28,8 @@ def main() -> int:
 		return native.native_app()
 	if args.command == "format-check":
 		return native.format_check()
+	if args.command == "format":
+		return native.format_sources()
 	if args.command == "pm5-tui":
 		return tui.run_tui()
 	if args.command == "pm5-tui-hil":
@@ -40,6 +42,10 @@ def main() -> int:
 		return unreal.unreal_shipping()
 	if args.command == "unreal-package-verify":
 		return unreal.unreal_package_verify()
+	if args.command == "content-canary":
+		return content.command("canary")
+	if args.command == "content-fixture":
+		return content.command("fixture")
 	if args.command == "unreal-bluetooth-probe":
 		return release.toolchain_bluetooth_probe()
 	if args.command == "release-sign-notarize":

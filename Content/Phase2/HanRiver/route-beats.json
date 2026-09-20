@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "route_id": "route.han-river.5k",
+  "semantic_version": "1.0.0",
+  "display": {
+    "en": {
+      "name": "Han River: Bridges at Blue Hour",
+      "short_description": "A 5 km westbound virtual row from Banpo toward Wonhyo Bridge."
+    },
+    "ko": {
+      "name": "한강: 블루아워의 다리",
+      "short_description": "반포에서 원효대교 방향으로 가는 5 km 가상 로우입니다."
+    }
+  },
+  "experience": {
+    "time_of_day": "blue_hour",
+    "weather": "clear_after_rain",
+    "water_state": "light wind ripple; no wave or current modifies workout facts",
+    "design_rule": "All landmarks are geographically registered, while meshes, vegetation density, boats, light levels, and route-safe offsets are original virtual presentation."
+  },
+  "beats": [
+    {
+      "distance_m": 0,
+      "id": "banpo-start",
+      "landmark": "Banpo Bridge / 반포대교",
+      "coordinate_wgs84": [126.995945, 37.5156831],
+      "camera_intent": "A low, forward-facing reveal beneath a broad bridge span; begin with calm water and a generous sky.",
+      "environment": ["lit bridge piers", "park-bank silhouettes", "distant residential skyline"]
+    },
+    {
+      "distance_m": 650,
+      "id": "sebit-lookback",
+      "landmark": "Some Sevit (Sebitseom) / 세빛섬",
+      "coordinate_wgs84": [126.995274, 37.512266],
+      "camera_intent": "Use three softly glowing, contemporary island volumes as a distant upstream look-back—not an exact architectural replica.",
+      "environment": ["warm water reflections", "low shoreline promenade", "subtle navigation buoys"]
+    },
+    {
+      "distance_m": 1450,
+      "id": "dongjak-span",
+      "landmark": "Dongjak Bridge / 동작대교",
+      "coordinate_wgs84": [126.9822, 37.5112],
+      "camera_intent": "Pass through a quieter structural rhythm; the bridge makes a strong visual cadence without narrowing the virtual row line.",
+      "environment": ["paired deck silhouette", "warm practical lights", "reeds and riverside paths"]
+    },
+    {
+      "distance_m": 3000,
+      "id": "nodeulseom",
+      "landmark": "Nodeulseom / 노들섬",
+      "coordinate_wgs84": [126.96, 37.51694444444445],
+      "camera_intent": "Shift attention to an island-side tree canopy and a low cultural-venue glow. Keep the main channel visually open.",
+      "environment": ["layered tree canopy", "island path lights", "city glow through foliage"]
+    },
+    {
+      "distance_m": 3650,
+      "id": "hangang-bridge",
+      "landmark": "Hangang Bridge / 한강대교",
+      "coordinate_wgs84": [126.9578, 37.5159],
+      "camera_intent": "A broad bridge approach gives the row a mid-route crescendo; reflections are restrained so HUD values remain readable.",
+      "environment": ["long bridge deck", "far-bank skyline", "controlled specular water"]
+    },
+    {
+      "distance_m": 5000,
+      "id": "wonhyo-finish",
+      "landmark": "Wonhyo Bridge / 원효대교",
+      "coordinate_wgs84": [126.946, 37.5272],
+      "camera_intent": "Resolve on a wide downstream vista. At the endpoint, hold the boat at the finish presentation position while the PM-backed workout continues.",
+      "environment": ["open-water vista", "receding bridge lights", "quiet skyline"]
+    }
+  ]
+}

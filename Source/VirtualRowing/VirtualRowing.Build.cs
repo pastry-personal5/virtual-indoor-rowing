@@ -7,7 +7,7 @@ public class VirtualRowing : ModuleRules
 	public VirtualRowing(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
-		PrivateDependencyModuleNames.AddRange(new[] { "Core", "CoreUObject", "Engine", "InputCore", "Slate", "SlateCore", "UMG" });
+		PrivateDependencyModuleNames.AddRange(new[] { "Core", "CoreUObject", "Engine", "InputCore", "Slate", "SlateCore", "UMG", "PakFile" });
 		if (Target.Platform == UnrealTargetPlatform.Mac)
 		{
 			PublicFrameworks.AddRange(new[] { "CoreBluetooth", "Foundation", "Security", "CoreFoundation" });
@@ -41,6 +41,8 @@ public class VirtualRowing : ModuleRules
 			Path.Combine(RepoRoot, "Source", "LocalData", "Public"),
 			Path.Combine(RepoRoot, "Source", "WorkoutRuntime", "Public"),
 			Path.Combine(RepoRoot, "Source", "CourseRuntime", "Public"),
+			Path.Combine(RepoRoot, "Source", "ContentRuntime", "Public"),
+			Path.Combine(RepoRoot, "Source", "ContentRuntimeMac", "Public"),
 			Path.Combine(RepoRoot, "Source", "OnlineClient", "Public"),
 			Path.Combine(RepoRoot, "Source", "RowingSim", "include"),
 			// Phase 1 Milestone 7: the real-device path. Both are pure C++ headers; Apple and
