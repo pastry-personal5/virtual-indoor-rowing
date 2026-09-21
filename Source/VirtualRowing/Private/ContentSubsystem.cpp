@@ -73,6 +73,7 @@ struct UContentSubsystem::FImpl
 	bool bHanAvailable = false;
 	FString HanAvailabilityReason = TEXT("content.han.not_installed");
 	FString ActivePackageNotice;
+	int64 ActivePackageIssuedAtUnixSeconds = 0;
 	std::unique_ptr<LocalData::FContentRepository> Repository;
 	FString MountedInstallPath;
 	FString CatalogUrl;
@@ -123,6 +124,7 @@ void UContentSubsystem::Initialize(FSubsystemCollectionBase &Collection)
 				if (TryMountInstalledContent(InstallPath, Failure))
 				{
 					FFileHelper::LoadFileToString(Impl->ActivePackageNotice, *FPaths::Combine(InstallPath, TEXT("licenses/NOTICE.txt")));
+					Impl->ActivePackageIssuedAtUnixSeconds = Candidate->IssuedAtUnixSeconds;
 					return true;
 				}
 			}
@@ -193,6 +195,11 @@ bool UContentSubsystem::IsHanContentMounted() const
 FString UContentSubsystem::GetActivePackageNotice() const
 {
 	return Impl ? Impl->ActivePackageNotice : FString();
+}
+
+int64 UContentSubsystem::GetActivePackageIssuedAtUnixSeconds() const
+{
+	return Impl ? Impl->ActivePackageIssuedAtUnixSeconds : 0;
 }
 
 FString UContentSubsystem::GetContentLicensesCreditsText() const

@@ -174,6 +174,9 @@ void UWorkoutHudWidget::NativeOnInitialized()
 	HanAvailabilityText = MakeText(TEXT(""), LabelFontSize, ETextJustify::Left, "Regular");
 	HanAvailabilityText->SetColorAndOpacity(FSlateColor(StaleColor));
 	Column->AddChildToVerticalBox(HanAvailabilityText)->SetPadding(FMargin(0.0f, 2.0f, 0.0f, 0.0f));
+	HanPackageBuildText = MakeText(TEXT(""), 14, ETextJustify::Left, "Regular");
+	HanPackageBuildText->SetVisibility(ESlateVisibility::Collapsed);
+	Column->AddChildToVerticalBox(HanPackageBuildText)->SetPadding(FMargin(0.0f, 2.0f, 0.0f, 0.0f));
 	DownloadHanButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass());
 	DownloadHanButton->AddChild(MakeText(TEXT("Download Han River"), LabelFontSize, ETextJustify::Left, "Bold"));
 	Column->AddChildToVerticalBox(DownloadHanButton)->SetPadding(FMargin(0.0f, 4.0f, 0.0f, 0.0f));
@@ -418,6 +421,14 @@ void UWorkoutHudWidget::SyncCourseSelection()
 	HanCourseButton->SetBackgroundColor(SelectedRoute == TEXT("route.han-river.5k") ? SelectedCourseFill : UnselectedCourseFill);
 	CourseSelectionText->SetText(FText::FromString(SelectedRoute == TEXT("route.han-river.5k") ? TEXT("Selected: Han River • 5 km • Open") : TEXT("Selected: Standard • 2 km • Closed")));
 	HanAvailabilityText->SetText(FText::FromString(bHanAvailable ? TEXT("") : HanAvailabilityTextFor(Content->GetHanAvailabilityReason())));
+	if (HanPackageBuildText)
+	{
+		const int64 IssuedAt = Content->GetActivePackageIssuedAtUnixSeconds();
+		const bool bShow = IssuedAt > 0 && Content->IsHanContentMounted();
+		if (bShow)
+			HanPackageBuildText->SetText(FText::FromString(TEXT("Han package built: ") + FDateTime::FromUnixTimestamp(IssuedAt).ToString(TEXT("%Y-%m-%d %H:%M:%S UTC"))));
+		HanPackageBuildText->SetVisibility(bShow ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+	}
 	if (ContentStatusText)
 		ContentStatusText->SetText(FText::FromString(TEXT("Content status\n") + Content->GetContentOperationStatus()));
 	HanAvailabilityText->SetVisibility(bHanAvailable ? ESlateVisibility::Collapsed : ESlateVisibility::HitTestInvisible);

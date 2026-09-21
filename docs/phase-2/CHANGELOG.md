@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Milestone 2 spike 2 (conversion applied): `L_HanRiver_BlueHour` now holds 13
+  HISM actors instead of 877 `StaticMeshActor`s (same instance transforms,
+  materials, no collision). `make build && make test`, `make content-canary`, and
+  `make format-check` pass. Not verified: a re-cook (blocked in-session by the
+  live editor holding MCP port 8000), `CoursePresentationSpec`, and frame time.
+
 - Milestone 2 spike 3 (partial): rejecting or losing the streamed Han level now
   restores the built-in kit (`course.level_lost` for a level that vanishes after
   being shown). `CoursePresentationSpec` gains a boat/camera-unmoved handover

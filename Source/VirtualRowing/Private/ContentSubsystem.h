@@ -29,6 +29,12 @@ class VIRTUALROWING_API UContentSubsystem : public UGameInstanceSubsystem
 	bool IsHanContentMounted() const;
 	/** Returns the signed notice for the mounted package, for the Content Licenses/Credits view. */
 	FString GetActivePackageNotice() const;
+	/**
+	 * Development aid: the signed manifest issue time of the mounted package, which
+	 * the release packager stamps when it builds and signs the package. Zero when
+	 * no package is mounted. Presentation only.
+	 */
+	int64 GetActivePackageIssuedAtUnixSeconds() const;
 	FString GetContentLicensesCreditsText() const;
 	bool SelectRouteById(const FString &RouteId);
 	static bool CanSelectRoute(const FString &RouteId, bool bHanAvailable, bool bWorkoutActive);

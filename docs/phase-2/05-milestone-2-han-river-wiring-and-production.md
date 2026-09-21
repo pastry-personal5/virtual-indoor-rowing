@@ -1,6 +1,6 @@
 # Phase 2 Milestone 2: wire and enhance the Han River course assets
 
-Status: In progress — wiring compiled; spike 1 passed (owner-observed)
+Status: In progress — wiring compiled; spike 1 passed (owner-observed); scene instanced (recook pending); production art (step 5) not started
 Owner: Client/content, technical art, release/platform
 Last reviewed: 2026-09-21
 
@@ -178,6 +178,32 @@ reported, not hidden.
    and not yet confirmed. The 877 originals were **not** removed, the level was
    not saved, and no frame-time or draw-call measurement was taken. The
    reference-Mac measurement is still owed.
+   **Conversion applied (2026-09-21, live editor via Unreal MCP, saved):** the
+   877 `StaticMeshActor`s in `L_HanRiver_BlueHour` were removed and replaced by
+   13 `Actor`s (folder `Han/Instanced`), each a `DefaultSceneRoot` plus one
+   `HierarchicalInstancedStaticMeshComponent` (Static mobility, no collision,
+   per-(mesh, material) instances; sum 877). Union bounds match on X/Y and max Z;
+   min Z is -128 vs -50 (padded instanced bounds, unconfirmed). Every component
+   class is on the client component allowlist. Not yet done: a re-cook of the
+   converted level, a `CoursePresentationSpec` run, and the reference-Mac
+   frame-time measurement. **Recook (2026-09-21, owner-run, editor closed):**
+   `make han-external-cook` and `make unreal-shipping` succeeded and
+   `make unreal-package-verify` passed (app_sha256 90207902...903d). The new
+   `HanRiver.ucas` is 931,120 bytes vs 996,656 for the pre-conversion cook
+   (stale copy in `Build/han-cook/HanRiver`, 11:24; the new output went to
+   `VIR_HAN_IOSTORE_DIR`). `make unreal-smoke` (editor compile only) passes. Not yet observed: the
+   level loading in the packaged app, and frame time. `CoursePresentationSpec` ran in the editor (2026-09-21, via
+   Unreal MCP): 11/11 passed, 0 errors. The spec's `BeforeEach` had called
+   `InitializeNewWorld` on a world `CreateWorld` already initialized (fatal
+   duplicate `WorldSettings`); fixed by passing the init values to
+   `CreateWorld`. The run logs `AttachTo ... is not static` warnings per test
+   (`GrayBoxCourseActor` root), not investigated. Build gotcha: building while an
+   editor is running emits a numbered `-000N.dylib` the editor may not load;
+   close the editor and rebuild.
+   `Scripts/build_han_editor_assets.py` now emits the same 13 instanced actors
+   (one HISM per mesh/material group) but that path has not been run: the
+   script only runs into an empty destination and no editor Python entry point
+   was available in-session, so it is syntax-checked only.
 3. **Fallback swap:** prove the kit-to-streamed-level handover and the reverse
    without a boat or camera hitch.
    **Partial result (2026-09-21, code and compile only):** the handover only

@@ -92,6 +92,8 @@ class VIRTUALROWING_API UWorkoutHudWidget : public UUserWidget
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> HanAvailabilityText;
 	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> HanPackageBuildText;
+	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> ContentStatusText;
 	UPROPERTY(Transient)
 	TObjectPtr<UButton> StandardCourseButton;

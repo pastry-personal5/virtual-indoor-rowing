@@ -1,4 +1,4 @@
-"""Run inside Unreal Editor Python; creates a review scene and reusable mesh kit.
+"""Run inside Unreal Editor Python; creates an instanced review scene and reusable mesh kit.
 
 Run once into an empty destination. No runtime scripts or Blueprints are produced.
 """
@@ -48,10 +48,20 @@ for name, color, rough, glow in [
     ('Skyline', (.13,.18,.25), .75, False)]:
     material(name, color, rough, glow)
 
+# Parts are recorded as (shape, material) instance groups and emitted as one
+# HierarchicalInstancedStaticMeshComponent per group, so the level holds a few
+# dozen actors instead of hundreds of StaticMeshActors.
+groups = {}
+
 def part(name, shape, loc, scale, mat, folder, rot=(0,0,0)):
+    spec = (name, shape, loc, scale, mat, folder, rot)
+    groups.setdefault((shape, mat), []).append(spec)
+    return spec
+
+def spawn_temp(spec):
+    name, shape, loc, scale, mat, folder, rot = spec
     a = actors.spawn_actor_from_class(u.StaticMeshActor, u.Vector(*loc), u.Rotator(*rot))
     a.set_actor_label(name)
-    a.set_folder_path(folder)
     c = a.static_mesh_component
     c.set_static_mesh(u.load_asset('/Engine/BasicShapes/' + shape))
     c.set_material(0, materials[mat])
@@ -59,13 +69,26 @@ def part(name, shape, loc, scale, mat, folder, rot=(0,0,0)):
     a.set_actor_scale3d(u.Vector(*scale))
     return a
 
+def emit_instanced():
+    for (shape, mat), specs in sorted(groups.items()):
+        a = actors.spawn_actor_from_class(u.Actor, u.Vector(0, 0, 0))
+        a.set_actor_label('Han_%s_%s' % (shape, mat))
+        a.set_folder_path('Han/Instanced')
+        c = a.add_component_by_class(u.HierarchicalInstancedStaticMeshComponent, False, u.Transform(), False)
+        c.set_static_mesh(u.load_asset('/Engine/BasicShapes/' + shape))
+        c.set_material(0, materials[mat])
+        c.set_collision_enabled(u.CollisionEnabled.NO_COLLISION)
+        c.set_mobility(u.ComponentMobility.STATIC)
+        c.add_instances([u.Transform(u.Vector(*s[2]), u.Rotator(*s[6]), u.Vector(*s[3])) for s in specs], False)
+
 def kit(name, parts):
     opts = u.MergeStaticMeshActorsOptions()
     opts.base_package_name = ROOT + '/Meshes/SM_Han_' + name
     opts.destroy_source_actors = False
     opts.spawn_merged_actor = False
     opts.new_actor_label = 'Han_' + name
-    merged = meshes.merge_static_mesh_actors(parts, opts)
+    temps = [spawn_temp(p) for p in parts]
+    merged = meshes.merge_static_mesh_actors(temps, opts)
     # The merge tool prefixes the asset name with "SM_", so the created asset is
     # SM_SM_Han_<name>; try both spellings so the post-merge steps actually run.
     leaf = 'SM_Han_' + name
@@ -74,7 +97,9 @@ def kit(name, parts):
         meshes.remove_collisions(mesh)
         u.EditorAssetLibrary.set_metadata_tag(mesh, 'VIR.Source', 'Original VIR assembly of Unreal Engine basic primitives; review candidate')
         u.EditorAssetLibrary.save_loaded_asset(mesh)
-    else:
+    for t in temps:
+        actors.destroy_actor(t)
+    if not mesh:
         # UE 5.8 can decline a merge when source components are transient or
         # when the editor is still compiling a material. Keep the authored
         # component assembly in the review map rather than losing the scene.
@@ -149,6 +174,8 @@ for side in [-1,1]:
         x=-6000+i*2600
         part('PromenadeLightPost','Cylinder',(x,side*22900,230),(.12,.12,4.6),'Steel','Han/Promenade')
         part('PromenadeLightHead','Sphere',(x,side*22900,470),(.5,.5,.22),'WarmLight','Han/Promenade')
+
+emit_instanced()
 
 sun=actors.spawn_actor_from_class(u.DirectionalLight,u.Vector(0,0,12000),u.Rotator(-25,-30,0))
 sun.set_actor_label('Han_BlueHour_Key')

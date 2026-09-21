@@ -18,14 +18,16 @@ void FCoursePresentationSpec::Define()
 {
 	BeforeEach([this]()
 			   {
-			World = UWorld::CreateWorld(EWorldType::Game, false);
-			World->InitializeNewWorld(UWorld::InitializationValues()
+			// CreateWorld initializes the new world itself; a second InitializeNewWorld
+			// would spawn a duplicate WorldSettings and hit a fatal name collision.
+			const UWorld::InitializationValues Values = UWorld::InitializationValues()
 				.AllowAudioPlayback(false)
 				.RequiresHitProxies(false)
 				.CreatePhysicsScene(false)
 				.CreateNavigation(false)
 				.CreateAISystem(false)
-				.ShouldSimulatePhysics(false));
+				.ShouldSimulatePhysics(false);
+			World = UWorld::CreateWorld(EWorldType::Game, false, NAME_None, nullptr, true, ERHIFeatureLevel::Num, &Values);
 			Course = World->SpawnActor<AGrayBoxCourseActor>();
 			Course->InitializeCourse(); });
 
