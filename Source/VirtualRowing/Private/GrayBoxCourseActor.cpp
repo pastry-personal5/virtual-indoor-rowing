@@ -25,18 +25,14 @@ namespace
 	constexpr double CameraStarboardCm = 900.0;
 	constexpr double CameraElevationCm = 650.0;
 	constexpr double CameraLookAheadCm = 700.0;
-	// Han River landscape chase view: further back and higher, looking toward the
-	// horizon over the bow so both banks, bridges and the skyline stay in frame.
-	// The river is 420 m wide; these are tuning values, not derived geometry.
-	constexpr double HanCameraBehindCm = 3'200.0;
-	constexpr double HanCameraStarboardCm = 600.0;
-	constexpr double HanCameraElevationCm = 1'700.0;
-	constexpr double HanCameraLookAheadCm = 14'000.0;
-	constexpr double HanCameraFocusHeightCm = 500.0;
+	// Han River chase view: centred on the boat's axis, 12 m astern and 1 m above the
+	// boat's waterline, level and looking along the (smoothed) heading so the boat is
+	// seen moving away through the river's bends. Tuning values, not derived geometry.
+	constexpr double HanCameraBehindCm = 1'200.0;
+	constexpr double HanCameraHeightCm = 100.0;
 	constexpr float HanCameraFieldOfView = 78.0f;
-	// Gentle stroke-synchronised sway. Cosmetic only; off under -ReduceMotion.
-	constexpr double CameraSwayHeightCm = 40.0;
-	constexpr double CameraSwaySideCm = 30.0;
+	// Heading lag so bends read as a camera swing rather than a rigid turn.
+	constexpr float HanCameraHeadingInterpSpeed = 2.5f;
 	constexpr float OarInterpolationSpeed = 16.0f;
 	constexpr float MaxOarInterpolationStepSeconds = 1.0f / 30.0f;
 	constexpr double HanRiverWidthCm = 42'000.0;
@@ -358,22 +354,31 @@ void AGrayBoxCourseActor::ApplyPresentation(const FCoursePresentationSnapshot &S
 
 	const FVector BoatLocation = CourseTransform.GetLocation();
 	const FVector Forward = CourseTransform.GetUnitAxis(EAxis::X);
+	if (bIsHanRiverRoute)
+	{
+		const float TargetYaw = Forward.Rotation().Yaw;
+		if (!bHasCameraHeading || ReduceMotionRequested())
+		{
+			SmoothedCameraYaw = TargetYaw;
+			bHasCameraHeading = true;
+		}
+		else
+		{
+			const float DeltaYaw = FMath::FindDeltaAngleDegrees(SmoothedCameraYaw, TargetYaw);
+			SmoothedCameraYaw = FRotator::NormalizeAxis(SmoothedCameraYaw + FMath::FInterpTo(0.0f, DeltaYaw, FMath::Max(WorldDeltaSeconds, 0.0f), HanCameraHeadingInterpSpeed));
+		}
+		const FRotator CameraRotation(0.0, SmoothedCameraYaw, 0.0);
+		const FVector CameraLocation = BoatLocation - CameraRotation.Vector() * HanCameraBehindCm + FVector(0.0, 0.0, HanCameraHeightCm);
+		InspectionCamera->SetFieldOfView(HanCameraFieldOfView);
+		InspectionCamera->SetWorldLocationAndRotation(CameraLocation, CameraRotation);
+		return;
+	}
 	const FVector Starboard = CourseTransform.GetUnitAxis(EAxis::Y);
-	const double Behind = bIsHanRiverRoute ? HanCameraBehindCm : CameraBehindCm;
-	const double Side = bIsHanRiverRoute ? HanCameraStarboardCm : CameraStarboardCm;
-	const double Elevation = bIsHanRiverRoute ? HanCameraElevationCm : CameraElevationCm;
-	const double LookAhead = bIsHanRiverRoute ? HanCameraLookAheadCm : CameraLookAheadCm;
-	const double FocusHeight = bIsHanRiverRoute ? HanCameraFocusHeightCm : 90.0;
-	// The sway follows the stroke so it reads as the boat's rhythm, and only exists
-	// while a stroke is being presented; the smoothed value settles back to zero.
-	const bool bSway = bIsHanRiverRoute && !ReduceMotionRequested() && Snapshot.AnimationQuality != ECourseAnimationQuality::Unavailable;
-	const float SwayTarget = bSway ? static_cast<float>(Snapshot.StrokePose) - 0.5f : 0.0f;
-	SmoothedCameraSway = InterpolateOarMotion(SmoothedCameraSway, SwayTarget, WorldDeltaSeconds);
-	const FVector CameraLocation = BoatLocation - Forward * Behind + Starboard * (Side + SmoothedCameraSway * CameraSwaySideCm) + FVector(0.0, 0.0, Elevation + SmoothedCameraSway * CameraSwayHeightCm);
-	const FVector CameraFocus = BoatLocation + Forward * LookAhead + FVector(0.0, 0.0, FocusHeight);
+	const FVector CameraLocation = BoatLocation - Forward * CameraBehindCm + Starboard * CameraStarboardCm + FVector(0.0, 0.0, CameraElevationCm);
+	const FVector CameraFocus = BoatLocation + Forward * CameraLookAheadCm + FVector(0.0, 0.0, 90.0);
 	FRotator CameraRotation = UKismetMathLibrary::FindLookAtRotation(CameraLocation, CameraFocus);
 	CameraRotation.Roll = 0.0f;
-	InspectionCamera->SetFieldOfView(bIsHanRiverRoute ? HanCameraFieldOfView : 50.0f);
+	InspectionCamera->SetFieldOfView(50.0f);
 	InspectionCamera->SetWorldLocationAndRotation(CameraLocation, CameraRotation);
 }
 

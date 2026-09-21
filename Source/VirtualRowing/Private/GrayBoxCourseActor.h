@@ -102,7 +102,8 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	TArray<TObjectPtr<UTextRenderComponent>> MarkerLabels;
 
 	bool bInitialized = false;
-	float SmoothedCameraSway = 0.0f;
+	float SmoothedCameraYaw = 0.0f;
+	bool bHasCameraHeading = false;
 	bool bIsHanRiverRoute = false;
 	bool bAuthoredLevelActive = false;
 	ContentRuntime::FRouteDefinition Route = ContentRuntime::BuiltInStandardRouteDefinition();

@@ -136,6 +136,31 @@ void FCoursePresentationSpec::Define()
 		TestTrue(TEXT("camera is unmoved by fallback to the kit"), HanCourse->GetCameraTransformForTesting().Equals(Camera, 0.0));
 		HanCourse->Destroy(); });
 
+	It("chases the Han boat from 12 m astern and 1 m up, level and along its heading", [this]()
+	   {
+		AGrayBoxCourseActor *HanCourse = World->SpawnActor<AGrayBoxCourseActor>();
+		ContentRuntime::FRouteDefinition HanRoute = ContentRuntime::BuiltInStandardRouteDefinition();
+		HanRoute.RouteId = "route.han-river.5k";
+		HanRoute.SemanticVersion = "1.0.0";
+		HanRoute.ContentSetId = "han-river-alpha-1";
+		HanRoute.LengthMm = 5'000'000;
+		HanRoute.bClosed = false;
+		HanCourse->ConfigureRoute(HanRoute);
+		HanCourse->InitializeCourse();
+		FCoursePresentationSnapshot Snapshot;
+		Snapshot.WrappedCourseDistanceMm = 100'000.0;
+		HanCourse->ApplyPresentation(Snapshot);
+		const FTransform Boat = HanCourse->GetBoatTransformForTesting();
+		const FTransform Camera = HanCourse->GetCameraTransformForTesting();
+		const FVector Offset = Camera.GetLocation() - Boat.GetLocation();
+		const FVector Forward = Boat.GetUnitAxis(EAxis::X);
+		TestTrue(TEXT("camera is 12 m behind the boat"), FMath::IsNearlyEqual(static_cast<float>(-FVector::DotProduct(Offset, Forward)), 1'200.0f, 1.0f));
+		TestTrue(TEXT("camera is 1 m above the boat"), FMath::IsNearlyEqual(static_cast<float>(Offset.Z), 100.0f, 1.0f));
+		TestTrue(TEXT("camera is on the boat centerline"), FMath::IsNearlyZero(static_cast<float>(FVector::DotProduct(Offset, Boat.GetUnitAxis(EAxis::Y))), 1.0f));
+		TestTrue(TEXT("camera is level"), FMath::IsNearlyZero(Camera.Rotator().Pitch, 0.01) && FMath::IsNearlyZero(Camera.Rotator().Roll, 0.01));
+		TestTrue(TEXT("camera looks along the boat heading"), FMath::IsNearlyZero(FMath::FindDeltaAngleDegrees(Camera.Rotator().Yaw, Forward.Rotation().Yaw), 0.1));
+		HanCourse->Destroy(); });
+
 	It("applies catch drive finish recovery and disconnect-return proxy transforms", [this]()
 	   {
 		FCoursePresentationSnapshot Snapshot;
