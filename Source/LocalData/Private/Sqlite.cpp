@@ -1,5 +1,13 @@
 #include "LocalData/Sqlite.h"
 
+#include <fcntl.h>
+#include <unistd.h>
+
+#include <cerrno>
+#include <cstring>
+#include <fstream>
+#include <mutex>
+
 namespace LocalData::Private
 {
 	namespace
@@ -100,8 +108,80 @@ namespace LocalData::Private
 				   : std::string();
 	}
 
+	namespace
+	{
+		std::mutex SqliteLogMutex;
+		std::string SqliteRecentLog;
+
+		void RecordSqliteLog(void *, int Code, const char *Message)
+		{
+			std::lock_guard<std::mutex> Lock(SqliteLogMutex);
+			SqliteRecentLog += "(" + std::to_string(Code) + ") " + (Message ? Message : "") + "; ";
+			// Keep the most recent entries; the earliest messages are rarely the failure.
+			if (SqliteRecentLog.size() > 600)
+				SqliteRecentLog.erase(0, SqliteRecentLog.size() - 600);
+		}
+
+		// Must run before SQLite initialises; a later call fails harmlessly with MISUSE.
+		void InstallSqliteLogger()
+		{
+			static const bool Installed = (sqlite3_config(SQLITE_CONFIG_LOG, RecordSqliteLog, nullptr), true);
+			(void)Installed;
+		}
+
+		std::string RecentSqliteLog()
+		{
+			std::lock_guard<std::mutex> Lock(SqliteLogMutex);
+			return SqliteRecentLog.empty() ? std::string("none") : SqliteRecentLog;
+		}
+
+		// SQLite reports CANTOPEN without the OS errno for side files. Try the same
+		// opens directly so a build with logging compiled out still says why.
+		// The failure that motivated this: a WAL-mode database opened through an SQLite
+		// whose file layer has no shared memory (Unreal's embedded SQLiteCore replaces
+		// the system SQLite in the app). SQLite then answers CANTOPEN with no errno.
+		std::string DescribeFileLayer(sqlite3 *Handle, const std::filesystem::path &DatabasePath)
+		{
+			int IoVersion = 0;
+			bool bHasShm = false;
+			sqlite3_file *File = nullptr;
+			if (Handle != nullptr && sqlite3_file_control(Handle, "main", SQLITE_FCNTL_FILE_POINTER, &File) == SQLITE_OK && File != nullptr && File->pMethods != nullptr)
+			{
+				IoVersion = File->pMethods->iVersion;
+				bHasShm = File->pMethods->iVersion >= 2 && File->pMethods->xShmMap != nullptr;
+			}
+			unsigned char Header[20] = {};
+			std::ifstream(DatabasePath, std::ios::binary).read(reinterpret_cast<char *>(Header), sizeof(Header));
+			const bool bWalDatabase = Header[18] == 2 || Header[19] == 2;
+			const sqlite3_vfs *Vfs = sqlite3_vfs_find(nullptr);
+			std::string Result = std::string("[vfs=") + (Vfs ? Vfs->zName : "?") + ", io_version=" + std::to_string(IoVersion) +
+								 ", shared_memory=" + (bHasShm ? "yes" : "NO") + ", db_journal_mode=" + (bWalDatabase ? "WAL" : "rollback") + "]";
+			if (!bHasShm && bWalDatabase)
+				Result += " CAUSE: this database is in WAL mode, but this process's SQLite (vfs=" + std::string(Vfs ? Vfs->zName : "?") +
+						  ") has no shared-memory support (Unreal's embedded SQLiteCore replaces the system SQLite), so WAL databases cannot be opened.";
+			return Result;
+		}
+
+		std::string ProbeDatabaseFiles(const std::filesystem::path &DatabasePath)
+		{
+			std::string Result = "[path=" + DatabasePath.string();
+			for (const char *Suffix : {"", "-wal", "-shm"})
+			{
+				const std::string File = DatabasePath.string() + Suffix;
+				errno = 0;
+				const int Descriptor = ::open(File.c_str(), O_RDWR | O_CREAT, 0600);
+				const int OpenErrno = errno;
+				if (Descriptor >= 0)
+					::close(Descriptor);
+				Result += std::string(", open") + (*Suffix ? Suffix : "-db") + "=" + (Descriptor >= 0 ? "ok" : std::strerror(OpenErrno));
+			}
+			return Result + ", sqlite=" + sqlite3_libversion() + ", log=" + RecentSqliteLog() + "]";
+		}
+	} // namespace
+
 	FSqliteConnection::FSqliteConnection(const std::filesystem::path &DatabasePath)
 	{
+		InstallSqliteLogger();
 		const int OpenResult =
 			sqlite3_open_v2(DatabasePath.string().c_str(), &Handle, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr);
 		if (OpenResult != SQLITE_OK)
@@ -113,9 +193,35 @@ namespace LocalData::Private
 			throw FSqliteError("sqlite3_open_v2 failed: " + Message);
 		}
 		sqlite3_busy_timeout(Handle, BusyTimeoutMs);
-		Execute("PRAGMA journal_mode=WAL;");
-		Execute("PRAGMA synchronous=NORMAL;");
-		Execute("PRAGMA foreign_keys=ON;");
+		try
+		{
+			try
+			{
+				Execute("PRAGMA journal_mode=WAL;");
+			}
+			catch (const FSqliteError &)
+			{
+				// Unreal's embedded SQLite has no shared-memory support, so it cannot open
+				// a database that is already in WAL mode. Exclusive locking lets SQLite use
+				// a heap-memory WAL index long enough to convert the file to a rollback
+				// journal, which that SQLite can use. Rollback-journal writes stay durable.
+				Execute("PRAGMA locking_mode=EXCLUSIVE;");
+				Execute("PRAGMA journal_mode=DELETE;");
+				// Do not keep the file exclusively locked for the connection's lifetime;
+				// other connections and processes must still be able to write.
+				Execute("PRAGMA locking_mode=NORMAL;");
+			}
+			Execute("PRAGMA synchronous=NORMAL;");
+			Execute("PRAGMA foreign_keys=ON;");
+		}
+		catch (const FSqliteError &Error)
+		{
+			// A throwing constructor never runs the destructor; do not leak the handle.
+			const std::string Layer = DescribeFileLayer(Handle, DatabasePath);
+			sqlite3_close(Handle);
+			Handle = nullptr;
+			throw FSqliteError(std::string(Error.what()) + " " + Layer + " " + ProbeDatabaseFiles(DatabasePath));
+		}
 	}
 
 	FSqliteConnection::~FSqliteConnection()
@@ -136,7 +242,11 @@ namespace LocalData::Private
 			const std::string Message =
 				ErrorMessage != nullptr ? ErrorMessage : sqlite3_errstr(ResultCode);
 			sqlite3_free(ErrorMessage);
-			throw FSqliteError("sqlite3_exec failed: " + Message);
+			// Extended code and OS errno make CANTOPEN-class failures diagnosable in
+			// builds where logging is compiled out.
+			throw FSqliteError("sqlite3_exec failed: " + Message + " [sql=" + std::string(Sql.substr(0, 48)) +
+							   ", code=" + std::to_string(sqlite3_extended_errcode(Handle)) +
+							   ", errno=" + std::to_string(sqlite3_system_errno(Handle)) + "]");
 		}
 	}
 

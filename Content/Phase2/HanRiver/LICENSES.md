@@ -8,7 +8,7 @@ be repeated there with the applicable license text or a stable version-specific
 reference.
 
 This directory contains original VIR route data and generated concept art, plus
-the two specifically listed third-party reference bitmaps below. The third-party
+the listed third-party reference bitmaps below. The third-party
 photos are **art-reference inputs only**: they are not shipped as a route
 texture, are not shown in the product, and may not be promoted to a cooked
 asset without a fresh content/legal review.
@@ -21,10 +21,15 @@ asset without a fresh content/legal review.
 | `ReferencePhotos/nodeul-station-view-aspere.jpg` | View from Nodeul Station, Seoul | Aspere | [CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/deed.en) | [Wikimedia Commons file page](https://commons.wikimedia.org/wiki/File:Nodeul_Station_View.jpg) | `a0ab97a5977a6f2cb9e62b26f06c827cd8f62dd6` | `e525ea9fb3e96b86c06d8faf75120e6a9e257442c53b7df2058d6c71d6d7fe08` | 2026-09-20 |
 | `ReferencePhotos/han-river-daytime-skyline-pickpik.jpg` | Han River daytime skyline with 63 Building | Not stated on source page | Public Domain (as labelled by the source page) | [PickPik image page](https://www.pickpik.com/scenery-han-river-seoul-sky-river-cloud-122032) | Not provided | `42f16f4e30762e26d561f491b6ffaef34392990c4d19ed842cc14ec92ab87388` | 2026-09-20 |
 | `ReferencePhotos/yeouido-skyscraper-pickpik.jpg` | Yeouido high-rise beside the Han River | Not stated on source page | Public Domain (as labelled by the source page) | [PickPik image page](https://www.pickpik.com/seoul-skyscraper-building-architecture-yeoido-sky-39939) | Not provided | `6c56e9d96a2b5ac8e587a2a01b7ed662ca2767369ef83908d9fae353e1726765` | 2026-09-20 |
+| `ReferencePhotos/wonhyo-bridge-yeouido-east-hiddenfree.jpg` | Wonhyo Bridge and Yeouido East | hiddenfree | [CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/deed.en) | [Wikimedia Commons file page](https://commons.wikimedia.org/wiki/File:Wonhyo_Bridge_and_Yeouido_East.jpg) | `0d5ec37dba57d8c248ebdef31044f2fa25888f76` | `0d54f50f787b8106223c0970e61a4922d0bbc74fda4cec6f84ac36786e0d78bc` | 2026-09-21 |
 
-Both source pages report the uploader's work and CC0 dedication. CC0 does not
+The Wikimedia Commons source pages report the uploader's work and CC0 dedication. CC0 does not
 require attribution, but this record preserves provenance and makes the scope
 of reuse auditable.
+
+The Wonhyo Bridge image records the downstream finish-view massing and
+Yeouido context only. Its bridge and skyline are reference inputs, not a
+landmark replica mandate; it is not shipped or displayed in the product.
 
 ## PickPik reference photo
 
@@ -56,8 +61,12 @@ a navigation chart nor a statement that physical rowing is allowed or safe.
 
 ## VIR-generated concept art
 
-`ConceptArt/han-river-blue-hour-key-art-v1.png` was generated on 2026-09-20
-with OpenAI image generation for this project. It is original visual direction,
-not a photograph, not an exact building replica, and carries no third-party
-Creative Commons obligation. It is a review/key-art bitmap only until an Unreal
-asset-import and performance review approves a cooked use.
+`ConceptArt/han-river-blue-hour-key-art-v1.png` and
+`ConceptArt/han-river-blue-hour-key-art-v2.png` were generated on 2026-09-20
+and 2026-09-21 respectively with OpenAI image generation for this project.
+Version 2 is the selected direction because it depicts an unoccupied virtual
+channel with restrained exposure and broken reflections, matching the course
+legibility constraints. Both are original visual direction, not photographs or
+exact building replicas, and carry no third-party Creative Commons obligation.
+They are review/key-art bitmaps only until an Unreal asset-import and
+performance review approves a cooked use.

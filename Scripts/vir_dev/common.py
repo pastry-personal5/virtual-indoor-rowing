@@ -18,6 +18,7 @@ APP_MERGED_ARCHIVE = APP_BUILD_DIR / "lib" / "libVirRowingApp.a"
 UNREAL_SHIPPING_DIR = ROOT / "Build" / "unreal-shipping"
 UNREAL_ARCHIVE_DIR = UNREAL_SHIPPING_DIR / "archive"
 UNREAL_PROVENANCE_PATH = UNREAL_SHIPPING_DIR / "provenance.json"
+HAN_COOK_DIR = ROOT / "Build" / "han-cook"
 
 
 def load_versions() -> dict:

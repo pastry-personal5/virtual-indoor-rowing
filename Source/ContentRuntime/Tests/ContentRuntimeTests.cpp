@@ -337,10 +337,17 @@ namespace
 			std::ofstream Output(Directory / "package.vircontent", std::ios::binary);
 			Output << PackageBytes;
 		}
+		assert(ContentRuntime::ReadStagedPackageInventory(Directory) == InventoryBytes);
 		assert(ContentRuntime::ValidateStagedPackage(Directory, Manifest, InventoryBytes).Inventory.Entries.size() == 2);
 		assert(ContentRuntime::HasStorageAdmission(Directory, Manifest) ==
 			   (std::filesystem::space(Directory).available >= ContentRuntime::MinimumFreeStorageBytes &&
 				std::filesystem::space(Directory).available - ContentRuntime::MinimumFreeStorageBytes >= Manifest.CompressedSizeBytes));
+		{
+			// Regression: the staging directory does not exist when admission runs.
+			const auto Missing = Directory / "not-yet-created" / "staging" / "han-river-alpha-1";
+			assert(ContentRuntime::HasStorageAdmission(Missing, Manifest) == ContentRuntime::HasStorageAdmission(Directory, Manifest));
+			assert(!std::filesystem::exists(Directory / "not-yet-created"));
+		}
 		const auto Validated = ContentRuntime::ValidateStagedPackage(Directory, Manifest, InventoryBytes);
 		const auto InstallDirectory = Directory / "installed";
 		ContentRuntime::ExtractValidatedPackage(Validated, InstallDirectory);

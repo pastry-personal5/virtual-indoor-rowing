@@ -49,6 +49,23 @@ void FCoursePresentationSpec::Define()
 		TestEqual(TEXT("markers every 250 m"), Course->GetMarkerCountForTesting(), 8);
 		TestEqual(TEXT("visible edge covers every spline segment"), Course->GetCourseEdgeSegmentCountForTesting(), 32); });
 
+	It("builds an open, landmarked Han River presentation without route markers", [this]()
+	   {
+		AGrayBoxCourseActor *HanCourse = World->SpawnActor<AGrayBoxCourseActor>();
+		ContentRuntime::FRouteDefinition HanRoute = ContentRuntime::BuiltInStandardRouteDefinition();
+		HanRoute.RouteId = "route.han-river.5k";
+		HanRoute.SemanticVersion = "1.0.0";
+		HanRoute.ContentSetId = "han-river-alpha-1";
+		HanRoute.LengthMm = 5'000'000;
+		HanRoute.bClosed = false;
+		HanCourse->ConfigureRoute(HanRoute);
+		HanCourse->InitializeCourse();
+		TestTrue(TEXT("Han route receives dedicated presentation"), HanCourse->HasHanRiverEnvironmentForTesting());
+		TestTrue(TEXT("Han route has bridges, banks, skyline, and sparse buoys"), HanCourse->GetHanLandmarkCountForTesting() >= 50);
+		TestEqual(TEXT("Han route avoids intrusive distance-marker labels"), HanCourse->GetMarkerCountForTesting(), 0);
+		TestFalse(TEXT("Han endpoint stays open rather than wrapping"), HanCourse->GetCourseTransform(0.0).GetLocation().Equals(HanCourse->GetCourseTransform(5'000'000.0).GetLocation(), 1.0));
+		HanCourse->Destroy(); });
+
 	It("applies catch drive finish recovery and disconnect-return proxy transforms", [this]()
 	   {
 		FCoursePresentationSnapshot Snapshot;

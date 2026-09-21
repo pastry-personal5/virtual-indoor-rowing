@@ -32,6 +32,34 @@
       "attribution": "none"
     },
     {
+      "asset_id": "han-river-unreal-editor-review-kit",
+      "kind": "unreal-editor-authored-review-assets",
+      "source": "Virtual Indoor Rowing original editor-authored assembly from Unreal Engine BasicShapes primitives",
+      "license": "VIR original work; Unreal Engine parent assets remain under Epic license",
+      "license_version": "VIR-1",
+      "license_url": "https://github.com/pastry-personal5/virtual-indoor-rowing",
+      "creator": "Virtual Indoor Rowing",
+      "canonical_source_url": "https://github.com/pastry-personal5/virtual-indoor-rowing",
+      "source_hash": "asset hashes assigned by the deterministic cook; editor package paths are Content/Phase2/HanRiver",
+      "modification_description": "Unreal MCP-authored review level with water, stepped banks, bridge component assembly, pavilion massing, planting, skyline blocks, promenade lights, and blue-hour lighting.",
+      "share_alike_release": "not applicable",
+      "attribution": "Original VIR assembly; Unreal Engine parent assets are not redistributed"
+    },
+    {
+      "asset_id": "han-river-blue-hour-key-art-v2",
+      "kind": "concept-art",
+      "source": "OpenAI-generated original concept art; 2026-09-21",
+      "license": "VIR original work",
+      "license_version": "VIR-1",
+      "license_url": "https://github.com/pastry-personal5/virtual-indoor-rowing",
+      "creator": "Virtual Indoor Rowing",
+      "canonical_source_url": "https://github.com/pastry-personal5/virtual-indoor-rowing",
+      "source_hash": "sha256:eef2ab3166c5541229467eaeee4357e8b6b066aa0550e903a69470fc4623d775",
+      "modification_description": "Original generated review art: an unoccupied virtual river channel with restrained blue-hour exposure and broken reflections.",
+      "share_alike_release": "not applicable",
+      "attribution": "none"
+    },
+    {
       "asset_id": "banpo-bridge-moonlight-rainbow-fountain-reference",
       "kind": "third-party-reference-bitmap",
       "source": "Wikimedia Commons File:Banpo Bridge Moonlight Rainbow Fountain at night - 2023-08-14.jpg, Wvdp",
@@ -56,6 +84,20 @@
       "canonical_source_url": "https://commons.wikimedia.org/wiki/File:Nodeul_Station_View.jpg",
       "source_hash": "sha256:e525ea9fb3e96b86c06d8faf75120e6a9e257442c53b7df2058d6c71d6d7fe08",
       "modification_description": "Preview retained as unshipped art reference; no package adaptation.",
+      "share_alike_release": "not applicable",
+      "attribution": "CC0; source and creator retained in LICENSES.md"
+    },
+    {
+      "asset_id": "wonhyo-bridge-yeouido-east-reference",
+      "kind": "third-party-reference-bitmap",
+      "source": "Wikimedia Commons File:Wonhyo Bridge and Yeouido East.jpg, hiddenfree",
+      "license": "CC0 1.0 Universal",
+      "license_version": "1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "creator": "hiddenfree",
+      "canonical_source_url": "https://commons.wikimedia.org/wiki/File:Wonhyo_Bridge_and_Yeouido_East.jpg",
+      "source_hash": "sha256:0d54f50f787b8106223c0970e61a4922d0bbc74fda4cec6f84ac36786e0d78bc",
+      "modification_description": "Original CC0 bitmap retained as unshipped finish-vista art reference; no package adaptation.",
       "share_alike_release": "not applicable",
       "attribution": "CC0; source and creator retained in LICENSES.md"
     },

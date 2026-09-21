@@ -32,6 +32,28 @@ These are pinned architecture decisions, not suggestions. A replacement needs co
 
 Generated native build output is under `Build/native/`. The checked-in `make clean` command removes only that directory.
 
+## Unreal MCP workflow
+
+Use the configured Unreal MCP server when work requires a live Unreal Editor:
+editor-state inspection, asset/map/Blueprint operations, content-browser or
+viewport interaction, Unreal automation, and editor log inspection. Before
+depending on it, verify end-to-end health through the MCP client by listing
+the server tools and completing a read-only editor query. A listening HTTP
+port by itself is insufficient.
+
+Start with inspection and limit mutations to the authorized task. Repository
+and phase rules still apply; for example, the
+[Han River course-content plan](docs/phase-2/03-han-river-course-content-plan.md)
+does not permit Unreal-MCP asset mutation until its representative-scene
+review authorizes production. Save intended source-controlled editor changes,
+then run the applicable `make`/`Scripts/dev.py` checks; MCP success is not
+build, cook, package, performance, or hardware evidence.
+
+Do not route documentation, engine-independent source, native builds/tests,
+packaging, or other non-editor work through Unreal MCP. If required editor work
+cannot use the configured server, record it as blocked or unverified rather
+than editing binary Unreal assets outside the editor.
+
 ## Implementation workflow
 
 1. Keep reproducible commands in `Scripts/dev.py` and the root `Makefile`; do not rely on personal shell setup.

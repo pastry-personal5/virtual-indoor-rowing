@@ -344,6 +344,18 @@ namespace ContentRuntime
 		return {PackagePath, std::move(Inventory), std::move(Paths), Manifest.InventorySha256, Manifest.RouteDefinitionSha256, std::move(PackageNotice)};
 	}
 
+	std::string ReadStagedPackageInventory(const std::filesystem::path &StagingDirectory)
+	{
+		const std::filesystem::path PackagePath = StagingDirectory / "package.vircontent";
+		const auto Entries = ReadArchiveEntries(PackagePath, MaximumCompressedPackageBytes * 4ULL);
+		const auto Inventory = std::find_if(Entries.begin(), Entries.end(), [](const FArchiveEntry &Entry)
+											{ return Entry.Path == "inventory.pb"; });
+		if (Inventory == Entries.end())
+			throw FContentValidationError(EContentError::InventoryMismatch, "content archive is missing inventory.pb");
+		std::ifstream Input(PackagePath, std::ios::binary);
+		return ReadArchiveEntry(Input, *Inventory, MaximumInventoryBytes);
+	}
+
 	void ExtractValidatedPackage(const FValidatedContentPackage &Package,
 								 const std::filesystem::path &DestinationDirectory)
 	{
@@ -377,7 +389,20 @@ namespace ContentRuntime
 	bool HasStorageAdmission(const std::filesystem::path &StagingDirectory, const FContentManifest &Manifest) noexcept
 	{
 		std::error_code Error;
-		const auto Space = std::filesystem::space(StagingDirectory, Error);
+		// The staging directory is created only after admission, so it usually does
+		// not exist yet; std::filesystem::space fails on a missing path. Measure the
+		// nearest existing ancestor, which is on the same volume.
+		std::filesystem::path Measured = StagingDirectory;
+		while (!Measured.empty() && !std::filesystem::exists(Measured, Error))
+		{
+			Error.clear();
+			const std::filesystem::path Parent = Measured.parent_path();
+			if (Parent == Measured)
+				break;
+			Measured = Parent;
+		}
+		Error.clear();
+		const auto Space = std::filesystem::space(Measured, Error);
 		if (Error)
 			return false;
 		// The policy is intentionally independent of a transfer's current size:

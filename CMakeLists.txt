@@ -142,6 +142,10 @@ if(BUILD_TESTING)
 		NAME content_origin_canary
 		COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/content_canary.py" canary
 	)
+	add_test(
+		NAME content_release_packager_tests
+		COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/test_content_release_packager.py"
+	)
 endif()
 
 function(vir_collect_sources out_var directory)

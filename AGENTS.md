@@ -39,6 +39,7 @@ make format-check       # formatting check
 make unreal-native-app  # native archive consumed by Unreal
 make unreal-smoke       # Unreal Editor compile
 make unreal-shipping    # unsigned arm64 Shipping package
+make han-external-cook  # external Han HanRiver.{pak,utoc,ucas} cook
 make unreal-package-verify
 make phase1-check       # Phase 1 packet validation
 make development-sync-test
@@ -47,6 +48,23 @@ make development-sync-test
 `make pm5-tui-hil` and `make pm5-tui-journal` create private local evidence;
 never commit or attach their output. `make release-sign-notarize` is a
 credential-owner procedure; signing/notarization is Phase 4 work.
+
+## Unreal MCP
+
+When a task needs live Unreal Editor state or editor-owned changes, first check
+whether the configured Unreal MCP server is alive by listing its tools and
+making a read-only editor query. If that succeeds, use Unreal MCP for the
+needed editor inspection, asset/map/Blueprint work, automation, or log access.
+Inspect before mutating, keep changes bounded to the task, and follow any
+phase-specific review gate; in particular, the Phase 2 representative-scene
+review still gates Han River asset mutation.
+
+Do not use Unreal MCP for engine-independent source, documentation, native
+builds/tests, packaging, or other work that does not need a live editor. An
+open port alone is not a health check. If an editor-dependent task needs Unreal
+MCP and the server is unavailable, report that work as blocked or unverified
+instead of silently replacing editor operations with direct `.uasset` edits.
+Unreal MCP does not replace the required `make`/`Scripts/dev.py` verification.
 
 ## Change and handoff rules
 

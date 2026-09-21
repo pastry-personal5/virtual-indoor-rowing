@@ -181,8 +181,14 @@ namespace LocalData
 			throw ContentRuntime::FContentValidationError(ContentRuntime::EContentError::Malformed, "catalog revision record is invalid");
 		Impl->Connection.InTransaction([&]
 									   {
-		if (Revision < AcceptedCatalogRevision())
-			throw ContentRuntime::FContentValidationError(ContentRuntime::EContentError::RevisionRollback, "catalog revision cannot move backwards");
+		auto Existing = Impl->Connection.Prepare("SELECT accepted_revision, manifest_hash FROM content_catalog_state WHERE singleton=1;");
+		if (Existing.Step())
+		{
+			const auto AcceptedRevision = static_cast<std::uint64_t>(Existing.ColumnInt64(0));
+			const std::string AcceptedHash = Existing.ColumnText(1);
+			if (Revision < AcceptedRevision || (Revision == AcceptedRevision && ManifestHashHex != AcceptedHash))
+				throw ContentRuntime::FContentValidationError(ContentRuntime::EContentError::RevisionRollback, "catalog revision cannot move backwards or change in place");
+		}
 		auto Upsert = Impl->Connection.Prepare(
 			"INSERT INTO content_catalog_state(singleton, accepted_revision, manifest_hash, accepted_at) VALUES(1, ?, ?, datetime('now')) "
 			"ON CONFLICT(singleton) DO UPDATE SET accepted_revision=excluded.accepted_revision, manifest_hash=excluded.manifest_hash, accepted_at=excluded.accepted_at;");

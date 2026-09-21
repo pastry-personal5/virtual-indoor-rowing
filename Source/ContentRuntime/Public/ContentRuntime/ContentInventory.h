@@ -54,6 +54,9 @@ namespace ContentRuntime
 	FValidatedContentPackage ValidateStagedPackage(const std::filesystem::path &StagingDirectory,
 												   const FContentManifest &Manifest,
 												   std::string_view InventoryBytes);
+	// The inventory is carried inside the package. This bounded read does not
+	// trust it; callers must pass the bytes to ValidateStagedPackage.
+	std::string ReadStagedPackageInventory(const std::filesystem::path &StagingDirectory);
 	void ExtractValidatedPackage(const FValidatedContentPackage &Package,
 								 const std::filesystem::path &DestinationDirectory);
 	bool HasStorageAdmission(const std::filesystem::path &StagingDirectory, const FContentManifest &Manifest) noexcept;

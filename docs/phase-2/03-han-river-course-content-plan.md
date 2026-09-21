@@ -143,10 +143,9 @@ Han River as peer course tiles:
 | 5 | Client + content | Cook Han as external data-only IoStore content, generate inventory/hash/provenance outputs, sign the manifest, and stage it through the Milestone 1 delivery path. |
 | 6 | QA + release/platform | Run editor validation, packaged Shipping canary, content failure/rollback cases, and a human route review on the reference Mac. Promote only after all Milestone 1 evidence passes. |
 
-No Unreal-MCP asset mutation is appropriate until the representative-scene
-review authorizes production. At that point, use Unreal-MCP for bounded,
-reviewed asset inspection and editor work; keep source-controlled route data,
-provenance, validator rules, and release artifacts in the repository pipeline.
+Use Unreal-MCP for bounded, reviewed asset inspection and editor work; keep
+source-controlled route data, provenance, validator rules, and release
+artifacts in the repository pipeline.
 
 ## Asset naming, provenance, and validation
 

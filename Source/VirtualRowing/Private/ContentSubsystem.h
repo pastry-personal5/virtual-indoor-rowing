@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "HttpFwd.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 
 #include "ContentRuntime/ContentManifest.h"
@@ -33,6 +34,13 @@ class VIRTUALROWING_API UContentSubsystem : public UGameInstanceSubsystem
 	// withdrawal, or mount operation. It deliberately refuses an active workout.
 	bool CanOperateContent() const;
 
+	// The catalog endpoint is configured by the internal release channel. Refresh
+	// is started at boot when configured; downloading remains an explicit Content
+	// page action and never starts itself.
+	bool BeginCatalogRefresh();
+	bool BeginHanDownload();
+	FString GetContentOperationStatus() const;
+
 	// Automation seam: an extracted set whose Pak/IoStore pair fails to mount
 	// leaves Standard selected and records a redacted stable error category.
 	bool MountInstalledContentForTesting(const FString &InstallPath);
@@ -45,5 +53,7 @@ class VIRTUALROWING_API UContentSubsystem : public UGameInstanceSubsystem
 	TSharedPtr<FImpl> Impl;
 
 	bool TryMountInstalledContent(const FString &InstallPath, FString &OutFailureCategory);
+	void HandleCatalogResponse(FHttpRequestPtr Request, FHttpResponsePtr Response, bool bSucceeded);
+	void HandleDownloadResponse(FHttpRequestPtr Request, FHttpResponsePtr Response, bool bSucceeded);
 	bool IsWorkoutActive() const;
 };

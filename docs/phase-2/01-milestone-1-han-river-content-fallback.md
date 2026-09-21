@@ -1,18 +1,18 @@
 # Phase 2 Milestone 1: Han River content delivery with Standard fallback
 
-Status: In progress — core contracts/boot fallback implemented; delivery path pending  
+Status: Completed 2026-09-21 by owner decision — see [04-milestone-1-evidence.md](04-milestone-1-evidence.md) for the evidence actually captured and the checks not captured
 Owner: Client/content, release/platform, security  
-Last reviewed: 2026-09-20
+Last reviewed: 2026-09-21
 
 ## Relationship to the delivery plan
 
 This is the first scoped milestone under [Delivery Phase 2](../architecture/10-delivery-plan.md#phase-2--solo-alpha-and-content-pipeline-610-weeks). It implements the Phase 2 content portion of FR-013 without changing the phase exit gate. It does not establish executable signing, notarization, Sparkle, accounts, entitlement, or automatic application updates; those remain outside this milestone under [ADR-0008](../adr/0008-defer-macos-signing-to-phase-4.md).
 
-Core content contracts, validation, persistence, and boot fallback are
-implemented. The runtime catalog refresh, user-initiated resumable transfer,
-and next-launch extraction/activation path are still required; this milestone
-is not complete until those paths and the packaged Han canary evidence listed
-in [the evidence record](04-milestone-1-evidence.md) are recorded.
+Core content contracts, validation, persistence, boot fallback, runtime catalog
+refresh, user-initiated resumable transfer, validation/extraction, and
+next-launch activation are implemented. This milestone is not complete until
+the packaged Han canary evidence listed in [the evidence record](04-milestone-1-evidence.md)
+is recorded.
 
 ## Outcome
 
@@ -117,6 +117,7 @@ Required commands are:
 ```sh
 make build && make test
 make format-check
+make content-release-package # restricted release-owner signer and reviewed cook required
 make unreal-native-app
 make unreal-smoke
 make unreal-shipping

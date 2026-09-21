@@ -51,6 +51,29 @@ class UnrealShippingPackagingTests(unittest.TestCase):
 		self.assertEqual(modules["VirtualRowing"].get("Type"), "Runtime")
 		self.assertEqual(modules["VirtualRowing"].get("LoadingPhase"), "Default")
 
+	def test_han_cook_command_cooks_only_the_han_map_into_an_iostore_stage(self) -> None:
+		command = packaging.han_cook_command(Path("/UE"), Path("/repo/VirtualRowing.uproject"), Path("/stage"))
+		self.assertIn(f"-map={packaging.HAN_MAP}", command)
+		for flag in ("-cook", "-pak", "-iostore", "-stage", "-stagingdirectory=/stage"):
+			self.assertIn(flag, command)
+		self.assertIn("-cookdir=/repo/Content/Phase2/HanRiver", command)
+		self.assertNotIn("-archive", command)
+
+	def test_han_pak_rules_route_han_content_to_a_dedicated_chunk(self) -> None:
+		self.assertIn(f"OverridePaks={packaging.HAN_PAK_CHUNK}", packaging.HAN_PAK_FILE_RULES)
+		self.assertIn("Content/Phase2/HanRiver/", packaging.HAN_PAK_FILE_RULES)
+
+	def test_han_chunk_files_requires_exactly_one_of_each_extension(self) -> None:
+		for extension in ("pak", "utoc"):
+			(self.root / f"{packaging.HAN_PAK_CHUNK}-Mac.{extension}").write_bytes(b"x")
+		self.assertIsNone(unreal._han_chunk_files(self.root))
+		(self.root / f"{packaging.HAN_PAK_CHUNK}-Mac.ucas").write_bytes(b"x")
+		self.assertEqual(set(unreal._han_chunk_files(self.root)), {"pak", "utoc", "ucas"})
+		app_paks = self.root / "V.app" / "Contents" / "Paks"
+		app_paks.mkdir(parents=True)
+		(app_paks / f"{packaging.HAN_PAK_CHUNK}-Mac.pak").write_bytes(b"x")
+		self.assertEqual(set(unreal._han_chunk_files(self.root)), {"pak", "utoc", "ucas"})
+
 	def test_unreal_shipping_command_requests_arm64_shipping_archive(self) -> None:
 		command = packaging.unreal_shipping_command(Path("/UE"), Path("/repo/VirtualRowing.uproject"), Path("/out"))
 		self.assertIn("BuildCookRun", command)

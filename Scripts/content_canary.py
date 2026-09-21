@@ -13,6 +13,6 @@ from vir_dev import content  # noqa: E402
 
 
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("command", choices=("canary", "fixture"))
+parser.add_argument("command", choices=("canary", "fixture", "release-package"))
 args = parser.parse_args()
 raise SystemExit(content.command(args.command))

@@ -39,6 +39,48 @@ def unreal_shipping_command(ue_root: Path, project: Path, archive_dir: Path) -> 
 	]
 
 
+HAN_MAP = "/Game/Phase2/HanRiver/Maps/L_HanRiver_BlueHour"
+HAN_CONTENT_RELATIVE_DIR = Path("Content") / "Phase2" / "HanRiver"
+HAN_PAK_CHUNK = "pakchunk1001"
+# Written to Config/GeneratedPakFileRules.ini and GeneratedGame.ini (UAT's build-machine-only, git-ignored
+# layer) for the duration of one Han cook so ordinary Shipping packages are unaffected.
+HAN_PAK_FILE_RULES = f"""[HanRiverExternal]
+OverridePaks={HAN_PAK_CHUNK}
++Files=".../Content/Phase2/HanRiver/..."
+"""
+# Pak file rules only run on UAT's chunk-manifest staging path.
+HAN_GAME_OVERRIDES = """[/Script/UnrealEd.ProjectPackagingSettings]
+bGenerateChunks=True
+"""
+
+
+def han_cook_command(ue_root: Path, project: Path, stage_dir: Path) -> list[str]:
+	"""BuildCookRun that cooks only the Han map and stages Han content as its own IoStore chunk."""
+	return [
+		str(ue_root / "Engine" / "Build" / "BatchFiles" / "RunUAT.sh"),
+		"BuildCookRun",
+		f"-project={project}",
+		"-noP4",
+		"-platform=Mac",
+		"-targetplatform=Mac",
+		"-clientconfig=Shipping",
+		"-build",
+		'-ubtargs=-NoUBA',
+		"-cook",
+		"-manifests",
+		f"-map={HAN_MAP}",
+		# The map does not reference every reviewed Han asset (e.g. meshes); cook the whole directory.
+		f"-cookdir={project.parent / HAN_CONTENT_RELATIVE_DIR}",
+		"-pak",
+		"-iostore",
+		"-stage",
+		f"-stagingdirectory={stage_dir}",
+		"-specifiedarchitecture=arm64",
+		"-CookCultures=en",
+		"-I18NPreset=English",
+	]
+
+
 def staged_app(archive_dir: Path) -> Path | None:
 	apps = sorted(archive_dir.rglob("*.app")) if archive_dir.is_dir() else []
 	return apps[0] if len(apps) == 1 else None

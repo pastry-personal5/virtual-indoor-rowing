@@ -7,7 +7,7 @@ public class VirtualRowing : ModuleRules
 	public VirtualRowing(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
-		PrivateDependencyModuleNames.AddRange(new[] { "Core", "CoreUObject", "Engine", "InputCore", "Slate", "SlateCore", "UMG", "PakFile" });
+		PrivateDependencyModuleNames.AddRange(new[] { "Core", "CoreUObject", "Engine", "InputCore", "Slate", "SlateCore", "UMG", "PakFile", "HTTP" });
 		if (Target.Platform == UnrealTargetPlatform.Mac)
 		{
 			PublicFrameworks.AddRange(new[] { "CoreBluetooth", "Foundation", "Security", "CoreFoundation" });

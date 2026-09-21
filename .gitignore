@@ -11,6 +11,10 @@ Saved/
 /Build/native/
 /Build/native-app/
 /Build/unreal-shipping/
+/Build/han-cook/
+/Build/Mac/ChunkLayerInfo/
+/Config/GeneratedPakFileRules.ini
+/Config/GeneratedGame.ini
 /Build/content-origin-fixture/
 !/Build/Mac/Resources/Info.Template.plist
 /Build/Mac/FileOpenOrder/

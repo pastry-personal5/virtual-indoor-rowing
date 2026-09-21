@@ -44,6 +44,8 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	float GetCourseLightIntensityForTesting() const;
 	int32 GetMarkerCountForTesting() const;
 	int32 GetCourseEdgeSegmentCountForTesting() const;
+	int32 GetHanLandmarkCountForTesting() const;
+	bool HasHanRiverEnvironmentForTesting() const;
 	bool HasInputComponentForTesting() const;
 
   private:
@@ -80,14 +82,19 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UStaticMeshComponent>> EnvironmentMeshes;
 	UPROPERTY(Transient)
+	TArray<TObjectPtr<UStaticMeshComponent>> HanLandmarkMeshes;
+	UPROPERTY(Transient)
 	TArray<TObjectPtr<USplineMeshComponent>> CourseEdgeMeshes;
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UTextRenderComponent>> MarkerLabels;
 
 	bool bInitialized = false;
+	bool bIsHanRiverRoute = false;
 	ContentRuntime::FRouteDefinition Route = ContentRuntime::BuiltInStandardRouteDefinition();
 	bool bHasOarPresentation = false;
 	float SmoothedHandsX = 0.0f;
 	float SmoothedOarYaw = 0.0f;
 	UStaticMeshComponent *MakeMesh(const TCHAR *Name, UStaticMesh *Mesh, USceneComponent *Parent, const FVector &Scale, const FLinearColor &Color);
+	UStaticMeshComponent *MakeHanLandmark(const TCHAR *Name, UStaticMesh *Mesh, const FVector &Scale, const FLinearColor &Color, const FVector &Location);
+	void BuildHanRiverEnvironment(UStaticMesh *Cube, UStaticMesh *Cylinder);
 };

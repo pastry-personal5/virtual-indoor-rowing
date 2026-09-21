@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import sys
+from pathlib import Path
 
 from vir_dev import common, doctor, native, packaging
 
@@ -101,6 +103,86 @@ def unreal_shipping() -> int:
 	embedded_project.parent.mkdir(parents=True, exist_ok=True)
 	shutil.copy2(project, embedded_project)
 	print(app)
+	return 0
+
+
+HAN_GENERATED_CONFIG = {
+	common.ROOT / "Config" / "GeneratedPakFileRules.ini": packaging.HAN_PAK_FILE_RULES,
+	common.ROOT / "Config" / "GeneratedGame.ini": packaging.HAN_GAME_OVERRIDES,
+}
+HAN_IOSTORE_MAGIC = b"-==--==--==--==-"
+
+
+def _han_chunk_files(stage_dir: Path) -> dict[str, Path] | None:
+	"""Find the staged Han chunk trio, or None unless each extension resolves to exactly one file."""
+	found = {}
+	for extension in ("pak", "utoc", "ucas"):
+		# UAT also copies the Paks into the staged .app; that duplicate is not a second cook.
+		matches = sorted(path for path in stage_dir.rglob(f"{packaging.HAN_PAK_CHUNK}-*.{extension}") if not any(part.endswith(".app") for part in path.parts))
+		if len(matches) != 1:
+			return None
+		found[extension] = matches[0]
+	return found
+
+
+def han_external_cook() -> int:
+	"""Cook Han River into the external HanRiver.{pak,utoc,ucas} IoStore trio.
+
+	Output goes to $VIR_HAN_IOSTORE_DIR (the same variable `content-release-package`
+	consumes) or Build/han-cook/HanRiver.
+	"""
+	versions = common.load_versions()
+	ue_root = common.find_unreal(versions)
+	if not ue_root:
+		print("ERROR: Unreal Engine 5.8 was not found; install the approved patch and set UE_ROOT", file=sys.stderr)
+		return 1
+	project = common.ROOT / "VirtualRowing.uproject"
+	uat = ue_root / "Engine" / "Build" / "BatchFiles" / "RunUAT.sh"
+	if not project.is_file() or not uat.is_file():
+		print("ERROR: Unreal project or RunUAT.sh is missing", file=sys.stderr)
+		return 1
+	for generated in HAN_GENERATED_CONFIG:
+		if generated.exists():
+			print(f"ERROR: {generated} already exists; remove the stale generated file first", file=sys.stderr)
+			return 1
+	output = Path(os.environ.get("VIR_HAN_IOSTORE_DIR") or common.HAN_COOK_DIR / "HanRiver").resolve()
+	if any(output.joinpath(f"HanRiver.{ext}").exists() for ext in ("pak", "utoc", "ucas")):
+		print(f"ERROR: {output} already holds a cook; choose a new VIR_HAN_IOSTORE_DIR or remove it", file=sys.stderr)
+		return 1
+	native_result = native.native_app()
+	if native_result:
+		print("ERROR: `make unreal-native-app` failed; the Unreal module cannot link without it", file=sys.stderr)
+		return native_result
+	stage_dir = common.HAN_COOK_DIR / "stage"
+	shutil.rmtree(stage_dir, ignore_errors=True)
+	env = common.tool_env(versions)
+	env["VIR_SOURCE_REVISION"] = common.source_revision()
+	env["uebp_LogFolder"] = str(common.HAN_COOK_DIR / "logs")
+	try:
+		for generated, content in HAN_GENERATED_CONFIG.items():
+			generated.write_text(content, encoding="utf-8")
+		result = common.run(packaging.han_cook_command(ue_root, project, stage_dir), env=env)
+	finally:
+		for generated in HAN_GENERATED_CONFIG:
+			generated.unlink(missing_ok=True)
+	if result.returncode:
+		return result.returncode
+	staged = _han_chunk_files(stage_dir)
+	if not staged:
+		print(f"ERROR: BuildCookRun did not stage exactly one {packaging.HAN_PAK_CHUNK}-*.pak/.utoc/.ucas trio under {stage_dir}", file=sys.stderr)
+		return 1
+	for extension, path in staged.items():
+		if path.stat().st_size == 0:
+			print(f"ERROR: staged {path.name} is empty", file=sys.stderr)
+			return 1
+	with staged["utoc"].open("rb") as toc:
+		if toc.read(len(HAN_IOSTORE_MAGIC)) != HAN_IOSTORE_MAGIC:
+			print("ERROR: staged .utoc is not an Unreal IoStore TOC", file=sys.stderr)
+			return 1
+	output.mkdir(parents=True, exist_ok=True)
+	for extension, path in staged.items():
+		shutil.copy2(path, output / f"HanRiver.{extension}")
+	print(output)
 	return 0
 
 

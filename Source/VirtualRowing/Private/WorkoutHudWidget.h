@@ -51,6 +51,8 @@ class VIRTUALROWING_API UWorkoutHudWidget : public UUserWidget
 	UFUNCTION()
 	void HandleHanCourseClicked();
 	UFUNCTION()
+	void HandleDownloadHanClicked();
+	UFUNCTION()
 	void HandleContentLicensesClicked();
 
 	UWorkoutSubsystem *GetWorkoutSubsystem() const;
@@ -90,9 +92,13 @@ class VIRTUALROWING_API UWorkoutHudWidget : public UUserWidget
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> HanAvailabilityText;
 	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> ContentStatusText;
+	UPROPERTY(Transient)
 	TObjectPtr<UButton> StandardCourseButton;
 	UPROPERTY(Transient)
 	TObjectPtr<UButton> HanCourseButton;
+	UPROPERTY(Transient)
+	TObjectPtr<UButton> DownloadHanButton;
 	UPROPERTY(Transient)
 	TObjectPtr<UButton> ContentLicensesButton;
 	UPROPERTY(Transient)

@@ -76,7 +76,7 @@ pm5-tui-journal: ## Launch the TUI with the opt-in Keychain-sealed workout journ
 
 # --- Unreal ------------------------------------------------------------------
 
-.PHONY: unreal-native-app unreal-smoke unreal-shipping unreal-package-verify unreal-bluetooth-probe unreal-bluetooth-probe-clean content-canary content-fixture
+.PHONY: unreal-native-app unreal-smoke unreal-shipping han-external-cook unreal-package-verify unreal-bluetooth-probe unreal-bluetooth-probe-clean content-canary content-fixture content-release-package
 
 # The first configure downloads hash-pinned protobuf and abseil sources (network).
 unreal-native-app: ## Build the Release static archive (Build/native-app/) the Unreal module links.
@@ -88,6 +88,9 @@ unreal-smoke: ## Build unreal-native-app, then compile the UnrealEditor Developm
 unreal-shipping: ## BuildCookRun the unsigned arm64 Shipping diagnostic host.
 	$(DEV) unreal-shipping
 
+han-external-cook: ## Cook Han River into external HanRiver.{pak,utoc,ucas} (VIR_HAN_IOSTORE_DIR or Build/han-cook/HanRiver).
+	$(DEV) han-external-cook
+
 unreal-package-verify: ## Inspect the staged Shipping .app only (no sign/notarize/launch).
 	$(DEV) unreal-package-verify
 
@@ -96,6 +99,9 @@ content-canary: ## Run the deterministic Phase 2 origin/download/fallback/rollba
 
 content-fixture: ## Generate the local deterministic content-origin fixture (not Shipping evidence).
 	$(DEV) content-fixture
+
+content-release-package: ## Create a signed immutable Han release from a reviewed external IoStore cook.
+	$(DEV) content-release-package
 
 unreal-bluetooth-probe: ## Run the bounded CoreBluetooth/TCC diagnostic in the staged app.
 	$(DEV) unreal-bluetooth-probe

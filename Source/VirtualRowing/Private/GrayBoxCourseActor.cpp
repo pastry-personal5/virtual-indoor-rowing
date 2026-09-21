@@ -25,6 +25,8 @@ namespace
 	constexpr double CameraLookAheadCm = 700.0;
 	constexpr float OarInterpolationSpeed = 16.0f;
 	constexpr float MaxOarInterpolationStepSeconds = 1.0f / 30.0f;
+	constexpr double HanRiverWidthCm = 42'000.0;
+	constexpr double HanBankOffsetCm = 25'000.0;
 
 } // namespace
 
@@ -74,6 +76,7 @@ void AGrayBoxCourseActor::ConfigureRoute(const ContentRuntime::FRouteDefinition 
 	if (bInitialized || InRoute.RouteId.empty() || InRoute.LengthMm == 0)
 		return;
 	Route = InRoute;
+	bIsHanRiverRoute = Route.RouteId == "route.han-river.5k";
 }
 
 UStaticMeshComponent *AGrayBoxCourseActor::MakeMesh(const TCHAR *Name,
@@ -99,6 +102,81 @@ UStaticMeshComponent *AGrayBoxCourseActor::MakeMesh(const TCHAR *Name,
 	return Component;
 }
 
+UStaticMeshComponent *AGrayBoxCourseActor::MakeHanLandmark(const TCHAR *Name,
+														   UStaticMesh *Mesh,
+														   const FVector &Scale,
+														   const FLinearColor &Color,
+														   const FVector &Location)
+{
+	UStaticMeshComponent *Component = MakeMesh(Name, Mesh, SceneRoot, Scale, Color);
+	Component->SetWorldLocation(Location);
+	HanLandmarkMeshes.Add(Component);
+	return Component;
+}
+
+void AGrayBoxCourseActor::BuildHanRiverEnvironment(UStaticMesh *Cube, UStaticMesh *Cylinder)
+{
+	// This is deliberately an original, low-detail presentation kit: it communicates
+	// the six authored beats without copying landmark architecture or adding collision,
+	// navigation, current, or any path that could affect official workout facts.
+	const FLinearColor BridgeConcrete(0.20f, 0.25f, 0.31f);
+	const FLinearColor WarmLight(0.93f, 0.53f, 0.22f);
+	const FLinearColor TreeCanopy(0.05f, 0.16f, 0.12f);
+	const FLinearColor Skyline(0.11f, 0.17f, 0.25f);
+
+	auto AddBridge = [this, Cube, Cylinder, &BridgeConcrete, &WarmLight](const TCHAR *Prefix, double DistanceMm, float HalfSpanScale)
+	{
+		const FTransform Beat = GetCourseTransform(DistanceMm);
+		const FVector Centre = Beat.GetLocation();
+		const FVector Right = Beat.GetUnitAxis(EAxis::Y);
+		MakeHanLandmark(*FString::Printf(TEXT("%sDeck"), Prefix), Cube, FVector(5.0f, HalfSpanScale, 0.22f), BridgeConcrete, Centre + FVector(0.0, 0.0, 1'150.0));
+		for (int32 Side : {-1, 1})
+		{
+			MakeHanLandmark(*FString::Printf(TEXT("%sPier%d"), Prefix, Side), Cube, FVector(1.5f, 2.2f, 10.0f), BridgeConcrete, Centre + Right * (Side * 13'000.0) + FVector(0.0, 0.0, 450.0));
+			for (int32 LightIndex = 0; LightIndex < 3; ++LightIndex)
+			{
+				const float Along = static_cast<float>(LightIndex - 1) * 700.0f;
+				MakeHanLandmark(*FString::Printf(TEXT("%sLight%d%d"), Prefix, Side, LightIndex), Cylinder, FVector(0.15f, 0.15f, 2.0f), WarmLight, Centre + Right * (Side * 10'500.0) + Beat.GetUnitAxis(EAxis::X) * Along + FVector(0.0, 0.0, 1'250.0));
+			}
+		}
+	};
+
+	AddBridge(TEXT("Banpo"), 0.0, 210.0f);
+	AddBridge(TEXT("Dongjak"), 1'450'000.0, 190.0f);
+	AddBridge(TEXT("Hangang"), 3'650'000.0, 230.0f);
+	AddBridge(TEXT("Wonhyo"), 5'000'000.0, 220.0f);
+
+	const TArray<double> BeatDistances = {0.0, 650'000.0, 1'450'000.0, 3'000'000.0, 3'650'000.0, 5'000'000.0};
+	for (int32 BeatIndex = 0; BeatIndex < BeatDistances.Num(); ++BeatIndex)
+	{
+		const FTransform Beat = GetCourseTransform(BeatDistances[BeatIndex]);
+		const FVector Right = Beat.GetUnitAxis(EAxis::Y);
+		const FVector Forward = Beat.GetUnitAxis(EAxis::X);
+		for (int32 Side : {-1, 1})
+		{
+			const FVector Bank = Beat.GetLocation() + Right * (Side * HanBankOffsetCm);
+			MakeHanLandmark(*FString::Printf(TEXT("BankTree%d%d"), BeatIndex, Side), Cylinder, FVector(9.0f, 9.0f, 3.5f), TreeCanopy, Bank + Forward * (Side * 1'600.0) + FVector(0.0, 0.0, 500.0));
+			MakeHanLandmark(*FString::Printf(TEXT("Skyline%d%d"), BeatIndex, Side), Cube, FVector(7.0f, 7.0f, 24.0f + BeatIndex * 2.0f), Skyline, Bank + Forward * (Side * 5'000.0) + FVector(0.0, 0.0, 1'200.0));
+		}
+	}
+
+	// Some Sevit is suggested with three original glowing volumes. They remain
+	// deliberately abstract rather than functioning as an architectural replica.
+	const FTransform Sebit = GetCourseTransform(650'000.0);
+	const FVector SebitRight = Sebit.GetUnitAxis(EAxis::Y);
+	for (int32 Index = 0; Index < 3; ++Index)
+	{
+		MakeHanLandmark(*FString::Printf(TEXT("SebitVolume%d"), Index), Cube, FVector(7.0f + Index, 5.0f, 3.0f + Index), WarmLight, Sebit.GetLocation() - SebitRight * (17'000.0 + Index * 2'200.0) + FVector(Index * 700.0, 0.0, 450.0));
+	}
+
+	// Sparse non-collision buoys provide scale without occupying the rowing line.
+	for (double DistanceMm : {650'000.0, 3'000'000.0, 5'000'000.0})
+	{
+		const FTransform Beat = GetCourseTransform(DistanceMm);
+		MakeHanLandmark(*FString::Printf(TEXT("RiverBuoy%.0f"), DistanceMm), Cylinder, FVector(0.35f, 0.35f, 1.4f), WarmLight, Beat.GetLocation() + Beat.GetUnitAxis(EAxis::Y) * 5'500.0 + FVector(0.0, 0.0, 120.0));
+	}
+}
+
 void AGrayBoxCourseActor::InitializeCourse()
 {
 	if (bInitialized)
@@ -109,6 +187,12 @@ void AGrayBoxCourseActor::InitializeCourse()
 	if (!Cube || !Cylinder)
 		return;
 	bInitialized = true;
+	if (bIsHanRiverRoute)
+	{
+		CourseLight->SetRelativeRotation(FRotator(-34.0f, 42.0f, 0.0f));
+		CourseLight->SetIntensity(3.2f);
+		CourseLight->SetLightColor(FLinearColor(0.38f, 0.51f, 0.78f));
+	}
 
 	CourseSpline->ClearSplinePoints(false);
 	const int32 PointCount = Route.bClosed ? SplinePointCount : SplinePointCount + 1;
@@ -151,26 +235,29 @@ void AGrayBoxCourseActor::InitializeCourse()
 		if (CourseMaterial)
 		{
 			UMaterialInstanceDynamic *Dynamic = UMaterialInstanceDynamic::Create(CourseMaterial, CourseEdge);
-			Dynamic->SetVectorParameterValue(TEXT("Color"), FLinearColor(0.92f, 0.82f, 0.18f));
+			Dynamic->SetVectorParameterValue(TEXT("Color"), bIsHanRiverRoute ? FLinearColor(0.08f, 0.19f, 0.28f) : FLinearColor(0.92f, 0.82f, 0.18f));
 			CourseEdge->SetMaterial(0, Dynamic);
 		}
+		CourseEdge->SetVisibility(!bIsHanRiverRoute);
 		AddInstanceComponent(CourseEdge);
 		CourseEdge->RegisterComponent();
 		CourseEdge->UpdateMesh();
 		CourseEdgeMeshes.Add(CourseEdge);
 	}
 
-	UStaticMeshComponent *Water = MakeMesh(TEXT("Water"), Cube, SceneRoot, FVector(680.0, 205.0, 0.1), FLinearColor(0.03f, 0.20f, 0.35f));
+	UStaticMeshComponent *Water = MakeMesh(TEXT("Water"), Cube, SceneRoot, bIsHanRiverRoute ? FVector(5'400.0, HanRiverWidthCm / 100.0, 0.1) : FVector(680.0, 205.0, 0.1), bIsHanRiverRoute ? FLinearColor(0.025f, 0.10f, 0.18f) : FLinearColor(0.03f, 0.20f, 0.35f));
 	Water->SetRelativeLocation(FVector(0.0, 0.0, -10.0));
 	EnvironmentMeshes.Add(Water);
 	for (int32 Side : {-1, 1})
 	{
-		UStaticMeshComponent *Shore = MakeMesh(Side < 0 ? TEXT("ShoreNorth") : TEXT("ShoreSouth"), Cube, SceneRoot, FVector(680.0, 12.0, 0.35), FLinearColor(0.16f, 0.34f, 0.12f));
-		Shore->SetRelativeLocation(FVector(0.0, Side * 21'000.0, 15.0));
+		UStaticMeshComponent *Shore = MakeMesh(Side < 0 ? TEXT("ShoreNorth") : TEXT("ShoreSouth"), Cube, SceneRoot, bIsHanRiverRoute ? FVector(5'400.0, 40.0, 0.35) : FVector(680.0, 12.0, 0.35), bIsHanRiverRoute ? FLinearColor(0.06f, 0.12f, 0.10f) : FLinearColor(0.16f, 0.34f, 0.12f));
+		Shore->SetRelativeLocation(FVector(0.0, Side * (bIsHanRiverRoute ? HanBankOffsetCm : 21'000.0), 15.0));
 		EnvironmentMeshes.Add(Shore);
 	}
+	if (bIsHanRiverRoute)
+		BuildHanRiverEnvironment(Cube, Cylinder);
 
-	const int32 RouteMarkerCount = Route.bClosed ? MarkerCount : FMath::FloorToInt(static_cast<double>(Route.LengthMm) / 250'000.0);
+	const int32 RouteMarkerCount = bIsHanRiverRoute ? 0 : (Route.bClosed ? MarkerCount : FMath::FloorToInt(static_cast<double>(Route.LengthMm) / 250'000.0));
 	for (int32 Index = 0; Index < RouteMarkerCount; ++Index)
 	{
 		const int32 MarkerMetres = (Index + 1) * 250;
@@ -305,6 +392,14 @@ int32 AGrayBoxCourseActor::GetMarkerCountForTesting() const
 int32 AGrayBoxCourseActor::GetCourseEdgeSegmentCountForTesting() const
 {
 	return CourseEdgeMeshes.Num();
+}
+int32 AGrayBoxCourseActor::GetHanLandmarkCountForTesting() const
+{
+	return HanLandmarkMeshes.Num();
+}
+bool AGrayBoxCourseActor::HasHanRiverEnvironmentForTesting() const
+{
+	return bIsHanRiverRoute && HanLandmarkMeshes.Num() > 0;
 }
 bool AGrayBoxCourseActor::HasInputComponentForTesting() const
 {

@@ -6,12 +6,16 @@
 #include "HAL/PlatformFileManager.h"
 #include "HAL/PlatformProcess.h"
 #include "IPlatformFilePak.h"
+#include "HttpModule.h"
+#include "Interfaces/IHttpResponse.h"
 #include "Misc/CommandLine.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
 
 #include "LocalData/ContentRepository.h"
+#include "ContentRuntime/ContentInventory.h"
+#include "ContentRuntimeMac/CryptoKitContentVerifier.h"
 #include "WorkoutRuntime/WorkoutSnapshot.h"
 
 #include <chrono>
@@ -46,8 +50,8 @@ namespace
 		// the corresponding offline signing keys; no private key enters the app,
 		// repository, CI, or ordinary developer setup.
 		static const std::vector<ContentRuntime::FTrustedContentKey> Keys = {
-			{"content-current", PublicKey({0xd7, 0x5a, 0x98, 0x01, 0x82, 0xb1, 0x0a, 0xb7, 0xd5, 0x4b, 0xfe, 0xd3, 0xc9, 0x64, 0x07, 0x3a, 0x0e, 0xe1, 0x72, 0xf3, 0xda, 0xa6, 0x23, 0x25, 0xaf, 0x02, 0x1a, 0x68, 0xf7, 0x07, 0x51, 0x1a})},
-			{"content-next", PublicKey({0x3d, 0x40, 0x17, 0xc3, 0xe8, 0x43, 0x89, 0x5a, 0x92, 0xb7, 0x0a, 0xa7, 0x4d, 0x1b, 0x7e, 0xbc, 0x9c, 0x98, 0x2c, 0xcf, 0x2e, 0xc4, 0x96, 0x8c, 0xc0, 0xcd, 0x55, 0xf1, 0x2a, 0xf4, 0x66, 0x0c})},
+			{"content-current", PublicKey({0x66, 0xc3, 0x6d, 0x6a, 0x30, 0x36, 0xdb, 0x50, 0x3c, 0xab, 0x31, 0x0d, 0x11, 0xc0, 0x6b, 0xc4, 0x2a, 0xc2, 0xbf, 0x72, 0x59, 0x49, 0xcc, 0x50, 0x28, 0xb8, 0x0a, 0xbc, 0xe1, 0xfa, 0x24, 0x68})},
+			{"content-next", PublicKey({0x6b, 0x96, 0xb0, 0x47, 0xed, 0xdc, 0x30, 0x3d, 0xa2, 0x8c, 0x5b, 0x4c, 0xfe, 0x46, 0x85, 0x66, 0x1c, 0xd8, 0x6c, 0x23, 0x63, 0x9c, 0x00, 0x0c, 0xbb, 0x07, 0x03, 0xcf, 0xe7, 0x10, 0xbb, 0x57})},
 		};
 		return Keys;
 	}
@@ -71,6 +75,10 @@ struct UContentSubsystem::FImpl
 	FString ActivePackageNotice;
 	std::unique_ptr<LocalData::FContentRepository> Repository;
 	FString MountedInstallPath;
+	FString CatalogUrl;
+	FString ContentRoot;
+	FString OperationStatus = TEXT("content.idle");
+	std::optional<ContentRuntime::FContentManifest> CatalogManifest;
 };
 
 void UContentSubsystem::Initialize(FSubsystemCollectionBase &Collection)
@@ -87,6 +95,13 @@ void UContentSubsystem::Initialize(FSubsystemCollectionBase &Collection)
 		const FString AppSupport = FPaths::Combine(FPlatformProcess::UserHomeDir(), TEXT("Library/Application Support"), AppDataFolderName);
 		std::filesystem::create_directories(TCHAR_TO_UTF8(*AppSupport));
 		Impl->Repository = std::make_unique<LocalData::FContentRepository>(std::filesystem::path(TCHAR_TO_UTF8(*FPaths::Combine(AppSupport, TEXT("rowing.sqlite3")))));
+		Impl->ContentRoot = FPaths::Combine(AppSupport, TEXT("Content"));
+		std::filesystem::create_directories(TCHAR_TO_UTF8(*Impl->ContentRoot));
+		FParse::Value(FCommandLine::Get(), TEXT("ContentCatalogUrl="), Impl->CatalogUrl);
+		// A verified set is deliberately activated only on a subsequent launch.
+		// This is before menu presentation and therefore cannot change an active row.
+		if (const auto Verified = Impl->Repository->FindByState(ContentRuntime::EInstalledContentState::Verified))
+			Impl->Repository->ActivateVerified(Verified->ContentSetId, false);
 		const int64 Now = UnixNowSeconds();
 		const auto Active = Impl->Repository->FindByState(ContentRuntime::EInstalledContentState::Active);
 		const auto LastKnownGood = Impl->Repository->FindByState(ContentRuntime::EInstalledContentState::LastKnownGood);
@@ -140,7 +155,12 @@ void UContentSubsystem::Initialize(FSubsystemCollectionBase &Collection)
 		UE_LOG(LogContentSubsystem, Warning, TEXT("Content boot failed; using Standard route: %s"), UTF8_TO_TCHAR(Error.what()));
 		Impl->SelectedRoute = Impl->StandardRoute;
 		Impl->HanAvailabilityReason = TEXT("content.han.validation_failed");
+		// Shipping compiles UE_LOG out; keep the cause visible through the status line.
+		Impl->OperationStatus = FString::Printf(TEXT("content.init_failed: %s"), UTF8_TO_TCHAR(Error.what()));
 	}
+	// Network/catalog work is strictly background boot work. Absence or failure
+	// cannot delay the local menu or alter Standard's availability.
+	BeginCatalogRefresh();
 }
 
 void UContentSubsystem::Deinitialize()
@@ -209,6 +229,160 @@ bool UContentSubsystem::CanSelectRoute(const FString &RouteId, bool bHanAvailabl
 bool UContentSubsystem::CanOperateContent() const
 {
 	return !IsWorkoutActive();
+}
+
+FString UContentSubsystem::GetContentOperationStatus() const
+{
+	return Impl ? Impl->OperationStatus : TEXT("content.unavailable");
+}
+
+bool UContentSubsystem::BeginCatalogRefresh()
+{
+	if (!Impl || !CanOperateContent())
+		return false;
+	if (Impl->CatalogUrl.IsEmpty())
+	{
+		// Never overwrite a boot failure with a generic "no URL" state.
+		if (Impl->OperationStatus == TEXT("content.idle"))
+			Impl->OperationStatus = TEXT("content.catalog_url_missing");
+		return false;
+	}
+	FHttpRequestPtr Request = FHttpModule::Get().CreateRequest();
+	Request->SetURL(Impl->CatalogUrl);
+	Request->SetVerb(TEXT("GET"));
+	Request->SetHeader(TEXT("Accept"), TEXT("application/octet-stream"));
+	Request->OnProcessRequestComplete().BindUObject(this, &UContentSubsystem::HandleCatalogResponse);
+	Impl->OperationStatus = TEXT("content.catalog_refreshing");
+	if (!Request->ProcessRequest())
+	{
+		Impl->OperationStatus = TEXT("content.catalog_network_failed");
+		return false;
+	}
+	return true;
+}
+
+void UContentSubsystem::HandleCatalogResponse(FHttpRequestPtr, FHttpResponsePtr Response, bool bSucceeded)
+{
+	if (!Impl || !bSucceeded || !Response.IsValid() || Response->GetResponseCode() != 200 || !CanOperateContent())
+	{
+		if (Impl)
+			Impl->OperationStatus = FString::Printf(TEXT("content.catalog_network_failed (%s, HTTP %d)"), bSucceeded ? TEXT("connected") : TEXT("no response"), Response.IsValid() ? Response->GetResponseCode() : 0);
+		return;
+	}
+	try
+	{
+		const TArray<uint8> &Bytes = Response->GetContent();
+		if (Bytes.IsEmpty() || Bytes.Num() > static_cast<int32>(ContentRuntime::MaximumManifestBytes))
+			throw ContentRuntime::FContentValidationError(ContentRuntime::EContentError::Oversized, "catalog response exceeds bounds");
+		const std::string Envelope(reinterpret_cast<const char *>(Bytes.GetData()), Bytes.Num());
+		ContentRuntimeMac::FCryptoKitContentVerifier Verifier;
+		const auto Manifest = ContentRuntime::ParseAndVerifyManifest(Envelope, TrustedKeys(), Verifier, {ContentClientBuild, UnixNowSeconds(), Impl->Repository->AcceptedCatalogRevision(), false, true});
+		Impl->Repository->AcceptCatalogRevision(Manifest.CatalogRevision, ContentRuntime::Sha256Hex(Manifest.ManifestSha256));
+		if (Manifest.bWithdrawn)
+		{
+			Impl->Repository->ApplyWithdrawal(Manifest.Route.ContentSetId, false);
+			Impl->CatalogManifest.reset();
+			Impl->bHanAvailable = false;
+			Impl->SelectedRoute = Impl->StandardRoute;
+			Impl->HanAvailabilityReason = UTF8_TO_TCHAR(Manifest.WithdrawalReasonKey.c_str());
+			Impl->OperationStatus = TEXT("content.catalog_withdrawn");
+			return;
+		}
+		Impl->CatalogManifest = Manifest;
+		Impl->OperationStatus = TEXT("content.catalog_ready");
+	}
+	catch (const ContentRuntime::FContentValidationError &Error)
+	{
+		Impl->OperationStatus = UTF8_TO_TCHAR(ContentRuntime::ContentErrorName(Error.GetCode()));
+	}
+	catch (const std::exception &)
+	{
+		Impl->OperationStatus = TEXT("content.catalog_validation_failed");
+	}
+}
+
+bool UContentSubsystem::BeginHanDownload()
+{
+	if (!Impl || !CanOperateContent() || !Impl->CatalogManifest || Impl->CatalogManifest->bWithdrawn)
+		return false;
+	const ContentRuntime::FContentManifest &Manifest = *Impl->CatalogManifest;
+	const FString StagingDirectory = FPaths::Combine(Impl->ContentRoot, TEXT("staging"), UTF8_TO_TCHAR(Manifest.Route.ContentSetId.c_str()));
+	if (!ContentRuntime::HasStorageAdmission(std::filesystem::path(TCHAR_TO_UTF8(*StagingDirectory)), Manifest))
+	{
+		Impl->OperationStatus = TEXT("content.storage_insufficient");
+		return false;
+	}
+	std::filesystem::create_directories(TCHAR_TO_UTF8(*StagingDirectory));
+	const FString PackagePath = FPaths::Combine(StagingDirectory, TEXT("package.vircontent"));
+	const uint64 ExistingSize = IFileManager::Get().FileExists(*PackagePath) ? static_cast<uint64>(IFileManager::Get().FileSize(*PackagePath)) : 0;
+	// A file that already has the full size was either never validated or failed
+	// validation. A Range request from its end would get HTTP 416 and could never
+	// recover, so restart from zero.
+	const bool bRestart = ExistingSize >= Manifest.CompressedSizeBytes;
+	if (bRestart)
+		IFileManager::Get().Delete(*PackagePath, false, true);
+	const uint64 ResumeOffset = bRestart ? 0 : ExistingSize;
+	Impl->Repository->SaveDownload({Manifest.Route.ContentSetId, Manifest.PackageUrl, TCHAR_TO_UTF8(*StagingDirectory), Manifest.CompressedSizeBytes, ResumeOffset, ""}, false);
+	FHttpRequestPtr Request = FHttpModule::Get().CreateRequest();
+	Request->SetURL(UTF8_TO_TCHAR(Manifest.PackageUrl.c_str()));
+	Request->SetVerb(TEXT("GET"));
+	if (ResumeOffset > 0)
+		Request->SetHeader(TEXT("Range"), FString::Printf(TEXT("bytes=%llu-"), ResumeOffset));
+	Request->OnProcessRequestComplete().BindUObject(this, &UContentSubsystem::HandleDownloadResponse);
+	Impl->OperationStatus = TEXT("content.download_running");
+	if (!Request->ProcessRequest())
+	{
+		Impl->OperationStatus = TEXT("content.download_network_failed");
+		return false;
+	}
+	return true;
+}
+
+void UContentSubsystem::HandleDownloadResponse(FHttpRequestPtr Request, FHttpResponsePtr Response, bool bSucceeded)
+{
+	if (!Impl || !Impl->CatalogManifest || !bSucceeded || !Response.IsValid() || !CanOperateContent())
+	{
+		if (Impl)
+			Impl->OperationStatus = TEXT("content.download_network_failed");
+		return;
+	}
+	try
+	{
+		const ContentRuntime::FContentManifest Manifest = *Impl->CatalogManifest;
+		const FString StagingDirectory = FPaths::Combine(Impl->ContentRoot, TEXT("staging"), UTF8_TO_TCHAR(Manifest.Route.ContentSetId.c_str()));
+		const FString PackagePath = FPaths::Combine(StagingDirectory, TEXT("package.vircontent"));
+		const bool bRequestedRange = Request->GetHeader(TEXT("Range")).Len() > 0;
+		const int32 ResponseCode = Response->GetResponseCode();
+		if (ResponseCode != 206 && ResponseCode != 200)
+			throw ContentRuntime::FContentValidationError(ContentRuntime::EContentError::IoFailure, "package request failed");
+		const bool bAppend = bRequestedRange && ResponseCode == 206;
+		const TArray<uint8> &Bytes = Response->GetContent();
+		if (Bytes.IsEmpty() || !FFileHelper::SaveArrayToFile(Bytes, *PackagePath, &IFileManager::Get(), bAppend ? FILEWRITE_Append : 0))
+			throw ContentRuntime::FContentValidationError(ContentRuntime::EContentError::IoFailure, "cannot write staged package");
+		const uint64 ReceivedSize = static_cast<uint64>(IFileManager::Get().FileSize(*PackagePath));
+		Impl->Repository->SaveDownload({Manifest.Route.ContentSetId, Manifest.PackageUrl, TCHAR_TO_UTF8(*StagingDirectory), Manifest.CompressedSizeBytes, ReceivedSize, TCHAR_TO_UTF8(*Response->GetHeader(TEXT("ETag")))}, false);
+		if (ReceivedSize != Manifest.CompressedSizeBytes)
+		{
+			Impl->OperationStatus = TEXT("content.download_partial");
+			return;
+		}
+		const std::string Inventory = ContentRuntime::ReadStagedPackageInventory(std::filesystem::path(TCHAR_TO_UTF8(*StagingDirectory)));
+		const auto Validated = ContentRuntime::ValidateStagedPackage(std::filesystem::path(TCHAR_TO_UTF8(*StagingDirectory)), Manifest, Inventory);
+		const FString InstallPath = FPaths::Combine(Impl->ContentRoot, TEXT("installed"), UTF8_TO_TCHAR(Manifest.Route.ContentSetId.c_str()), UTF8_TO_TCHAR(Manifest.Route.SemanticVersion.c_str()));
+		ContentRuntime::ExtractValidatedPackage(Validated, std::filesystem::path(TCHAR_TO_UTF8(*InstallPath)));
+		Impl->Repository->SaveStaged({Manifest.Route.ContentSetId, Manifest.Route.RouteId, Manifest.Route.SemanticVersion, ContentRuntime::Sha256Hex(Manifest.ManifestSha256), ContentRuntime::EInstalledContentState::Staged, Manifest.CatalogRevision, Manifest.IssuedAtUnixSeconds, Manifest.ExpiresAtUnixSeconds, TCHAR_TO_UTF8(*InstallPath), ""}, false);
+		Impl->Repository->MarkVerified(Manifest.Route.ContentSetId, false);
+		Impl->Repository->RemoveDownload(Manifest.Route.ContentSetId, false);
+		Impl->OperationStatus = TEXT("content.download_verified_restart_required");
+	}
+	catch (const ContentRuntime::FContentValidationError &Error)
+	{
+		Impl->OperationStatus = UTF8_TO_TCHAR(ContentRuntime::ContentErrorName(Error.GetCode()));
+	}
+	catch (const std::exception &)
+	{
+		Impl->OperationStatus = TEXT("content.download_validation_failed");
+	}
 }
 
 bool UContentSubsystem::MountInstalledContentForTesting(const FString &InstallPath)

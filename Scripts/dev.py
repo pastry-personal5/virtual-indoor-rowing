@@ -14,7 +14,7 @@ from vir_dev import content, doctor, native, release, tui, unreal  # noqa: E402
 
 def main() -> int:
 	parser = argparse.ArgumentParser(description=__doc__)
-	parser.add_argument("command", choices=("doctor", "configure", "build", "test", "format-check", "format", "pm5-tui", "unreal-smoke", "unreal-shipping", "unreal-package-verify", "unreal-bluetooth-probe", "release-sign-notarize", "pm5-tui-hil", "pm5-tui-journal", "unreal-native-app", "content-canary", "content-fixture", "clean", "clean-unreal"))
+	parser.add_argument("command", choices=("doctor", "configure", "build", "test", "format-check", "format", "pm5-tui", "unreal-smoke", "unreal-shipping", "han-external-cook", "unreal-package-verify", "unreal-bluetooth-probe", "release-sign-notarize", "pm5-tui-hil", "pm5-tui-journal", "unreal-native-app", "content-canary", "content-fixture", "content-release-package", "clean", "clean-unreal"))
 	args = parser.parse_args()
 	if args.command == "doctor":
 		return doctor.check_doctor()
@@ -40,12 +40,16 @@ def main() -> int:
 		return unreal.unreal_smoke()
 	if args.command == "unreal-shipping":
 		return unreal.unreal_shipping()
+	if args.command == "han-external-cook":
+		return unreal.han_external_cook()
 	if args.command == "unreal-package-verify":
 		return unreal.unreal_package_verify()
 	if args.command == "content-canary":
 		return content.command("canary")
 	if args.command == "content-fixture":
 		return content.command("fixture")
+	if args.command == "content-release-package":
+		return content.command("release-package")
 	if args.command == "unreal-bluetooth-probe":
 		return release.toolchain_bluetooth_probe()
 	if args.command == "release-sign-notarize":

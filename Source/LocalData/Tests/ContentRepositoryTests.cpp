@@ -1,5 +1,7 @@
 #include "LocalData/ContentRepository.h"
 
+#include <sqlite3.h>
+
 #include <cassert>
 #include <chrono>
 #include <filesystem>
@@ -98,6 +100,11 @@ namespace
 		assert(Repository.AcceptedCatalogRevision() == 0);
 		Repository.AcceptCatalogRevision(12, std::string(64, 'a'));
 		assert(Repository.AcceptedCatalogRevision() == 12);
+		// Replaying the exact signed catalog is harmless, but a distinct manifest
+		// must use a newer revision so immutable origin paths cannot be replaced.
+		Repository.AcceptCatalogRevision(12, std::string(64, 'a'));
+		ExpectError(ContentRuntime::EContentError::RevisionRollback, [&]
+					{ Repository.AcceptCatalogRevision(12, std::string(64, 'c')); });
 		ExpectError(ContentRuntime::EContentError::RevisionRollback, [&]
 					{ Repository.AcceptCatalogRevision(11, std::string(64, 'b')); });
 
@@ -115,8 +122,53 @@ namespace
 	}
 } // namespace
 
+// Stand-in for Unreal's embedded SQLiteCore file layer: io_methods version 1, no shared memory.
+sqlite3_vfs *BaseVfs = nullptr;
+sqlite3_vfs NoShmVfs;
+sqlite3_io_methods NoShmMethods;
+
+int NoShmOpen(sqlite3_vfs *, const char *Name, sqlite3_file *File, int Flags, int *OutFlags)
+{
+	const int Result = BaseVfs->xOpen(BaseVfs, Name, File, Flags, OutFlags);
+	if (Result == SQLITE_OK && File->pMethods != nullptr)
+	{
+		NoShmMethods = *File->pMethods;
+		NoShmMethods.iVersion = 1;
+		NoShmMethods.xShmMap = nullptr;
+		NoShmMethods.xShmLock = nullptr;
+		NoShmMethods.xShmBarrier = nullptr;
+		NoShmMethods.xShmUnmap = nullptr;
+		File->pMethods = &NoShmMethods;
+	}
+	return Result;
+}
+
+void TestOpensWalDatabaseWithoutSharedMemorySupport()
+{
+	const auto Path = TempDatabase();
+	{
+		// Created in WAL mode by the normal file layer, as the native tools do.
+		LocalData::FContentRepository Repository(Path);
+		Repository.SaveStaged(Record("han", 1), false);
+	}
+	BaseVfs = sqlite3_vfs_find(nullptr);
+	NoShmVfs = *BaseVfs;
+	NoShmVfs.zName = "vir-test-no-shm";
+	NoShmVfs.xOpen = NoShmOpen;
+	sqlite3_vfs_register(&NoShmVfs, 1);
+	{
+		LocalData::FContentRepository Repository(Path);
+		assert(Repository.FindByState(ContentRuntime::EInstalledContentState::Staged).has_value());
+		Repository.SaveStaged(Record("han", 2), false);
+	}
+	sqlite3_vfs_register(BaseVfs, 1);
+	sqlite3_vfs_unregister(&NoShmVfs);
+	RemoveDatabase(Path);
+}
+
 int main()
 {
+	TestOpensWalDatabaseWithoutSharedMemorySupport();
 	TestLifecycleRetentionAndRestart();
 	TestCatalogAndResumeState();
 	std::cout << "content repository tests passed\n";
