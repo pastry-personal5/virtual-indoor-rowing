@@ -41,6 +41,7 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	FTransform GetCameraTransformForTesting() const;
 	static float InterpolateOarMotion(float Current, float Target, float DeltaSeconds);
 	float GetCameraFieldOfViewForTesting() const;
+	static bool ReduceMotionRequested();
 	float GetCourseLightIntensityForTesting() const;
 	int32 GetMarkerCountForTesting() const;
 	int32 GetCourseEdgeSegmentCountForTesting() const;
@@ -101,6 +102,7 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	TArray<TObjectPtr<UTextRenderComponent>> MarkerLabels;
 
 	bool bInitialized = false;
+	float SmoothedCameraSway = 0.0f;
 	bool bIsHanRiverRoute = false;
 	bool bAuthoredLevelActive = false;
 	ContentRuntime::FRouteDefinition Route = ContentRuntime::BuiltInStandardRouteDefinition();

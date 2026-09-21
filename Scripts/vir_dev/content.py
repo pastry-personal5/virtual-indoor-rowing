@@ -29,7 +29,7 @@ from vir_dev import common
 FIXTURE_TEST_SEED = bytes.fromhex("9d61b19deffd5a60ba844af492ec2cc4" "4449c5697b326919703bac031cae7f60")
 FIXTURE_TEST_PUBLIC_KEY = bytes.fromhex("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a")
 CONTENT_SET = "han-river-alpha-1"
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 ROUTE_ID = "route.han-river.5k"
 SOURCE_CANDIDATE_ROOT = common.ROOT / "Content" / "Phase2" / "HanRiver"
 # This must stay byte-for-byte aligned with UContentSubsystem::TrustedKeys().

@@ -30,13 +30,11 @@
 
 namespace
 {
-	constexpr int32 MetricFontSize = 48;
-	constexpr int32 LabelFontSize = 18;
-	constexpr int32 BannerFontSize = 24;
-	constexpr int32 CourseFontSize = 18;
-	constexpr float MetricCellWidth = 300.0f;
-	constexpr float LabelCellWidth = 220.0f;
-	constexpr float StatusPanelWidth = 420.0f;
+	constexpr int32 MetricFontSize = 30;
+	constexpr int32 LabelFontSize = 13;
+	constexpr int32 BannerFontSize = 16;
+	constexpr float MetricCellWidth = 120.0f;
+	constexpr float LabelCellWidth = 150.0f;
 
 	FText ToText(const std::string &Value)
 	{
@@ -47,19 +45,7 @@ namespace
 	// Stale values are dimmed, but the banner and connection label carry the same
 	// information in text: no essential state relies on color alone.
 	const FLinearColor StaleColor(0.55f, 0.55f, 0.55f, 1.0f);
-	const FLinearColor SelectedCourseFill(0.10f, 0.45f, 0.95f, 1.0f);
-	const FLinearColor UnselectedCourseFill(0.16f, 0.18f, 0.22f, 1.0f);
 
-	FString HanAvailabilityTextFor(const FString &Reason)
-	{
-		if (Reason == TEXT("content.han.safe_mode"))
-			return TEXT("Han River unavailable: Safe Mode is on.");
-		if (Reason == TEXT("content.han.expired"))
-			return TEXT("Han River unavailable: refresh content while online.");
-		if (Reason == TEXT("content.han.withdrawn"))
-			return TEXT("Han River is currently unavailable.");
-		return TEXT("Han River unavailable: download and restart to activate it.");
-	}
 } // namespace
 
 // Escape is handled before Slate routes it along the keyboard-focus path, because
@@ -127,21 +113,22 @@ void UWorkoutHudWidget::NativeOnInitialized()
 		ValueCell->AddChild(OutValue);
 		Row->AddChildToHorizontalBox(ValueCell);
 		UVerticalBoxSlot *RowSlot = Column->AddChildToVerticalBox(Row);
-		RowSlot->SetPadding(FMargin(0.0f, 6.0f));
+		RowSlot->SetPadding(FMargin(0.0f, 2.0f));
 	};
 
 	// Banner and connection line sit in a fixed-height cell so the metrics below
 	// never move when a banner appears or clears.
 	BannerText = MakeText(TEXT(""), BannerFontSize, ETextJustify::Center, "Bold");
 	USizeBox *BannerCell = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-	BannerCell->SetHeightOverride(56.0f);
+	BannerCell->SetHeightOverride(32.0f);
 	BannerCell->AddChild(BannerText);
 	Column->AddChildToVerticalBox(BannerCell);
 
 	ConnectionText = MakeText(TEXT(""), LabelFontSize, ETextJustify::Center, "Regular");
-	Column->AddChildToVerticalBox(ConnectionText)->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 16.0f));
+	Column->AddChildToVerticalBox(ConnectionText)->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 6.0f));
 	MetricAccuracyText = MakeText(MetricAccuracyNotice(), LabelFontSize, ETextJustify::Center, "Regular");
 	MetricAccuracyText->SetColorAndOpacity(FSlateColor(StaleColor));
+	MetricAccuracyText->SetAutoWrapText(true);
 	Column->AddChildToVerticalBox(MetricAccuracyText)->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 8.0f));
 	EstimatedStrokeText = MakeText(TEXT("Estimated stroke motion"), LabelFontSize, ETextJustify::Center, "Regular");
 	EstimatedStrokeText->SetVisibility(ESlateVisibility::Hidden);
@@ -155,43 +142,6 @@ void UWorkoutHudWidget::NativeOnInitialized()
 	AddRow(TEXT("STROKE RATE (spm)"), Unused, StrokeRateText);
 	AddRow(TEXT("HEART RATE (bpm)"), HeartRateLabel, HeartRateText);
 
-	UTextBlock *CourseHeading = MakeText(TEXT("COURSE"), LabelFontSize, ETextJustify::Left, "Bold");
-	Column->AddChildToVerticalBox(CourseHeading)->SetPadding(FMargin(0.0f, 20.0f, 0.0f, 4.0f));
-	UHorizontalBox *Courses = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-	auto MakeCourseButton = [&](const TCHAR *Caption, TObjectPtr<UButton> &OutButton)
-	{
-		OutButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass());
-		OutButton->AddChild(MakeText(Caption, CourseFontSize, ETextJustify::Center, "Bold"));
-		if (UButtonSlot *ButtonSlot = Cast<UButtonSlot>(OutButton->GetContent()->Slot))
-			ButtonSlot->SetPadding(FMargin(12.0f, 8.0f));
-		Courses->AddChildToHorizontalBox(OutButton)->SetPadding(FMargin(0.0f, 0.0f, 8.0f, 0.0f));
-	};
-	MakeCourseButton(TEXT("Standard • 2 km"), StandardCourseButton);
-	MakeCourseButton(TEXT("Han River • 5 km"), HanCourseButton);
-	Column->AddChildToVerticalBox(Courses);
-	CourseSelectionText = MakeText(TEXT(""), LabelFontSize, ETextJustify::Left, "Regular");
-	Column->AddChildToVerticalBox(CourseSelectionText)->SetPadding(FMargin(0.0f, 4.0f, 0.0f, 0.0f));
-	HanAvailabilityText = MakeText(TEXT(""), LabelFontSize, ETextJustify::Left, "Regular");
-	HanAvailabilityText->SetColorAndOpacity(FSlateColor(StaleColor));
-	Column->AddChildToVerticalBox(HanAvailabilityText)->SetPadding(FMargin(0.0f, 2.0f, 0.0f, 0.0f));
-	HanPackageBuildText = MakeText(TEXT(""), 14, ETextJustify::Left, "Regular");
-	HanPackageBuildText->SetVisibility(ESlateVisibility::Collapsed);
-	Column->AddChildToVerticalBox(HanPackageBuildText)->SetPadding(FMargin(0.0f, 2.0f, 0.0f, 0.0f));
-	DownloadHanButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass());
-	DownloadHanButton->AddChild(MakeText(TEXT("Download Han River"), LabelFontSize, ETextJustify::Left, "Bold"));
-	Column->AddChildToVerticalBox(DownloadHanButton)->SetPadding(FMargin(0.0f, 4.0f, 0.0f, 0.0f));
-	ContentLicensesButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass());
-	ContentLicensesButton->AddChild(MakeText(TEXT("Content Licenses / Credits"), LabelFontSize, ETextJustify::Left, "Bold"));
-	Column->AddChildToVerticalBox(ContentLicensesButton)->SetPadding(FMargin(0.0f, 10.0f, 0.0f, 0.0f));
-	ContentLicensesText = MakeText(TEXT(""), 14, ETextJustify::Left, "Regular");
-	ContentLicensesText->SetAutoWrapText(true);
-	ContentLicensesText->SetVisibility(ESlateVisibility::Collapsed);
-	Column->AddChildToVerticalBox(ContentLicensesText)->SetPadding(FMargin(0.0f, 4.0f, 0.0f, 0.0f));
-	StandardCourseButton->OnClicked.AddDynamic(this, &UWorkoutHudWidget::HandleStandardCourseClicked);
-	HanCourseButton->OnClicked.AddDynamic(this, &UWorkoutHudWidget::HandleHanCourseClicked);
-	DownloadHanButton->OnClicked.AddDynamic(this, &UWorkoutHudWidget::HandleDownloadHanClicked);
-	ContentLicensesButton->OnClicked.AddDynamic(this, &UWorkoutHudWidget::HandleContentLicensesClicked);
-
 	auto MakeButton = [&](const TCHAR *Caption, TObjectPtr<UButton> &OutButton)
 	{
 		OutButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass());
@@ -199,14 +149,14 @@ void UWorkoutHudWidget::NativeOnInitialized()
 		OutButton->AddChild(Label);
 		UWidget *Content = OutButton->GetContent();
 		if (UButtonSlot *ButtonSlot = Cast<UButtonSlot>(Content ? Content->Slot : nullptr))
-			ButtonSlot->SetPadding(FMargin(24.0f, 12.0f));
+			ButtonSlot->SetPadding(FMargin(14.0f, 8.0f));
 	};
 	UHorizontalBox *Actions = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
 	MakeButton(TEXT("End Session"), EndButton);
 	MakeButton(TEXT("Start New"), StartNewButton);
-	Actions->AddChildToHorizontalBox(EndButton)->SetPadding(FMargin(0.0f, 0.0f, 24.0f, 0.0f));
+	Actions->AddChildToHorizontalBox(EndButton)->SetPadding(FMargin(0.0f, 0.0f, 12.0f, 0.0f));
 	Actions->AddChildToHorizontalBox(StartNewButton);
-	Column->AddChildToVerticalBox(Actions)->SetPadding(FMargin(0.0f, 24.0f, 0.0f, 0.0f));
+	Column->AddChildToVerticalBox(Actions)->SetPadding(FMargin(0.0f, 12.0f, 0.0f, 0.0f));
 
 	EndButton->OnClicked.AddDynamic(this, &UWorkoutHudWidget::HandleEndClicked);
 	StartNewButton->OnClicked.AddDynamic(this, &UWorkoutHudWidget::HandleStartNewClicked);
@@ -224,44 +174,23 @@ void UWorkoutHudWidget::NativeOnInitialized()
 	// back into an apparent full-screen wall. Text shadows provide the contrast that
 	// the former near-opaque fill supplied.
 	MetricPanel->SetBrushColor(MetricPanelBackgroundColor());
-	MetricPanel->SetPadding(FMargin(20.0f));
-	MetricPanel->AddChild(Column);
+	MetricPanel->SetPadding(FMargin(12.0f));
+	// A fixed width keeps the compact dock from growing with the longest notice line.
+	USizeBox *ColumnWidth = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+	ColumnWidth->SetWidthOverride(MetricCellWidth + LabelCellWidth + 20.0f + 60.0f);
+	ColumnWidth->AddChild(Column);
+	MetricPanel->AddChild(ColumnWidth);
 	UOverlay *Layout = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
 	UOverlaySlot *MetricSlot = Layout->AddChildToOverlay(MetricPanel);
 	MetricSlot->SetHorizontalAlignment(HAlign_Left);
-	MetricSlot->SetVerticalAlignment(VAlign_Center);
-	MetricSlot->SetPadding(FMargin(32.0f, 0.0f, 0.0f, 0.0f));
+	// Docked bottom-left and compact so the river and skyline stay clear.
+	MetricSlot->SetVerticalAlignment(VAlign_Bottom);
+	MetricSlot->SetPadding(FMargin(16.0f, 0.0f, 0.0f, 16.0f));
 
-	// Right-hand diagnostics box: fixed width, wraps per character so a long path
-	// or URL with no spaces still stays inside the box.
-	ContentStatusText = MakeText(TEXT(""), 14, ETextJustify::Left, "Regular");
-	ContentStatusText->SetAutoWrapText(true);
-	ContentStatusText->SetWrappingPolicy(ETextWrappingPolicy::AllowPerCharacterWrapping);
-	USizeBox *StatusWidth = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-	StatusWidth->SetWidthOverride(StatusPanelWidth);
-	StatusWidth->AddChild(ContentStatusText);
-	UBorder *StatusPanel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-	StatusPanel->SetBrushColor(MetricPanelBackgroundColor());
-	StatusPanel->SetPadding(FMargin(16.0f));
-	StatusPanel->AddChild(StatusWidth);
-	UOverlaySlot *StatusSlot = Layout->AddChildToOverlay(StatusPanel);
-	StatusSlot->SetHorizontalAlignment(HAlign_Right);
-	StatusSlot->SetVerticalAlignment(VAlign_Center);
-	StatusSlot->SetPadding(FMargin(0.0f, 0.0f, 32.0f, 0.0f));
 	Root->AddChild(Layout);
 	WidgetTree->RootWidget = Root;
 
 	SetIsFocusable(true);
-}
-
-void UWorkoutHudWidget::HandleContentLicensesClicked()
-{
-	UGameInstance *GameInstance = GetGameInstance();
-	UContentSubsystem *Content = GameInstance ? GameInstance->GetSubsystem<UContentSubsystem>() : nullptr;
-	if (!Content || !ContentLicensesText)
-		return;
-	ContentLicensesText->SetText(FText::FromString(Content->GetContentLicensesCreditsText()));
-	ContentLicensesText->SetVisibility(ContentLicensesText->GetVisibility() == ESlateVisibility::Collapsed ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 }
 
 UWorkoutSubsystem *UWorkoutHudWidget::GetWorkoutSubsystem() const
@@ -281,7 +210,6 @@ void UWorkoutHudWidget::NativeTick(const FGeometry &MyGeometry, float InDeltaTim
 		if (const UCourseSubsystem *Course = World->GetSubsystem<UCourseSubsystem>())
 			EstimatedStrokeText->SetVisibility(AnimationLabelVisibility(Course->GetAnimationQuality()));
 	}
-	SyncCourseSelection();
 	if (!bHasApplied || Subsystem->GetDisplayGeneration() != AppliedGeneration)
 	{
 		ApplyDisplay(*Subsystem);
@@ -404,36 +332,6 @@ void UWorkoutHudWidget::ApplyDisplay(const UWorkoutSubsystem &Subsystem)
 		FocusAction();
 }
 
-void UWorkoutHudWidget::SyncCourseSelection()
-{
-	UGameInstance *GameInstance = GetGameInstance();
-	UContentSubsystem *Content = GameInstance ? GameInstance->GetSubsystem<UContentSubsystem>() : nullptr;
-	if (!Content || !StandardCourseButton || !HanCourseButton || !DownloadHanButton)
-		return;
-	const bool bCanSelect = Content->CanOperateContent();
-	const bool bHanAvailable = Content->IsHanAvailable();
-	const FString SelectedRoute = UTF8_TO_TCHAR(Content->GetSelectedRoute().RouteId.c_str());
-	StandardCourseButton->SetIsEnabled(bCanSelect);
-	HanCourseButton->SetIsEnabled(bCanSelect && bHanAvailable);
-	DownloadHanButton->SetIsEnabled(bCanSelect && !bHanAvailable && Content->GetContentOperationStatus() == TEXT("content.catalog_ready"));
-	DownloadHanButton->SetVisibility(bHanAvailable ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
-	StandardCourseButton->SetBackgroundColor(SelectedRoute == TEXT("route.standard.2k") ? SelectedCourseFill : UnselectedCourseFill);
-	HanCourseButton->SetBackgroundColor(SelectedRoute == TEXT("route.han-river.5k") ? SelectedCourseFill : UnselectedCourseFill);
-	CourseSelectionText->SetText(FText::FromString(SelectedRoute == TEXT("route.han-river.5k") ? TEXT("Selected: Han River • 5 km • Open") : TEXT("Selected: Standard • 2 km • Closed")));
-	HanAvailabilityText->SetText(FText::FromString(bHanAvailable ? TEXT("") : HanAvailabilityTextFor(Content->GetHanAvailabilityReason())));
-	if (HanPackageBuildText)
-	{
-		const int64 IssuedAt = Content->GetActivePackageIssuedAtUnixSeconds();
-		const bool bShow = IssuedAt > 0 && Content->IsHanContentMounted();
-		if (bShow)
-			HanPackageBuildText->SetText(FText::FromString(TEXT("Han package built: ") + FDateTime::FromUnixTimestamp(IssuedAt).ToString(TEXT("%Y-%m-%d %H:%M:%S UTC"))));
-		HanPackageBuildText->SetVisibility(bShow ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
-	}
-	if (ContentStatusText)
-		ContentStatusText->SetText(FText::FromString(TEXT("Content status\n") + Content->GetContentOperationStatus()));
-	HanAvailabilityText->SetVisibility(bHanAvailable ? ESlateVisibility::Collapsed : ESlateVisibility::HitTestInvisible);
-}
-
 void UWorkoutHudWidget::FocusAction()
 {
 	if (bAppliedCanEnd || !StartNewButton->GetIsEnabled())
@@ -469,25 +367,4 @@ void UWorkoutHudWidget::HandleStartNewClicked()
 {
 	if (UWorkoutSubsystem *Subsystem = GetWorkoutSubsystem())
 		Subsystem->StartNewSession();
-}
-
-void UWorkoutHudWidget::HandleStandardCourseClicked()
-{
-	if (UGameInstance *GameInstance = GetGameInstance())
-		if (UContentSubsystem *Content = GameInstance->GetSubsystem<UContentSubsystem>())
-			Content->SelectRouteById(TEXT("route.standard.2k"));
-}
-
-void UWorkoutHudWidget::HandleHanCourseClicked()
-{
-	if (UGameInstance *GameInstance = GetGameInstance())
-		if (UContentSubsystem *Content = GameInstance->GetSubsystem<UContentSubsystem>())
-			Content->SelectRouteById(TEXT("route.han-river.5k"));
-}
-
-void UWorkoutHudWidget::HandleDownloadHanClicked()
-{
-	if (UGameInstance *GameInstance = GetGameInstance())
-		if (UContentSubsystem *Content = GameInstance->GetSubsystem<UContentSubsystem>())
-			Content->BeginHanDownload();
 }

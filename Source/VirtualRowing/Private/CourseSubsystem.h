@@ -46,6 +46,10 @@ class VIRTUALROWING_API UCourseSubsystem : public UWorldSubsystem, public FTicka
 	{
 		return AuthoredLevelState;
 	}
+	// One-line state for the panel header: "shown", "loading", "rejected (course.level_*)", or why nothing was requested.
+	FString GetAuthoredLevelSummary() const;
+	// Development aid: multi-line, redacted account of the Han level load and its recent events.
+	FString GetAuthoredLevelDiagnosticsText() const;
 	// Stable, redacted category for the last authored-level failure; empty when none.
 	const FString &GetAuthoredLevelFailure() const
 	{
@@ -64,6 +68,22 @@ class VIRTUALROWING_API UCourseSubsystem : public UWorldSubsystem, public FTicka
 	EAuthoredLevelState AuthoredLevelState = EAuthoredLevelState::None;
 	FString AuthoredLevelFailure;
 	uint64 SampleObservedNs = 0;
+
+	// Development diagnostics only: nothing here feeds a decision.
+	TArray<FString> LevelEvents;
+	double LevelStartSeconds = 0.0;
+	double LevelRequestedSeconds = 0.0;
+	FString LevelAssetPath;
+	FString LevelSkipReason;
+	FString LevelRejectedClass;
+	FString LastLevelStreamingState;
+	int32 LevelPackageExists = -1;
+	int32 LevelActorCount = 0;
+	int32 LevelPlainActorCount = 0;
+	int32 LevelInstancedComponentCount = 0;
+	int32 LevelInstanceTotal = 0;
+	bool bLevelAllowlistPassed = false;
+	void NoteLevel(const FString &Message);
 
 	void EnsureCourseActor();
 	void DestroyCourseScene();

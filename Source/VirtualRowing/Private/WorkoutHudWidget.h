@@ -46,18 +46,8 @@ class VIRTUALROWING_API UWorkoutHudWidget : public UUserWidget
 	void HandleEndClicked();
 	UFUNCTION()
 	void HandleStartNewClicked();
-	UFUNCTION()
-	void HandleStandardCourseClicked();
-	UFUNCTION()
-	void HandleHanCourseClicked();
-	UFUNCTION()
-	void HandleDownloadHanClicked();
-	UFUNCTION()
-	void HandleContentLicensesClicked();
-
 	UWorkoutSubsystem *GetWorkoutSubsystem() const;
 	void ApplyDisplay(const UWorkoutSubsystem &Subsystem);
-	void SyncCourseSelection();
 	bool IsActionFocused() const;
 	void ApplyFocusCue();
 
@@ -87,24 +77,6 @@ class VIRTUALROWING_API UWorkoutHudWidget : public UUserWidget
 	TObjectPtr<UButton> EndButton;
 	UPROPERTY(Transient)
 	TObjectPtr<UButton> StartNewButton;
-	UPROPERTY(Transient)
-	TObjectPtr<UTextBlock> CourseSelectionText;
-	UPROPERTY(Transient)
-	TObjectPtr<UTextBlock> HanAvailabilityText;
-	UPROPERTY(Transient)
-	TObjectPtr<UTextBlock> HanPackageBuildText;
-	UPROPERTY(Transient)
-	TObjectPtr<UTextBlock> ContentStatusText;
-	UPROPERTY(Transient)
-	TObjectPtr<UButton> StandardCourseButton;
-	UPROPERTY(Transient)
-	TObjectPtr<UButton> HanCourseButton;
-	UPROPERTY(Transient)
-	TObjectPtr<UButton> DownloadHanButton;
-	UPROPERTY(Transient)
-	TObjectPtr<UButton> ContentLicensesButton;
-	UPROPERTY(Transient)
-	TObjectPtr<UTextBlock> ContentLicensesText;
 
 	uint64 AppliedGeneration = 0;
 	bool bHasApplied = false;

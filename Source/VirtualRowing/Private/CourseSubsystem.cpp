@@ -7,6 +7,9 @@
 #include "Engine/GameInstance.h"
 #include "Engine/Level.h"
 #include "Engine/LevelStreamingDynamic.h"
+#include "Camera/PlayerCameraManager.h"
+#include "Components/InstancedStaticMeshComponent.h"
+#include "HAL/PlatformTime.h"
 #include "Misc/PackageName.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
@@ -151,6 +154,113 @@ void UCourseSubsystem::Pump(uint64 NowMonotonicNs)
 		CourseActor->ApplyPresentation(Snapshot);
 }
 
+void UCourseSubsystem::NoteLevel(const FString &Message)
+{
+	LevelEvents.Add(FString::Printf(TEXT("+%.1fs %s"), FPlatformTime::Seconds() - LevelStartSeconds, *Message));
+	while (LevelEvents.Num() > 12)
+		LevelEvents.RemoveAt(0);
+}
+
+FString UCourseSubsystem::GetAuthoredLevelSummary() const
+{
+	switch (AuthoredLevelState)
+	{
+	case EAuthoredLevelState::Pending:
+		return TEXT("loading...");
+	case EAuthoredLevelState::Shown:
+		return TEXT("shown");
+	case EAuthoredLevelState::Rejected:
+		return FString::Printf(TEXT("rejected (%s); built-in kit is showing"), *AuthoredLevelFailure);
+	default:
+		return LevelSkipReason.IsEmpty() ? FString(TEXT("not requested")) : FString::Printf(TEXT("not requested: %s"), *LevelSkipReason);
+	}
+}
+
+FString UCourseSubsystem::GetAuthoredLevelDiagnosticsText() const
+{
+	TArray<FString> Lines;
+	const TCHAR *StateName = TEXT("not requested");
+	switch (AuthoredLevelState)
+	{
+	case EAuthoredLevelState::Pending:
+		StateName = TEXT("loading");
+		break;
+	case EAuthoredLevelState::Shown:
+		StateName = TEXT("shown");
+		break;
+	case EAuthoredLevelState::Rejected:
+		StateName = TEXT("rejected");
+		break;
+	default:
+		break;
+	}
+	Lines.Add(FString::Printf(TEXT("level state: %s%s"), StateName, AuthoredLevelFailure.IsEmpty() ? TEXT("") : *FString::Printf(TEXT(" (%s)"), *AuthoredLevelFailure)));
+	if (AuthoredLevelState == EAuthoredLevelState::None)
+		Lines.Add(FString::Printf(TEXT("why: %s"), LevelSkipReason.IsEmpty() ? TEXT("no load was attempted yet") : *LevelSkipReason));
+	if (!LevelAssetPath.IsEmpty())
+		Lines.Add(FString::Printf(TEXT("asset: %s"), *LevelAssetPath));
+	if (LevelPackageExists >= 0)
+		Lines.Add(FString::Printf(TEXT("package found in mounted content: %s"), LevelPackageExists ? TEXT("yes") : TEXT("NO")));
+	if (AuthoredLevel && IsValid(AuthoredLevel))
+	{
+		const ULevel *Loaded = AuthoredLevel->GetLoadedLevel();
+		Lines.Add(FString::Printf(TEXT("streaming: %s, loaded level: %s, visible: %s"), EnumToString(AuthoredLevel->GetLevelStreamingState()), Loaded ? TEXT("yes") : TEXT("no"), Loaded && Loaded->bIsVisible ? TEXT("yes") : TEXT("no")));
+		if (AuthoredLevelState == EAuthoredLevelState::Pending)
+			Lines.Add(FString::Printf(TEXT("waiting: %.1fs"), FPlatformTime::Seconds() - LevelRequestedSeconds));
+	}
+	if (LevelActorCount > 0)
+		Lines.Add(FString::Printf(TEXT("contents: %d actors, %d plain, %d instanced components, %d instances"), LevelActorCount, LevelPlainActorCount, LevelInstancedComponentCount, LevelInstanceTotal));
+	if (AuthoredLevel && IsValid(AuthoredLevel) && AuthoredLevelState == EAuthoredLevelState::Shown)
+	{
+		// Where the level actually is versus where the camera looks from: a level that
+		// is "shown" but far from the view would still read as the built-in kit.
+		FBox Bounds(ForceInit);
+		int32 Rendering = 0;
+		if (const ULevel *Loaded = AuthoredLevel->GetLoadedLevel())
+		{
+			for (const AActor *Actor : Loaded->Actors)
+			{
+				if (!Actor)
+					continue;
+				for (const UActorComponent *Component : Actor->GetComponents())
+				{
+					if (const UInstancedStaticMeshComponent *Instanced = Cast<UInstancedStaticMeshComponent>(Component))
+					{
+						Bounds += Instanced->Bounds.GetBox();
+						Rendering += Instanced->IsRegistered() && Instanced->IsVisible() ? 1 : 0;
+					}
+				}
+			}
+		}
+		if (Bounds.IsValid)
+			Lines.Add(FString::Printf(TEXT("level bounds (m): X %.0f..%.0f  Y %.0f..%.0f  Z %.0f..%.0f; %d components registered and visible"), Bounds.Min.X / 100.0, Bounds.Max.X / 100.0, Bounds.Min.Y / 100.0, Bounds.Max.Y / 100.0, Bounds.Min.Z / 100.0, Bounds.Max.Z / 100.0, Rendering));
+		else
+			Lines.Add(TEXT("level bounds: none (no instanced component has a valid bound)"));
+		const UWorld *World = GetWorld();
+		const APlayerController *Controller = World ? World->GetFirstPlayerController() : nullptr;
+		if (Controller && Controller->PlayerCameraManager)
+		{
+			const FVector Camera = Controller->PlayerCameraManager->GetCameraLocation();
+			Lines.Add(FString::Printf(TEXT("camera (m): %.0f, %.0f, %.0f%s"), Camera.X / 100.0, Camera.Y / 100.0, Camera.Z / 100.0, Bounds.IsValid ? (Bounds.ExpandBy(FVector(500.0)).IsInside(Camera) ? TEXT(" (inside/near level bounds)") : TEXT(" (OUTSIDE level bounds)")) : TEXT("")));
+		}
+		if (CourseActor && IsValid(CourseActor))
+			Lines.Add(FString::Printf(TEXT("course actor (m): %.0f, %.0f, %.0f"), CourseActor->GetActorLocation().X / 100.0, CourseActor->GetActorLocation().Y / 100.0, CourseActor->GetActorLocation().Z / 100.0));
+	}
+	if (!LevelRejectedClass.IsEmpty())
+		Lines.Add(FString::Printf(TEXT("allowlist refused: %s"), *LevelRejectedClass));
+	else if (bLevelAllowlistPassed)
+		Lines.Add(TEXT("allowlist: every actor and component accepted"));
+	if (CourseActor && IsValid(CourseActor))
+		Lines.Add(FString::Printf(TEXT("kit: authored level active %s, kit landmarks visible %d"), CourseActor->IsAuthoredLevelActiveForTesting() ? TEXT("yes") : TEXT("no"), CourseActor->GetVisibleHanLandmarkCountForTesting()));
+	if (LevelEvents.Num() > 0)
+	{
+		Lines.Add(TEXT("level events:"));
+		for (const FString &Event : LevelEvents)
+			Lines.Add(TEXT("  ") + Event);
+	}
+	return FString::Join(Lines, TEXT("\n"));
+}
+
 void UCourseSubsystem::DestroyCourseScene()
 {
 	if (AuthoredLevel && IsValid(AuthoredLevel))
@@ -173,6 +283,7 @@ void UCourseSubsystem::RejectAuthoredLevel(const FString &Category)
 {
 	// The built-in kit stays the visible course; only a redacted category is kept.
 	UE_LOG(LogTemp, Warning, TEXT("Han authored level rejected: %s"), *Category);
+	NoteLevel(FString::Printf(TEXT("rejected: %s; kit stays"), *Category));
 	AuthoredLevelFailure = Category;
 	AuthoredLevelState = EAuthoredLevelState::Rejected;
 	if (AuthoredLevel && IsValid(AuthoredLevel))
@@ -191,14 +302,35 @@ void UCourseSubsystem::BeginAuthoredLevelLoad()
 	UWorld *World = GetWorld();
 	const UGameInstance *GameInstance = World ? World->GetGameInstance() : nullptr;
 	const UContentSubsystem *Content = GameInstance ? GameInstance->GetSubsystem<UContentSubsystem>() : nullptr;
+	if (LevelStartSeconds == 0.0)
+		LevelStartSeconds = FPlatformTime::Seconds();
+	LevelEvents.Reset();
+	LevelAssetPath.Empty();
+	LevelRejectedClass.Empty();
+	LevelPackageExists = -1;
+	LevelActorCount = LevelPlainActorCount = LevelInstancedComponentCount = LevelInstanceTotal = 0;
+	bLevelAllowlistPassed = false;
+	LastLevelStreamingState.Empty();
 	if (!Content || !Content->IsHanContentMounted())
+	{
+		LevelSkipReason = TEXT("Han content is not mounted (no active package).");
+		NoteLevel(LevelSkipReason);
 		return;
+	}
 	// The table is client-owned; the signed package never names the level.
 	const std::optional<std::string> LevelPath = ContentRuntime::CourseLevelAssetPathForRoute(Content->GetSelectedRoute().RouteId);
 	if (!LevelPath)
+	{
+		LevelSkipReason = FString::Printf(TEXT("route %s has no authored level (built-in course)."), UTF8_TO_TCHAR(Content->GetSelectedRoute().RouteId.c_str()));
+		NoteLevel(LevelSkipReason);
 		return;
+	}
+	LevelSkipReason.Empty();
 	const FString PackageName = UTF8_TO_TCHAR(LevelPath->c_str());
-	if (!FPackageName::DoesPackageExist(PackageName))
+	LevelAssetPath = PackageName;
+	NoteLevel(FString::Printf(TEXT("requesting %s"), *PackageName));
+	LevelPackageExists = FPackageName::DoesPackageExist(PackageName) ? 1 : 0;
+	if (!LevelPackageExists)
 	{
 		RejectAuthoredLevel(TEXT("course.level_missing"));
 		return;
@@ -214,6 +346,8 @@ void UCourseSubsystem::BeginAuthoredLevelLoad()
 	}
 	AuthoredLevel = Streaming;
 	AuthoredLevelState = EAuthoredLevelState::Pending;
+	LevelRequestedSeconds = FPlatformTime::Seconds();
+	NoteLevel(TEXT("streaming requested (hidden until checked)"));
 }
 
 void UCourseSubsystem::PollAuthoredLevel()
@@ -232,6 +366,12 @@ void UCourseSubsystem::PollAuthoredLevel()
 		RejectAuthoredLevel(TEXT("course.level_load_failed"));
 		return;
 	}
+	const FString StreamingName = EnumToString(AuthoredLevel->GetLevelStreamingState());
+	if (StreamingName != LastLevelStreamingState)
+	{
+		LastLevelStreamingState = StreamingName;
+		NoteLevel(FString::Printf(TEXT("streaming state: %s"), *StreamingName));
+	}
 	if (AuthoredLevel->GetLevelStreamingState() == ELevelStreamingState::FailedToLoad)
 	{
 		RejectAuthoredLevel(TEXT("course.level_load_failed"));
@@ -240,6 +380,23 @@ void UCourseSubsystem::PollAuthoredLevel()
 	ULevel *Loaded = AuthoredLevel->GetLoadedLevel();
 	if (!Loaded)
 		return;
+	LevelActorCount = LevelPlainActorCount = LevelInstancedComponentCount = LevelInstanceTotal = 0;
+	for (const AActor *Actor : Loaded->Actors)
+	{
+		if (!Actor)
+			continue;
+		++LevelActorCount;
+		LevelPlainActorCount += Actor->GetClass() == AActor::StaticClass() ? 1 : 0;
+		for (const UActorComponent *Component : Actor->GetComponents())
+		{
+			if (const UInstancedStaticMeshComponent *Instanced = Cast<UInstancedStaticMeshComponent>(Component))
+			{
+				++LevelInstancedComponentCount;
+				LevelInstanceTotal += Instanced->GetInstanceCount();
+			}
+		}
+	}
+	NoteLevel(FString::Printf(TEXT("loaded: %d actors, %d instances; checking allowlist"), LevelActorCount, LevelInstanceTotal));
 	// The level is still hidden here. Every actor must be a native, allowlisted
 	// engine class before it can be seen: no Blueprint or project code may ride in.
 	for (const AActor *Actor : Loaded->Actors)
@@ -251,6 +408,7 @@ void UCourseSubsystem::PollAuthoredLevel()
 		if (!Class->HasAnyClassFlags(CLASS_Native) || !ContentRuntime::IsCourseLevelActorClassAllowed(std::string(TCHAR_TO_UTF8(*ClassPath))))
 		{
 			UE_LOG(LogTemp, Warning, TEXT("Han authored level actor class not allowed: %s"), *ClassPath);
+			LevelRejectedClass = FString::Printf(TEXT("actor %s%s"), *ClassPath, Class->HasAnyClassFlags(CLASS_Native) ? TEXT("") : TEXT(" (not native)"));
 			RejectAuthoredLevel(TEXT("course.level_class_rejected"));
 			return;
 		}
@@ -264,11 +422,14 @@ void UCourseSubsystem::PollAuthoredLevel()
 			if (!ComponentClass || !ComponentClass->HasAnyClassFlags(CLASS_Native) || !ContentRuntime::IsCourseLevelComponentClassAllowed(std::string(TCHAR_TO_UTF8(*ComponentClassPath))))
 			{
 				UE_LOG(LogTemp, Warning, TEXT("Han authored level component class not allowed: %s"), *ComponentClassPath);
+				LevelRejectedClass = FString::Printf(TEXT("component %s on %s"), *ComponentClassPath, *ClassPath);
 				RejectAuthoredLevel(TEXT("course.level_class_rejected"));
 				return;
 			}
 		}
 	}
+	bLevelAllowlistPassed = true;
+	NoteLevel(TEXT("allowlist passed; making level visible"));
 	AuthoredLevel->SetShouldBeVisible(true);
 	AuthoredLevelState = EAuthoredLevelState::Shown;
 	if (CourseActor)
@@ -290,11 +451,15 @@ void UCourseSubsystem::EnsureCourseActor()
 		DestroyCourseScene();
 	if (!CourseActor || !IsValid(CourseActor))
 	{
-		CourseActor = World->SpawnActor<AGrayBoxCourseActor>();
+		// Deferred, because in a running world SpawnActor calls BeginPlay at once, and
+		// BeginPlay builds the course from whatever route is configured by then. The
+		// route must be set first or the actor locks in the Standard kit.
+		CourseActor = World->SpawnActorDeferred<AGrayBoxCourseActor>(AGrayBoxCourseActor::StaticClass(), FTransform::Identity);
 		if (!CourseActor)
 			return;
 		if (Content)
 			CourseActor->ConfigureRoute(Content->GetSelectedRoute());
+		CourseActor->FinishSpawning(FTransform::Identity);
 		CourseActor->InitializeCourse();
 		ActorRouteKey = CurrentRouteKey;
 		BeginAuthoredLevelLoad();

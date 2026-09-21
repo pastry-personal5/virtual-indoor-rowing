@@ -2,6 +2,7 @@
 
 #include "WorkoutDevicePanelWidget.h"
 #include "WorkoutHudWidget.h"
+#include "ContentPanelWidget.h"
 #include "CourseSubsystem.h"
 
 #include "Engine/GameInstance.h"
@@ -350,6 +351,11 @@ void UWorkoutSubsystem::Deinitialize()
 		DevicePanel->RemoveFromParent();
 		DevicePanel = nullptr;
 	}
+	if (ContentPanel)
+	{
+		ContentPanel->RemoveFromParent();
+		ContentPanel = nullptr;
+	}
 	if (Impl)
 	{
 		// Ends an active row cleanly (journal flushed), then disconnects.
@@ -375,6 +381,7 @@ void UWorkoutSubsystem::Tick(float DeltaTime)
 {
 	Pump();
 	EnsureHud();
+	EnsureContentPanel();
 	EnsureDevicePanel();
 	// Driven from here, not only from the widget's own tick: the panel must appear even if
 	// Slate never ticks it.
@@ -710,6 +717,44 @@ void UWorkoutSubsystem::EnsureDevicePanel()
 	}
 	DevicePanel = NewPanel;
 	DevicePanel->Sync();
+}
+
+void UWorkoutSubsystem::EnsureContentPanel()
+{
+	if (!bHudEnabled || (ContentPanel && ContentPanel->IsInViewport()))
+		return;
+	if (IsRunningCommandlet() || IsRunningDedicatedServer() || !FApp::CanEverRender() || !FSlateApplication::IsInitialized())
+		return;
+	if (ContentPanelRetryCountdown > 0)
+	{
+		--ContentPanelRetryCountdown;
+		return;
+	}
+	UGameInstance *GameInstance = GetGameInstance();
+	APlayerController *Controller = GameInstance ? GameInstance->GetFirstLocalPlayerController() : nullptr;
+	if (!Controller || !Controller->IsLocalController())
+		return;
+	if (ContentPanel)
+	{
+		ContentPanel->RemoveFromParent();
+		ContentPanel = nullptr;
+	}
+	UContentPanelWidget *NewPanel = CreateWidget<UContentPanelWidget>(Controller, UContentPanelWidget::StaticClass());
+	if (!NewPanel)
+	{
+		ContentPanelRetryCountdown = 120;
+		return;
+	}
+	// Above the device panel: while that panel blocks the screen for PM5 setup, this
+	// is the only place to choose a course.
+	NewPanel->AddToViewport(15);
+	if (!NewPanel->IsInViewport())
+	{
+		NewPanel->RemoveFromParent();
+		ContentPanelRetryCountdown = 120;
+		return;
+	}
+	ContentPanel = NewPanel;
 }
 
 void UWorkoutSubsystem::EnsureHud()

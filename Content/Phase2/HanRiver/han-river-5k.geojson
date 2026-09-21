@@ -12,7 +12,7 @@
       "type": "Feature",
       "properties": {
         "route_id": "route.han-river.5k",
-        "route_version": "1.0.0",
+        "route_version": "1.0.1",
         "length_m": 5000,
         "direction": "westbound",
         "geometry_method": "authored virtual waterline registered to named WGS84 landmarks",

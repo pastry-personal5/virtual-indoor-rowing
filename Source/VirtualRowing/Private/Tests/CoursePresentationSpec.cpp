@@ -68,6 +68,28 @@ void FCoursePresentationSpec::Define()
 		TestFalse(TEXT("Han endpoint stays open rather than wrapping"), HanCourse->GetCourseTransform(0.0).GetLocation().Equals(HanCourse->GetCourseTransform(5'000'000.0).GetLocation(), 1.0));
 		HanCourse->Destroy(); });
 
+	It("builds the Han kit when the actor is spawned into a world that has begun play", [this]()
+	   {
+		// In a running world SpawnActor calls BeginPlay immediately, which used to
+		// build the Standard course before the route could be configured.
+		World->InitializeActorsForPlay(FURL());
+		World->BeginPlay();
+		ContentRuntime::FRouteDefinition HanRoute = ContentRuntime::BuiltInStandardRouteDefinition();
+		HanRoute.RouteId = "route.han-river.5k";
+		HanRoute.SemanticVersion = "1.0.1";
+		HanRoute.ContentSetId = "han-river-alpha-1";
+		HanRoute.LengthMm = 5'000'000;
+		HanRoute.bClosed = false;
+		AGrayBoxCourseActor *HanCourse = World->SpawnActorDeferred<AGrayBoxCourseActor>(AGrayBoxCourseActor::StaticClass(), FTransform::Identity);
+		HanCourse->ConfigureRoute(HanRoute);
+		HanCourse->FinishSpawning(FTransform::Identity);
+		HanCourse->InitializeCourse();
+		TestTrue(TEXT("Han route is honored after BeginPlay"), HanCourse->HasHanRiverEnvironmentForTesting());
+		TestEqual(TEXT("no Standard distance markers"), HanCourse->GetMarkerCountForTesting(), 0);
+		HanCourse->SetAuthoredLevelActive(true);
+		TestTrue(TEXT("authored level can take over"), HanCourse->IsAuthoredLevelActiveForTesting());
+		HanCourse->Destroy(); });
+
 	It("yields the kit's start-area landmarks to the authored level and restores them", [this]()
 	   {
 		AGrayBoxCourseActor *HanCourse = World->SpawnActor<AGrayBoxCourseActor>();

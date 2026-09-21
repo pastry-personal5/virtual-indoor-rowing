@@ -1,7 +1,5 @@
 #include "WorkoutDevicePanelWidget.h"
 
-#include "ContentSubsystem.h"
-
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
 #include "Components/Button.h"
@@ -27,22 +25,10 @@ namespace
 	const FLinearColor WarningColor(1.0f, 0.55f, 0.2f, 1.0f);
 	const FLinearColor FocusedFill(0.10f, 0.45f, 0.95f, 1.0f);
 	const FLinearColor RestingFill(0.16f, 0.18f, 0.22f, 1.0f);
-	const FLinearColor UnavailableTextColor(0.55f, 0.55f, 0.55f, 1.0f);
 
 	bool IsBlocking(EWorkoutDevicePanelMode Mode)
 	{
 		return Mode != EWorkoutDevicePanelMode::Hidden && Mode != EWorkoutDevicePanelMode::Attached;
-	}
-
-	FString HanAvailabilityTextFor(const FString &Reason)
-	{
-		if (Reason == TEXT("content.han.safe_mode"))
-			return TEXT("Han River unavailable: Safe Mode is on.");
-		if (Reason == TEXT("content.han.expired"))
-			return TEXT("Han River unavailable: refresh content while online.");
-		if (Reason == TEXT("content.han.withdrawn"))
-			return TEXT("Han River is currently unavailable.");
-		return TEXT("Han River unavailable: download and restart to activate it.");
 	}
 } // namespace
 
@@ -76,31 +62,6 @@ void UWorkoutDevicePanelWidget::NativeOnInitialized()
 	MessageText = MakeText(TEXT(""), MessageFontSize, ETextJustify::Center);
 	MessageText->SetAutoWrapText(true);
 	Column->AddChildToVerticalBox(MessageText)->SetPadding(FMargin(0.0f, 8.0f, 0.0f, 16.0f));
-
-	// The device panel is the first, blocking screen in the app. Course choice
-	// must be present here as well as in the running HUD; otherwise its peer
-	// choices are hidden behind this panel until a PM5 is attached.
-	CourseHeadingText = MakeText(TEXT("COURSE"), JournalFontSize, ETextJustify::Center);
-	Column->AddChildToVerticalBox(CourseHeadingText)->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 4.0f));
-	UHorizontalBox *Courses = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-	auto MakeCourseButton = [&](const TCHAR *Caption, TObjectPtr<UButton> &OutButton)
-	{
-		OutButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass());
-		OutButton->AddChild(MakeText(Caption, CompactButtonFontSize, ETextJustify::Center));
-		if (UButtonSlot *ButtonSlot = Cast<UButtonSlot>(OutButton->GetContent()->Slot))
-			ButtonSlot->SetPadding(FMargin(12.0f, 6.0f));
-		Courses->AddChildToHorizontalBox(OutButton)->SetPadding(FMargin(4.0f, 0.0f));
-	};
-	MakeCourseButton(TEXT("Standard • 2 km"), StandardCourseButton);
-	MakeCourseButton(TEXT("Han River • 5 km"), HanCourseButton);
-	Column->AddChildToVerticalBox(Courses)->SetHorizontalAlignment(HAlign_Center);
-	CourseSelectionText = MakeText(TEXT(""), CompactJournalFontSize, ETextJustify::Center);
-	Column->AddChildToVerticalBox(CourseSelectionText)->SetPadding(FMargin(0.0f, 4.0f, 0.0f, 0.0f));
-	HanAvailabilityText = MakeText(TEXT(""), CompactJournalFontSize, ETextJustify::Center);
-	HanAvailabilityText->SetColorAndOpacity(FSlateColor(UnavailableTextColor));
-	Column->AddChildToVerticalBox(HanAvailabilityText)->SetPadding(FMargin(0.0f, 2.0f, 0.0f, 8.0f));
-	StandardCourseButton->OnClicked.AddDynamic(this, &UWorkoutDevicePanelWidget::HandleStandardCourseClicked);
-	HanCourseButton->OnClicked.AddDynamic(this, &UWorkoutDevicePanelWidget::HandleHanCourseClicked);
 
 	for (int32 Index = 0; Index < MaxCandidateButtons; ++Index)
 	{
@@ -186,7 +147,6 @@ void UWorkoutDevicePanelWidget::Sync()
 		AppliedGeneration = Subsystem->GetDevicePanelGeneration();
 		bHasApplied = true;
 	}
-	SyncCourseSelection(LastPanel);
 	// The focus request is retried while the panel is up, because it cannot land
 	// before the widget has been arranged in the viewport.
 	if (IsBlocking(LastPanel.Mode) && FocusAttempts < 300)
@@ -260,7 +220,6 @@ void UWorkoutDevicePanelWidget::ApplyPanel(const FWorkoutDevicePanel &Panel)
 	JournalText->SetText(FText::FromString(Panel.JournalLine));
 	JournalText->SetColorAndOpacity(FSlateColor(Panel.bJournalNotSaved ? WarningColor : TextColor));
 	JournalText->SetVisibility(Panel.JournalLine.IsEmpty() ? ESlateVisibility::Collapsed : ESlateVisibility::HitTestInvisible);
-	SyncCourseSelection(Panel);
 
 	for (int32 Index = 0; Index < MaxCandidateButtons; ++Index)
 	{
@@ -286,31 +245,6 @@ void UWorkoutDevicePanelWidget::ApplyPanel(const FWorkoutDevicePanel &Panel)
 	Show(CancelButton, bJournalDecision || bStarting || bScanning || bProblem || bAttached);
 	ScanLabel->SetText(FText::FromString(bAttached ? TEXT("Change PM5") : (bScanning ? TEXT("Scan again") : TEXT("Scan for a different PM5"))));
 	CancelLabel->SetText(FText::FromString(bAttached ? TEXT("Disconnect") : TEXT("Cancel")));
-}
-
-void UWorkoutDevicePanelWidget::SyncCourseSelection(const FWorkoutDevicePanel &Panel)
-{
-	UGameInstance *GameInstance = GetGameInstance();
-	UContentSubsystem *Content = GameInstance ? GameInstance->GetSubsystem<UContentSubsystem>() : nullptr;
-	const bool bShowCourses = IsBlocking(Panel.Mode);
-	CourseHeadingText->SetVisibility(bShowCourses ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
-	StandardCourseButton->SetVisibility(bShowCourses ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
-	HanCourseButton->SetVisibility(bShowCourses ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
-	CourseSelectionText->SetVisibility(bShowCourses ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
-	HanAvailabilityText->SetVisibility(bShowCourses ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
-	if (!bShowCourses || !Content)
-		return;
-
-	const bool bCanSelect = Content->CanOperateContent();
-	const bool bHanAvailable = Content->IsHanAvailable();
-	const FString SelectedRoute = UTF8_TO_TCHAR(Content->GetSelectedRoute().RouteId.c_str());
-	StandardCourseButton->SetIsEnabled(bCanSelect);
-	HanCourseButton->SetIsEnabled(bCanSelect && bHanAvailable);
-	StandardCourseButton->SetBackgroundColor(SelectedRoute == TEXT("route.standard.2k") ? FocusedFill : RestingFill);
-	HanCourseButton->SetBackgroundColor(SelectedRoute == TEXT("route.han-river.5k") ? FocusedFill : RestingFill);
-	CourseSelectionText->SetText(FText::FromString(SelectedRoute == TEXT("route.han-river.5k") ? TEXT("Selected: Han River • 5 km • Open") : TEXT("Selected: Standard • 2 km • Closed")));
-	HanAvailabilityText->SetText(FText::FromString(bHanAvailable ? TEXT("") : HanAvailabilityTextFor(Content->GetHanAvailabilityReason())));
-	HanAvailabilityText->SetVisibility(bHanAvailable ? ESlateVisibility::Collapsed : ESlateVisibility::HitTestInvisible);
 }
 
 void UWorkoutDevicePanelWidget::HandleConnect()
@@ -381,18 +315,4 @@ void UWorkoutDevicePanelWidget::HandleCandidate3()
 void UWorkoutDevicePanelWidget::HandleCandidate4()
 {
 	SelectCandidate(4);
-}
-
-void UWorkoutDevicePanelWidget::HandleStandardCourseClicked()
-{
-	if (UGameInstance *GameInstance = GetGameInstance())
-		if (UContentSubsystem *Content = GameInstance->GetSubsystem<UContentSubsystem>())
-			Content->SelectRouteById(TEXT("route.standard.2k"));
-}
-
-void UWorkoutDevicePanelWidget::HandleHanCourseClicked()
-{
-	if (UGameInstance *GameInstance = GetGameInstance())
-		if (UContentSubsystem *Content = GameInstance->GetSubsystem<UContentSubsystem>())
-			Content->SelectRouteById(TEXT("route.han-river.5k"));
 }

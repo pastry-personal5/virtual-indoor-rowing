@@ -35,6 +35,11 @@ class VIRTUALROWING_API UContentSubsystem : public UGameInstanceSubsystem
 	 * no package is mounted. Presentation only.
 	 */
 	int64 GetActivePackageIssuedAtUnixSeconds() const;
+	/**
+	 * True when a verified catalog is ready that was issued after the mounted
+	 * package, so the Content page can offer a download without a clean install.
+	 */
+	bool IsHanUpdateAvailable() const;
 	FString GetContentLicensesCreditsText() const;
 	bool SelectRouteById(const FString &RouteId);
 	static bool CanSelectRoute(const FString &RouteId, bool bHanAvailable, bool bWorkoutActive);
@@ -49,6 +54,8 @@ class VIRTUALROWING_API UContentSubsystem : public UGameInstanceSubsystem
 	bool BeginCatalogRefresh();
 	bool BeginHanDownload();
 	FString GetContentOperationStatus() const;
+	/** Development aid: multi-line, redacted account of the content pipeline and its recent events. */
+	FString GetDiagnosticsText() const;
 
 	// Automation seam: an extracted set whose Pak/IoStore pair fails to mount
 	// leaves Standard selected and records a redacted stable error category.

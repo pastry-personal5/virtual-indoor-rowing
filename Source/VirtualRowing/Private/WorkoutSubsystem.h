@@ -13,6 +13,7 @@ struct FWorkoutDisplay;
 struct FWorkoutSnapshot;
 class UWorkoutHudWidget;
 class UWorkoutDevicePanelWidget;
+class UContentPanelWidget;
 
 /** What the device panel shows; derived from the engine-independent controller. */
 enum class EWorkoutDevicePanelMode : uint8
@@ -134,14 +135,18 @@ class VIRTUALROWING_API UWorkoutSubsystem : public UGameInstanceSubsystem, publi
 	TObjectPtr<UWorkoutHudWidget> Hud;
 	UPROPERTY(Transient)
 	TObjectPtr<UWorkoutDevicePanelWidget> DevicePanel;
+	UPROPERTY(Transient)
+	TObjectPtr<UContentPanelWidget> ContentPanel;
 
 	bool bHudEnabled = true;
 	// Frames to wait before trying to create the HUD again after a failed attempt.
 	int32 HudRetryCountdown = 0;
 	bool bPanelEnabled = true;
 	int32 PanelRetryCountdown = 0;
+	int32 ContentPanelRetryCountdown = 0;
 
 	void EnsureHud();
 	void EnsureDevicePanel();
+	void EnsureContentPanel();
 	void EnsureRealController();
 };

@@ -2,6 +2,36 @@
 
 ## Unreleased
 
+- Han content diagnostics and update path (development aids, presentation only).
+  A new right-hand `UContentPanelWidget` now holds the Han level state, course
+  selection, package build time, Download, Content Licenses / Credits, and a
+  scrollable DETAILS view (content status with a plain-language reading, catalog
+  and package HTTP results, installed/offered versions, mount result, and a
+  timestamped event log for both the content pipeline and the level stream,
+  including the class the allowlist refused). The HUD keeps only the workout
+  metrics and its fonts are slightly smaller. `Download Han River` also appears
+  when a newer catalog than the mounted package is verified. Fixed a same-version
+  reinstall that reported `malformed` and left the retained install's files
+  overwritten: the release version is now `1.0.1`, and the client refuses a
+  retained version before extracting. `make format-check`, `make content-canary`
+  and `make unreal-smoke` pass; the packaged-app result is not yet observed.
+  Root cause of the Han level never appearing (owner-confirmed fixed in the
+  packaged app 2026-09-21): `UCourseSubsystem` spawned the course actor with
+  `SpawnActor`, whose immediate `BeginPlay` built the Standard kit before
+  `ConfigureRoute` ran; it now spawns deferred. The DETAILS view is behind a
+  "Show details" toggle, the device panel no longer carries a duplicate course
+  selector (the content panel sits above it), and the retained 1.0.0 install was
+  re-extracted from the revision-2 package after an earlier same-version
+  overwrite. `CoursePresentationSpec` (including the new begun-play case) has
+  not been run.
+
+- Planned Phase 2 Milestone 4 (documentation only, not started):
+  [06-milestone-4-development-loop.md](06-milestone-4-development-loop.md)
+  scopes shorter code and content iteration loops (editor-safe Shipping build,
+  uncooked Development run, loose-level course reload, one-command local Han
+  publish). No code, command, or trust-boundary change; the cause of the
+  editor/Shipping conflict is still unconfirmed and is its first spike.
+
 - Milestone 2 spike 2 (conversion applied): `L_HanRiver_BlueHour` now holds 13
   HISM actors instead of 877 `StaticMeshActor`s (same instance transforms,
   materials, no collision). `make build && make test`, `make content-canary`, and

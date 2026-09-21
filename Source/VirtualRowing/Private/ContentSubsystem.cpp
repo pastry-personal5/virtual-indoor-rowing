@@ -5,6 +5,7 @@
 #include "Engine/GameInstance.h"
 #include "HAL/PlatformFileManager.h"
 #include "HAL/PlatformProcess.h"
+#include "HAL/PlatformTime.h"
 #include "IPlatformFilePak.h"
 #include "HttpModule.h"
 #include "Interfaces/IHttpResponse.h"
@@ -80,6 +81,37 @@ struct UContentSubsystem::FImpl
 	FString ContentRoot;
 	FString OperationStatus = TEXT("content.idle");
 	std::optional<ContentRuntime::FContentManifest> CatalogManifest;
+
+	// Development diagnostics only: nothing here feeds a decision.
+	TArray<FString> Events;
+	double StartSeconds = FPlatformTime::Seconds();
+	int32 CatalogHttpCode = 0;
+	int32 CatalogBytes = 0;
+	int32 PackageHttpCode = 0;
+	uint64 DownloadReceivedBytes = 0;
+	uint64 DownloadExpectedBytes = 0;
+	FString ActiveVersion;
+	uint64 ActiveCatalogRevision = 0;
+	FString ActiveInstallLeaf;
+
+	void Note(const FString &Message)
+	{
+		Events.Add(FString::Printf(TEXT("+%.1fs %s"), FPlatformTime::Seconds() - StartSeconds, *Message));
+		while (Events.Num() > 12)
+			Events.RemoveAt(0);
+	}
+
+	// Retained (active or last-known-good) content is never overwritten by a download.
+	bool IsVersionRetained(const ContentRuntime::FContentManifest &Manifest) const
+	{
+		for (const auto &Retained : Repository->ListRetained())
+		{
+			if (Retained.ContentSetId == Manifest.Route.ContentSetId && Retained.SemanticVersion == Manifest.Route.SemanticVersion &&
+				(Retained.State == ContentRuntime::EInstalledContentState::Active || Retained.State == ContentRuntime::EInstalledContentState::LastKnownGood))
+				return true;
+		}
+		return false;
+	}
 };
 
 void UContentSubsystem::Initialize(FSubsystemCollectionBase &Collection)
@@ -125,15 +157,21 @@ void UContentSubsystem::Initialize(FSubsystemCollectionBase &Collection)
 				{
 					FFileHelper::LoadFileToString(Impl->ActivePackageNotice, *FPaths::Combine(InstallPath, TEXT("licenses/NOTICE.txt")));
 					Impl->ActivePackageIssuedAtUnixSeconds = Candidate->IssuedAtUnixSeconds;
+					Impl->ActiveVersion = UTF8_TO_TCHAR(Candidate->SemanticVersion.c_str());
+					Impl->ActiveCatalogRevision = Candidate->CatalogRevision;
+					Impl->ActiveInstallLeaf = FPaths::GetCleanFilename(InstallPath);
+					Impl->Note(FString::Printf(TEXT("boot: mounted v%s (catalog r%llu)"), *Impl->ActiveVersion, Impl->ActiveCatalogRevision));
 					return true;
 				}
 			}
 			catch (const ContentRuntime::FContentValidationError &Error)
 			{
 				Failure = UTF8_TO_TCHAR(ContentRuntime::ContentErrorName(Error.GetCode()));
+				Impl->Note(FString::Printf(TEXT("boot: route.pb rejected: %s"), UTF8_TO_TCHAR(Error.what())));
 			}
 			if (Failure.IsEmpty())
 				Failure = TEXT("content.mount_failed");
+			Impl->Note(FString::Printf(TEXT("boot: candidate v%s failed: %s"), UTF8_TO_TCHAR(Candidate->SemanticVersion.c_str()), *Failure));
 			Impl->Repository->MarkFailed(Candidate->ContentSetId, TCHAR_TO_UTF8(*Failure), false);
 			LastFailure = Failure;
 			Impl->SelectedRoute = Impl->StandardRoute;
@@ -159,6 +197,7 @@ void UContentSubsystem::Initialize(FSubsystemCollectionBase &Collection)
 		Impl->HanAvailabilityReason = TEXT("content.han.validation_failed");
 		// Shipping compiles UE_LOG out; keep the cause visible through the status line.
 		Impl->OperationStatus = FString::Printf(TEXT("content.init_failed: %s"), UTF8_TO_TCHAR(Error.what()));
+		Impl->Note(Impl->OperationStatus);
 	}
 	// Network/catalog work is strictly background boot work. Absence or failure
 	// cannot delay the local menu or alter Standard's availability.
@@ -202,6 +241,13 @@ int64 UContentSubsystem::GetActivePackageIssuedAtUnixSeconds() const
 	return Impl ? Impl->ActivePackageIssuedAtUnixSeconds : 0;
 }
 
+bool UContentSubsystem::IsHanUpdateAvailable() const
+{
+	return Impl && Impl->CatalogManifest && !Impl->CatalogManifest->bWithdrawn && IsHanContentMounted() && Impl->OperationStatus == TEXT("content.catalog_ready") && Impl->CatalogManifest->IssuedAtUnixSeconds > Impl->ActivePackageIssuedAtUnixSeconds &&
+		   // A rebuild under the mounted version cannot be installed (retained versions are never overwritten).
+		   FString(UTF8_TO_TCHAR(Impl->CatalogManifest->Route.SemanticVersion.c_str())) != Impl->ActiveVersion;
+}
+
 FString UContentSubsystem::GetContentLicensesCreditsText() const
 {
 	if (!Impl || Impl->ActivePackageNotice.IsEmpty())
@@ -243,6 +289,105 @@ bool UContentSubsystem::CanOperateContent() const
 	return !IsWorkoutActive();
 }
 
+namespace
+{
+	// Plain-language reading of the stable status categories for the diagnostics view.
+	FString DescribeContentStatus(const FString &Status)
+	{
+		if (Status == TEXT("content.idle"))
+			return TEXT("Nothing has been requested yet.");
+		if (Status == TEXT("content.catalog_url_missing"))
+			return TEXT("No -ContentCatalogUrl launch argument was given.");
+		if (Status == TEXT("content.catalog_refreshing"))
+			return TEXT("Fetching the signed catalog.");
+		if (Status == TEXT("content.catalog_ready"))
+			return TEXT("Catalog verified. The button appears only if it is newer than what is mounted.");
+		if (Status.StartsWith(TEXT("content.catalog_network_failed")))
+			return TEXT("The catalog could not be fetched: check the URL and that the origin is serving it.");
+		if (Status == TEXT("content.catalog_withdrawn"))
+			return TEXT("The catalog withdrew this content.");
+		if (Status == TEXT("content.download_running"))
+			return TEXT("Downloading the package.");
+		if (Status == TEXT("content.download_partial"))
+			return TEXT("The download stopped short; click Download to resume.");
+		if (Status == TEXT("content.download_network_failed"))
+			return TEXT("The package request failed: the URL in the catalog is probably not being served.");
+		if (Status == TEXT("content.download_verified_restart_required"))
+			return TEXT("Installed and verified. Relaunch the app to activate it.");
+		if (Status == TEXT("content.version_already_installed"))
+			return TEXT("This version is already retained; publish under a new version.");
+		if (Status == TEXT("content.storage_insufficient"))
+			return TEXT("Not enough free disk space for the package.");
+		if (Status == TEXT("io_failure"))
+			return TEXT("A file or network read/write failed. The event log names which.");
+		if (Status == TEXT("malformed"))
+			return TEXT("Received or stored data has an invalid structure. The event log names which.");
+		return FString();
+	}
+
+	FString ShortUrl(const FString &Url)
+	{
+		FString Rest = Url;
+		int32 SchemeEnd = INDEX_NONE;
+		if (Rest.FindChar(TEXT(':'), SchemeEnd) && Rest.Mid(SchemeEnd, 3) == TEXT("://"))
+			Rest = Rest.Mid(SchemeEnd + 3);
+		FString Host;
+		FString Path;
+		if (!Rest.Split(TEXT("/"), &Host, &Path))
+			return Rest;
+		FString Leaf = FPaths::GetCleanFilename(Path);
+		if (Leaf.StartsWith(TEXT("catalog-")) && Leaf.Len() > 20)
+			Leaf = Leaf.Left(16) + TEXT("...") + FPaths::GetExtension(Leaf, true);
+		return Host + TEXT("/.../") + Leaf;
+	}
+
+	FString UtcText(int64 UnixSeconds)
+	{
+		return FDateTime::FromUnixTimestamp(UnixSeconds).ToString(TEXT("%Y-%m-%d %H:%M:%S"));
+	}
+} // namespace
+
+FString UContentSubsystem::GetDiagnosticsText() const
+{
+	if (!Impl)
+		return TEXT("Content subsystem not initialized.");
+	TArray<FString> Lines;
+	const FString Hint = DescribeContentStatus(Impl->OperationStatus);
+	if (!Hint.IsEmpty())
+		Lines.Add(Hint);
+	Lines.Add(FString::Printf(TEXT("catalog url: %s"), Impl->CatalogUrl.IsEmpty() ? TEXT("(none)") : *ShortUrl(Impl->CatalogUrl)));
+	if (Impl->CatalogHttpCode != 0)
+		Lines.Add(FString::Printf(TEXT("catalog fetch: HTTP %d, %d bytes"), Impl->CatalogHttpCode, Impl->CatalogBytes));
+	if (Impl->Repository)
+	{
+		try
+		{
+			Lines.Add(FString::Printf(TEXT("accepted catalog revision: %llu"), static_cast<uint64>(Impl->Repository->AcceptedCatalogRevision())));
+			for (const auto &Record : Impl->Repository->ListRetained())
+				Lines.Add(FString::Printf(TEXT("installed: v%s %s (catalog r%llu, built %s UTC)"), UTF8_TO_TCHAR(Record.SemanticVersion.c_str()), UTF8_TO_TCHAR(ContentRuntime::InstalledContentStateName(Record.State)), static_cast<uint64>(Record.CatalogRevision), *UtcText(Record.IssuedAtUnixSeconds)));
+		}
+		catch (const std::exception &Error)
+		{
+			Lines.Add(FString::Printf(TEXT("installed: (unreadable: %s)"), UTF8_TO_TCHAR(Error.what())));
+		}
+	}
+	if (Impl->CatalogManifest)
+		Lines.Add(FString::Printf(TEXT("catalog offers: v%s (r%llu, built %s UTC, %llu bytes)"), UTF8_TO_TCHAR(Impl->CatalogManifest->Route.SemanticVersion.c_str()), static_cast<uint64>(Impl->CatalogManifest->CatalogRevision), *UtcText(Impl->CatalogManifest->IssuedAtUnixSeconds), static_cast<uint64>(Impl->CatalogManifest->CompressedSizeBytes)));
+	Lines.Add(FString::Printf(TEXT("mounted: %s"), IsHanContentMounted() ? *FString::Printf(TEXT("v%s (installed/.../%s)"), *Impl->ActiveVersion, *Impl->ActiveInstallLeaf) : TEXT("no")));
+	if (!Impl->HanAvailabilityReason.IsEmpty())
+		Lines.Add(FString::Printf(TEXT("han unavailable because: %s"), *Impl->HanAvailabilityReason));
+	Lines.Add(FString::Printf(TEXT("update available: %s"), IsHanUpdateAvailable() ? TEXT("yes") : TEXT("no")));
+	if (Impl->DownloadExpectedBytes > 0)
+		Lines.Add(FString::Printf(TEXT("download: %llu / %llu bytes (HTTP %d)"), Impl->DownloadReceivedBytes, Impl->DownloadExpectedBytes, Impl->PackageHttpCode));
+	if (Impl->Events.Num() > 0)
+	{
+		Lines.Add(TEXT("events:"));
+		for (const FString &Event : Impl->Events)
+			Lines.Add(TEXT("  ") + Event);
+	}
+	return FString::Join(Lines, TEXT("\n"));
+}
+
 FString UContentSubsystem::GetContentOperationStatus() const
 {
 	return Impl ? Impl->OperationStatus : TEXT("content.unavailable");
@@ -265,6 +410,7 @@ bool UContentSubsystem::BeginCatalogRefresh()
 	Request->SetHeader(TEXT("Accept"), TEXT("application/octet-stream"));
 	Request->OnProcessRequestComplete().BindUObject(this, &UContentSubsystem::HandleCatalogResponse);
 	Impl->OperationStatus = TEXT("content.catalog_refreshing");
+	Impl->Note(FString::Printf(TEXT("catalog: GET %s"), *ShortUrl(Impl->CatalogUrl)));
 	if (!Request->ProcessRequest())
 	{
 		Impl->OperationStatus = TEXT("content.catalog_network_failed");
@@ -278,12 +424,19 @@ void UContentSubsystem::HandleCatalogResponse(FHttpRequestPtr, FHttpResponsePtr 
 	if (!Impl || !bSucceeded || !Response.IsValid() || Response->GetResponseCode() != 200 || !CanOperateContent())
 	{
 		if (Impl)
-			Impl->OperationStatus = FString::Printf(TEXT("content.catalog_network_failed (%s, HTTP %d)"), bSucceeded ? TEXT("connected") : TEXT("no response"), Response.IsValid() ? Response->GetResponseCode() : 0);
+		{
+			Impl->CatalogHttpCode = Response.IsValid() ? Response->GetResponseCode() : 0;
+			Impl->OperationStatus = FString::Printf(TEXT("content.catalog_network_failed (%s, HTTP %d)"), bSucceeded ? TEXT("connected") : TEXT("no response"), Impl->CatalogHttpCode);
+			Impl->Note(FString::Printf(TEXT("catalog: request failed (%s, HTTP %d)"), bSucceeded ? TEXT("connected") : TEXT("no response"), Impl->CatalogHttpCode));
+		}
 		return;
 	}
 	try
 	{
 		const TArray<uint8> &Bytes = Response->GetContent();
+		Impl->CatalogHttpCode = Response->GetResponseCode();
+		Impl->CatalogBytes = Bytes.Num();
+		Impl->Note(FString::Printf(TEXT("catalog: HTTP 200, %d bytes"), Bytes.Num()));
 		if (Bytes.IsEmpty() || Bytes.Num() > static_cast<int32>(ContentRuntime::MaximumManifestBytes))
 			throw ContentRuntime::FContentValidationError(ContentRuntime::EContentError::Oversized, "catalog response exceeds bounds");
 		const std::string Envelope(reinterpret_cast<const char *>(Bytes.GetData()), Bytes.Num());
@@ -302,14 +455,17 @@ void UContentSubsystem::HandleCatalogResponse(FHttpRequestPtr, FHttpResponsePtr 
 		}
 		Impl->CatalogManifest = Manifest;
 		Impl->OperationStatus = TEXT("content.catalog_ready");
+		Impl->Note(FString::Printf(TEXT("catalog: verified r%llu offering v%s"), Manifest.CatalogRevision, UTF8_TO_TCHAR(Manifest.Route.SemanticVersion.c_str())));
 	}
 	catch (const ContentRuntime::FContentValidationError &Error)
 	{
 		Impl->OperationStatus = UTF8_TO_TCHAR(ContentRuntime::ContentErrorName(Error.GetCode()));
+		Impl->Note(FString::Printf(TEXT("catalog: rejected: %s"), UTF8_TO_TCHAR(Error.what())));
 	}
-	catch (const std::exception &)
+	catch (const std::exception &Error)
 	{
 		Impl->OperationStatus = TEXT("content.catalog_validation_failed");
+		Impl->Note(FString::Printf(TEXT("catalog: error: %s"), UTF8_TO_TCHAR(Error.what())));
 	}
 }
 
@@ -318,6 +474,13 @@ bool UContentSubsystem::BeginHanDownload()
 	if (!Impl || !CanOperateContent() || !Impl->CatalogManifest || Impl->CatalogManifest->bWithdrawn)
 		return false;
 	const ContentRuntime::FContentManifest &Manifest = *Impl->CatalogManifest;
+	// Refuse a retained version up front rather than after downloading the whole package.
+	if (Impl->IsVersionRetained(Manifest))
+	{
+		Impl->OperationStatus = TEXT("content.version_already_installed");
+		Impl->Note(FString::Printf(TEXT("download: v%s is already retained; not downloading"), UTF8_TO_TCHAR(Manifest.Route.SemanticVersion.c_str())));
+		return false;
+	}
 	const FString StagingDirectory = FPaths::Combine(Impl->ContentRoot, TEXT("staging"), UTF8_TO_TCHAR(Manifest.Route.ContentSetId.c_str()));
 	if (!ContentRuntime::HasStorageAdmission(std::filesystem::path(TCHAR_TO_UTF8(*StagingDirectory)), Manifest))
 	{
@@ -342,6 +505,9 @@ bool UContentSubsystem::BeginHanDownload()
 		Request->SetHeader(TEXT("Range"), FString::Printf(TEXT("bytes=%llu-"), ResumeOffset));
 	Request->OnProcessRequestComplete().BindUObject(this, &UContentSubsystem::HandleDownloadResponse);
 	Impl->OperationStatus = TEXT("content.download_running");
+	Impl->DownloadExpectedBytes = Manifest.CompressedSizeBytes;
+	Impl->DownloadReceivedBytes = ResumeOffset;
+	Impl->Note(FString::Printf(TEXT("download: GET v%s, %llu bytes, resume at %llu"), UTF8_TO_TCHAR(Manifest.Route.SemanticVersion.c_str()), Manifest.CompressedSizeBytes, ResumeOffset));
 	if (!Request->ProcessRequest())
 	{
 		Impl->OperationStatus = TEXT("content.download_network_failed");
@@ -355,7 +521,11 @@ void UContentSubsystem::HandleDownloadResponse(FHttpRequestPtr Request, FHttpRes
 	if (!Impl || !Impl->CatalogManifest || !bSucceeded || !Response.IsValid() || !CanOperateContent())
 	{
 		if (Impl)
+		{
+			Impl->PackageHttpCode = Response.IsValid() ? Response->GetResponseCode() : 0;
 			Impl->OperationStatus = TEXT("content.download_network_failed");
+			Impl->Note(FString::Printf(TEXT("download: request failed (%s, HTTP %d)"), bSucceeded ? TEXT("connected") : TEXT("no response"), Impl->PackageHttpCode));
+		}
 		return;
 	}
 	try
@@ -365,6 +535,8 @@ void UContentSubsystem::HandleDownloadResponse(FHttpRequestPtr Request, FHttpRes
 		const FString PackagePath = FPaths::Combine(StagingDirectory, TEXT("package.vircontent"));
 		const bool bRequestedRange = Request->GetHeader(TEXT("Range")).Len() > 0;
 		const int32 ResponseCode = Response->GetResponseCode();
+		Impl->PackageHttpCode = ResponseCode;
+		Impl->Note(FString::Printf(TEXT("download: HTTP %d, %d bytes"), ResponseCode, Response->GetContent().Num()));
 		if (ResponseCode != 206 && ResponseCode != 200)
 			throw ContentRuntime::FContentValidationError(ContentRuntime::EContentError::IoFailure, "package request failed");
 		const bool bAppend = bRequestedRange && ResponseCode == 206;
@@ -372,6 +544,7 @@ void UContentSubsystem::HandleDownloadResponse(FHttpRequestPtr Request, FHttpRes
 		if (Bytes.IsEmpty() || !FFileHelper::SaveArrayToFile(Bytes, *PackagePath, &IFileManager::Get(), bAppend ? FILEWRITE_Append : 0))
 			throw ContentRuntime::FContentValidationError(ContentRuntime::EContentError::IoFailure, "cannot write staged package");
 		const uint64 ReceivedSize = static_cast<uint64>(IFileManager::Get().FileSize(*PackagePath));
+		Impl->DownloadReceivedBytes = ReceivedSize;
 		Impl->Repository->SaveDownload({Manifest.Route.ContentSetId, Manifest.PackageUrl, TCHAR_TO_UTF8(*StagingDirectory), Manifest.CompressedSizeBytes, ReceivedSize, TCHAR_TO_UTF8(*Response->GetHeader(TEXT("ETag")))}, false);
 		if (ReceivedSize != Manifest.CompressedSizeBytes)
 		{
@@ -380,20 +553,33 @@ void UContentSubsystem::HandleDownloadResponse(FHttpRequestPtr Request, FHttpRes
 		}
 		const std::string Inventory = ContentRuntime::ReadStagedPackageInventory(std::filesystem::path(TCHAR_TO_UTF8(*StagingDirectory)));
 		const auto Validated = ContentRuntime::ValidateStagedPackage(std::filesystem::path(TCHAR_TO_UTF8(*StagingDirectory)), Manifest, Inventory);
+		Impl->Note(TEXT("download: size, digest, inventory and notice verified"));
+		// Refuse before extraction, which would otherwise replace retained files on disk
+		// and only then be rejected by the repository, leaving record and files disagreeing.
+		if (Impl->IsVersionRetained(Manifest))
+		{
+			Impl->OperationStatus = TEXT("content.version_already_installed");
+			Impl->Note(FString::Printf(TEXT("download: v%s is already retained; not overwriting"), UTF8_TO_TCHAR(Manifest.Route.SemanticVersion.c_str())));
+			return;
+		}
 		const FString InstallPath = FPaths::Combine(Impl->ContentRoot, TEXT("installed"), UTF8_TO_TCHAR(Manifest.Route.ContentSetId.c_str()), UTF8_TO_TCHAR(Manifest.Route.SemanticVersion.c_str()));
 		ContentRuntime::ExtractValidatedPackage(Validated, std::filesystem::path(TCHAR_TO_UTF8(*InstallPath)));
+		Impl->Note(FString::Printf(TEXT("download: extracted to installed/%s/%s"), UTF8_TO_TCHAR(Manifest.Route.ContentSetId.c_str()), UTF8_TO_TCHAR(Manifest.Route.SemanticVersion.c_str())));
 		Impl->Repository->SaveStaged({Manifest.Route.ContentSetId, Manifest.Route.RouteId, Manifest.Route.SemanticVersion, ContentRuntime::Sha256Hex(Manifest.ManifestSha256), ContentRuntime::EInstalledContentState::Staged, Manifest.CatalogRevision, Manifest.IssuedAtUnixSeconds, Manifest.ExpiresAtUnixSeconds, TCHAR_TO_UTF8(*InstallPath), ""}, false);
 		Impl->Repository->MarkVerified(Manifest.Route.ContentSetId, false);
 		Impl->Repository->RemoveDownload(Manifest.Route.ContentSetId, false);
 		Impl->OperationStatus = TEXT("content.download_verified_restart_required");
+		Impl->Note(TEXT("download: recorded as verified; relaunch to activate"));
 	}
 	catch (const ContentRuntime::FContentValidationError &Error)
 	{
 		Impl->OperationStatus = UTF8_TO_TCHAR(ContentRuntime::ContentErrorName(Error.GetCode()));
+		Impl->Note(FString::Printf(TEXT("download: rejected: %s"), UTF8_TO_TCHAR(Error.what())));
 	}
-	catch (const std::exception &)
+	catch (const std::exception &Error)
 	{
 		Impl->OperationStatus = TEXT("content.download_validation_failed");
+		Impl->Note(FString::Printf(TEXT("download: error: %s"), UTF8_TO_TCHAR(Error.what())));
 	}
 }
 
@@ -421,6 +607,8 @@ bool UContentSubsystem::TryMountInstalledContent(const FString &InstallPath, FSt
 	if (!FileSystem.FileExists(*PakPath) || !FileSystem.FileExists(*UtocPath) || !FileSystem.FileExists(*UcasPath) || !FileSystem.FileExists(*RoutePath))
 	{
 		OutFailureCategory = TEXT("content.mount_missing_iostore");
+		if (Impl)
+			Impl->Note(FString::Printf(TEXT("mount: missing file(s) pak=%d utoc=%d ucas=%d route=%d"), FileSystem.FileExists(*PakPath), FileSystem.FileExists(*UtocPath), FileSystem.FileExists(*UcasPath), FileSystem.FileExists(*RoutePath)));
 		return false;
 	}
 	IPlatformFile *PlatformFile = FPlatformFileManager::Get().FindPlatformFile(TEXT("PakFile"));
@@ -428,6 +616,8 @@ bool UContentSubsystem::TryMountInstalledContent(const FString &InstallPath, FSt
 	if (!PakPlatformFile || !PakPlatformFile->Mount(*PakPath, 100, nullptr))
 	{
 		OutFailureCategory = TEXT("content.mount_failed");
+		if (Impl)
+			Impl->Note(TEXT("mount: FPakPlatformFile::Mount refused HanRiver.pak"));
 		return false;
 	}
 	if (Impl)

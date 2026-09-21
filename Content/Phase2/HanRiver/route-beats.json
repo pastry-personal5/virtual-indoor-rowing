@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "route_id": "route.han-river.5k",
-  "semantic_version": "1.0.0",
+  "semantic_version": "1.0.1",
   "display": {
     "en": {
       "name": "Han River: Bridges at Blue Hour",
