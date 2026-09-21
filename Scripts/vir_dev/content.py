@@ -544,8 +544,8 @@ def release_package() -> int:
 			"licenses/NOTICE.txt": notice,
 			"route.pb": route,
 		})
-		if package_size > 32 * 1024 * 1024 * 1024:
-			raise ValueError("cooked Han archive exceeds the 32 GiB content cap")
+		if package_size > 100 * 1024 * 1024 * 1024:
+			raise ValueError("cooked Han archive exceeds the 100 GiB content cap")
 		catalog = _release_manifest(route, inventory, package, revision, origin_base, private_key)
 		_verify_signed_envelope(catalog, CURRENT_PUBLIC_KEY, "content-current")
 		package_hash = _sha256_file(package).hex()

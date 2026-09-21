@@ -181,6 +181,9 @@ void UCourseSubsystem::RejectAuthoredLevel(const FString &Category)
 		AuthoredLevel->SetShouldBeLoaded(false);
 	}
 	AuthoredLevel = nullptr;
+	// Handing back to the kit never touches the boat or camera; only visibility changes.
+	if (CourseActor && IsValid(CourseActor))
+		CourseActor->SetAuthoredLevelActive(false);
 }
 
 void UCourseSubsystem::BeginAuthoredLevelLoad()
@@ -215,6 +218,13 @@ void UCourseSubsystem::BeginAuthoredLevelLoad()
 
 void UCourseSubsystem::PollAuthoredLevel()
 {
+	if (AuthoredLevelState == EAuthoredLevelState::Shown)
+	{
+		// A level that disappears after it was shown hands the course back to the kit.
+		if (!AuthoredLevel || !IsValid(AuthoredLevel) || !AuthoredLevel->GetLoadedLevel())
+			RejectAuthoredLevel(TEXT("course.level_lost"));
+		return;
+	}
 	if (AuthoredLevelState != EAuthoredLevelState::Pending)
 		return;
 	if (!AuthoredLevel || !IsValid(AuthoredLevel))
@@ -243,6 +253,20 @@ void UCourseSubsystem::PollAuthoredLevel()
 			UE_LOG(LogTemp, Warning, TEXT("Han authored level actor class not allowed: %s"), *ClassPath);
 			RejectAuthoredLevel(TEXT("course.level_class_rejected"));
 			return;
+		}
+		if (!ContentRuntime::CourseLevelActorRequiresComponentCheck(std::string(TCHAR_TO_UTF8(*ClassPath))))
+			continue;
+		// A plain Actor may only carry native, allowlisted mesh components.
+		for (const UActorComponent *Component : Actor->GetComponents())
+		{
+			const UClass *ComponentClass = Component ? Component->GetClass() : nullptr;
+			const FString ComponentClassPath = ComponentClass ? ComponentClass->GetClassPathName().ToString() : FString();
+			if (!ComponentClass || !ComponentClass->HasAnyClassFlags(CLASS_Native) || !ContentRuntime::IsCourseLevelComponentClassAllowed(std::string(TCHAR_TO_UTF8(*ComponentClassPath))))
+			{
+				UE_LOG(LogTemp, Warning, TEXT("Han authored level component class not allowed: %s"), *ComponentClassPath);
+				RejectAuthoredLevel(TEXT("course.level_class_rejected"));
+				return;
+			}
 		}
 	}
 	AuthoredLevel->SetShouldBeVisible(true);

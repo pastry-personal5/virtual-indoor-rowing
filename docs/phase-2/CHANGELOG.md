@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+- Milestone 2 spike 3 (partial): rejecting or losing the streamed Han level now
+  restores the built-in kit (`course.level_lost` for a level that vanishes after
+  being shown). `CoursePresentationSpec` gains a boat/camera-unmoved handover
+  case. `make format-check`, `make build && make test`, and `make unreal-smoke`
+  pass; the spec was not run and no hitch measurement exists.
+
+- Owner decision (2026-09-21): the compressed Han package cap is raised from
+  32 GiB to 100 GiB (`MaximumCompressedPackageBytes`, the release packager cap).
+  Asset and package size are not measured and not gated in Milestone 2. The
+  4x uncompressed bound and the 100 GiB free-storage headroom are unchanged.
+
+- Milestone 2 spike 2 (partial): the 877 static-mesh actors in the Han level
+  use three engine primitive meshes and collapse into 13 instanced-mesh
+  actors in an unsaved editor trial. The client allowlist now admits a plain
+  `Actor` only when every component is a native scene, static-mesh, instanced,
+  or hierarchical-instanced mesh component (`content_runtime_tests`,
+  `make build && make test`, `make format-check` pass). Unreal compile,
+  `CoursePresentationSpec` coverage, and reference-Mac measurement remain open.
+
+- Recorded Milestone 2 spike 1 as passed (owner-run on a Shipping build,
+  2026-09-21): the Han level streams from the runtime-mounted trio and the
+  class allowlist accepted the cooked level. Owner-observed with no attached
+  evidence; the streamed-sublevel design stands.
+
 - Milestone 2 wiring (compiled, not yet run in a mounted package). The client
   now owns a route-ID-to-level table (`ContentRuntime/CourseLevel.h`) and an
   actor-class allowlist. `UCourseSubsystem` streams the mounted Han level as a

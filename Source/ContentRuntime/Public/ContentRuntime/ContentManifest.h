@@ -15,7 +15,7 @@ namespace ContentRuntime
 	inline constexpr std::uint32_t ContentManifestSchemaV1 = 1;
 	inline constexpr std::uint32_t ContentManifestEnvelopeV1 = 1;
 	inline constexpr std::uint32_t RouteDefinitionSchemaV1 = 1;
-	inline constexpr std::uint64_t MaximumCompressedPackageBytes = 32ULL * 1024ULL * 1024ULL * 1024ULL;
+	inline constexpr std::uint64_t MaximumCompressedPackageBytes = 100ULL * 1024ULL * 1024ULL * 1024ULL;
 	inline constexpr std::uint64_t MinimumFreeStorageBytes = 100ULL * 1024ULL * 1024ULL * 1024ULL;
 	inline constexpr std::size_t MaximumManifestBytes = 1024 * 1024;
 	inline constexpr std::size_t MaximumInventoryBytes = 4 * 1024 * 1024;

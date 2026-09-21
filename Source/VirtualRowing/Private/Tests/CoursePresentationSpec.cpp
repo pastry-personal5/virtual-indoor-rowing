@@ -88,6 +88,30 @@ void FCoursePresentationSpec::Define()
 		TestFalse(TEXT("the Standard route ignores the authored level"), Course->IsAuthoredLevelActiveForTesting());
 		HanCourse->Destroy(); });
 
+	It("hands over between the kit and the authored level without moving the boat or camera", [this]()
+	   {
+		AGrayBoxCourseActor *HanCourse = World->SpawnActor<AGrayBoxCourseActor>();
+		ContentRuntime::FRouteDefinition HanRoute = ContentRuntime::BuiltInStandardRouteDefinition();
+		HanRoute.RouteId = "route.han-river.5k";
+		HanRoute.SemanticVersion = "1.0.0";
+		HanRoute.ContentSetId = "han-river-alpha-1";
+		HanRoute.LengthMm = 5'000'000;
+		HanRoute.bClosed = false;
+		HanCourse->ConfigureRoute(HanRoute);
+		HanCourse->InitializeCourse();
+		FCoursePresentationSnapshot Snapshot;
+		Snapshot.WrappedCourseDistanceMm = 100'000.0;
+		HanCourse->ApplyPresentation(Snapshot);
+		const FTransform Boat = HanCourse->GetBoatTransformForTesting();
+		const FTransform Camera = HanCourse->GetCameraTransformForTesting();
+		HanCourse->SetAuthoredLevelActive(true);
+		TestTrue(TEXT("boat is unmoved by handover to the level"), HanCourse->GetBoatTransformForTesting().Equals(Boat, 0.0));
+		TestTrue(TEXT("camera is unmoved by handover to the level"), HanCourse->GetCameraTransformForTesting().Equals(Camera, 0.0));
+		HanCourse->SetAuthoredLevelActive(false);
+		TestTrue(TEXT("boat is unmoved by fallback to the kit"), HanCourse->GetBoatTransformForTesting().Equals(Boat, 0.0));
+		TestTrue(TEXT("camera is unmoved by fallback to the kit"), HanCourse->GetCameraTransformForTesting().Equals(Camera, 0.0));
+		HanCourse->Destroy(); });
+
 	It("applies catch drive finish recovery and disconnect-return proxy transforms", [this]()
 	   {
 		FCoursePresentationSnapshot Snapshot;

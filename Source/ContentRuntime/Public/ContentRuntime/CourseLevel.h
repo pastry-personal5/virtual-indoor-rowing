@@ -16,4 +16,14 @@ namespace ContentRuntime
 	// is rejected before the level is made visible. Takes a class path name such
 	// as "/Script/Engine.StaticMeshActor".
 	bool IsCourseLevelActorClassAllowed(std::string_view ClassPathName) noexcept;
+
+	// A plain "/Script/Engine.Actor" is how an instanced-mesh actor appears, so it
+	// is allowed only when every component on it also passes
+	// IsCourseLevelComponentClassAllowed. Other allowed actor classes are not
+	// component-checked.
+	bool CourseLevelActorRequiresComponentCheck(std::string_view ClassPathName) noexcept;
+
+	// Native engine component classes permitted on a plain Actor: a scene root and
+	// static, instanced, and hierarchical-instanced mesh components.
+	bool IsCourseLevelComponentClassAllowed(std::string_view ClassPathName) noexcept;
 } // namespace ContentRuntime

@@ -1,6 +1,6 @@
 # Phase 2 Milestone 2: wire and enhance the Han River course assets
 
-Status: In progress — wiring compiled; runtime load unverified
+Status: In progress — wiring compiled; spike 1 passed (owner-observed)
 Owner: Client/content, technical art, release/platform
 Last reviewed: 2026-09-21
 
@@ -27,7 +27,8 @@ It passes no Phase 2 exit gate.
 | Art source | Mix of original work and reviewed CC0 / CC BY-SA packs. |
 | Audio | In scope: optional environmental bed, with provenance review. |
 | Carry-over | Mid-session route switch rebuilds the scene. |
-| Package size / frame-time cap | **Measure first; set the cap at milestone close.** Not a gate until then. |
+| Package size | **Compressed Han package cap is 100 GiB** (was 32 GiB in Milestone 1). Asset size is **not measured and not a gate** in this milestone; it is ignored for now. The client's uncompressed bound stays 4x the cap and the 100 GiB free-storage headroom is unchanged. |
+| Frame-time cap | **Measure first; set the cap at milestone close.** Not a gate until then. |
 | Acceptance | Owner route review of the full 5 km on the reference Mac. |
 
 The other Milestone 1 gaps (packaged failure-case canary, beat captures, Shipping
@@ -54,10 +55,9 @@ The authored level from `Scripts/build_han_editor_assets.py` is a 500 m scene
 (authored x -70 m to +460 m), while the route is 5 km. Wiring therefore treats
 it as an overlay on the kit baseline; it becomes the whole route only when the
 production-art step extends it. Steps 2-4 of the work order are implemented and
-compile; spike 1 (does the streamed level resolve from the runtime mount on a
-Shipping build, and does the allowlist accept the real cooked level) is still
-open and owner-run. The allowlist may need one more class once a real cooked
-level is inspected; a rejection falls back safely.
+compile. Spike 1 (does the streamed level resolve from the runtime mount on a
+Shipping build, and does the allowlist accept the real cooked level) passed as
+an owner-run check; see the spike list. A rejection still falls back safely.
 
 ### 1. Loading the mounted map
 
@@ -137,10 +137,11 @@ Technical approach:
 
 ### 4. Measure, then cap
 
-Record on the reference Mac: compressed package size, download time, mount time,
-scene load time, GPU/CPU frame time at start, each beat, and the endpoint, plus
-memory. Propose a size cap and frame budget at milestone close for the owner to
-accept. QA-001 certification stays deferred under ADR-0010; regressions are
+Record on the reference Mac: download time, mount time, scene load time,
+GPU/CPU frame time at start, each beat, and the endpoint, plus memory. Package
+and asset size are deliberately not recorded (owner decision: the cap is fixed at
+100 GiB and size is ignored for now). Propose a frame budget at milestone close
+for the owner to accept. QA-001 certification stays deferred under ADR-0010; regressions are
 reported, not hidden.
 
 ## Spikes before build (each bounded and reversible)
@@ -148,10 +149,46 @@ reported, not hidden.
 1. **Streamed-level load from an external IoStore mount** on a Shipping build:
    does `ULevelStreamingDynamic` resolve a package from the runtime-mounted trio,
    and can the class allowlist run on the loaded package?
+   **Result (2026-09-21, owner-run, Shipping): passed.** The level streamed from
+   the runtime-mounted trio and the allowlist accepted the real cooked level.
+   Owner-observed only; no capture or log is attached to this record, so the
+   result is not independently reproducible from the repository.
 2. **Component budget:** convert the 881-actor scene to instanced/merged form and
    measure cost on the reference Mac.
+   **Partial result (2026-09-21, editor inventory via Unreal MCP, read-only):**
+   `L_HanRiver_BlueHour` has 888 actors: 877 `StaticMeshActor`, plus the four
+   lighting actors and seven system/editor actors. The 877 use only three
+   meshes, all engine primitives (`/Engine/BasicShapes` Cube 577, Sphere 162,
+   Cylinder 138), each with a per-actor override material, so grouping by
+   (mesh, material) collapses the scene to a handful of instanced components.
+   `PerInstanceSMData` on a `HierarchicalInstancedStaticMeshComponent` is
+   settable through Unreal MCP, so the conversion is feasible in-editor.
+   **Open design consequence:** an instanced-mesh actor is a plain
+   `/Script/Engine.Actor`, which the client allowlist (`CourseLevel.cpp`) rejects
+   because it checks actor classes only. The conversion needs a component-level
+   check (allow `Actor` only when every component is on a component allowlist)
+   before it can ship. That check is now implemented in the client
+   (`IsCourseLevelComponentClassAllowed`; native tests pass, Unreal-side compile
+   and `CoursePresentationSpec` coverage not yet run).
+   **Conversion trial (2026-09-21, live editor, unsaved):** grouping by
+   (mesh, material) collapsed the 877 `StaticMeshActor`s into 13 HISM actors
+   (instance counts 1, 2, 19, 115, 11, 77, 74, 3, 3, 44, 88, 60, 380; sum 877).
+   Union bounds of the originals and the instanced set match on X/Y and max Z;
+   min Z differs (-50 vs -128), attributed to padded instanced-component bounds
+   and not yet confirmed. The 877 originals were **not** removed, the level was
+   not saved, and no frame-time or draw-call measurement was taken. The
+   reference-Mac measurement is still owed.
 3. **Fallback swap:** prove the kit-to-streamed-level handover and the reverse
    without a boat or camera hitch.
+   **Partial result (2026-09-21, code and compile only):** the handover only
+   toggles kit visibility, light, and water height (`SetAuthoredLevelActive`);
+   it never writes the boat or camera transform. `RejectAuthoredLevel` now also
+   restores the kit, and a level that is lost after it was shown is rejected
+   (`course.level_lost`) so the kit returns. A new `CoursePresentationSpec` case
+   asserts the boat and camera transforms are identical across both handovers.
+   `make unreal-smoke` compiles; the spec has **not been run** (Unreal MCP
+   automation tools were not reachable) and no frame-time hitch measurement was
+   taken. The hitch check on the reference Mac is still owed.
 
 If spike 1 fails, stop and bring back the alternative (spawning mounted meshes
 from `GrayBoxCourseActor` by fixed asset table). Do not proceed on the plan above.
@@ -167,7 +204,7 @@ from `GrayBoxCourseActor` by fixed asset table). Do not proceed on the plan abov
 | 5 | Kits, then per-segment dressing, with provenance for each import | Editor validator plus provenance inventory pass before cook |
 | 6 | Audio bed | Provenance approval; ducking and global-control tests |
 | 7 | `make han-external-cook`, `make content-release-package` (release owner, `content-current`), publish revision | Signed catalog accepted by the app |
-| 8 | Measurements and proposed cap | Recorded in the evidence record |
+| 8 | Frame-time, load, and memory measurements and proposed frame budget (no size measurement) | Recorded in the evidence record |
 | 9 | Owner full-route review, packaged Shipping, reference Mac | Owner sign-off recorded |
 
 Step 7 signing and step 9 packaged runs are owner-run. Per the memory note,
@@ -195,7 +232,9 @@ unless the owner overrides for that instance.
   blocked until legal review.
 - The packaged failure cases from Milestone 1 stay unverified; content added here
   ships through an unproven fallback path.
-- The download size will grow, and no cap exists until close-out.
+- Package size is unmeasured and only bounded by the 100 GiB cap. The 100 GiB
+  free-storage headroom was sized for a 32 GiB package and now sits at the cap;
+  revisit it when size is next considered.
 
 ## Out of scope
 

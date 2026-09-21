@@ -50,7 +50,7 @@ Boot verifies retained content and opens the local menu without waiting for netw
 
 The Content page is the only place a user can begin a download. Transfers resume into a staging directory and activation is pending until the next launch. No download, activation, withdrawal, or mount operation may start or change an active workout.
 
-The compressed Han package is capped at 32 GiB. Before download, the client requires at least 100 GiB free storage, leaving room for a staged replacement alongside active and last-known-good content. If the requirement is not met, it declines the transfer with required-space guidance and preserves existing content. Partial or invalid staged files are never mounted.
+The compressed Han package is capped at 32 GiB (raised to 100 GiB by owner decision in [Milestone 2](05-milestone-2-han-river-wiring-and-production.md), 2026-09-21). Before download, the client requires at least 100 GiB free storage, leaving room for a staged replacement alongside active and last-known-good content. If the requirement is not met, it declines the transfer with required-space guidance and preserves existing content. Partial or invalid staged files are never mounted.
 
 An installed Han catalog remains trusted for seven days from its signed issuance. If no successful refresh occurs before expiry, Han River is disabled until refresh succeeds; Standard remains usable indefinitely offline. A successful signed withdrawal similarly disables new Han entry without altering historical session records.
 

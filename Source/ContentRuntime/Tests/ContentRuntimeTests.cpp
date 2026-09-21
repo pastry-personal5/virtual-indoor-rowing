@@ -508,10 +508,28 @@ void TestCourseLevelTableAndAllowlist()
 	assert(!ContentRuntime::IsCourseLevelActorClassAllowed("/Script/VirtualRowing.GrayBoxCourseActor") && "project classes are rejected");
 	assert(!ContentRuntime::IsCourseLevelActorClassAllowed("/Script/Engine.LevelScriptBlueprint") && "level Blueprints are rejected");
 	assert(!ContentRuntime::IsCourseLevelActorClassAllowed("") && "an empty class name is rejected");
+	assert(ContentRuntime::CourseLevelActorRequiresComponentCheck("/Script/Engine.Actor") && "a plain Actor is component-checked");
+	assert(!ContentRuntime::CourseLevelActorRequiresComponentCheck("/Script/Engine.StaticMeshActor") && "typed actors are not component-checked");
+	assert(ContentRuntime::IsCourseLevelComponentClassAllowed("/Script/Engine.HierarchicalInstancedStaticMeshComponent") && "HISM components are allowed");
+	assert(ContentRuntime::IsCourseLevelComponentClassAllowed("/Script/Engine.SceneComponent") && "a scene root is allowed");
+	assert(!ContentRuntime::IsCourseLevelComponentClassAllowed("/Script/Engine.AudioComponent") && "audio is not allowed on a plain Actor yet");
+	assert(!ContentRuntime::IsCourseLevelComponentClassAllowed("/Script/Engine.ChildActorComponent") && "child-actor components are rejected");
+	assert(!ContentRuntime::IsCourseLevelComponentClassAllowed("/Script/Engine.SplineMeshComponent") && "spline mesh is not allowed on a plain Actor yet");
+	assert(!ContentRuntime::IsCourseLevelComponentClassAllowed("/Game/Evil/BP_Comp.BP_Comp_C") && "Blueprint components are rejected");
+	assert(!ContentRuntime::IsCourseLevelComponentClassAllowed("") && "an empty component class name is rejected");
+}
+
+void TestPackageSizeCap()
+{
+	constexpr std::uint64_t GiB = 1024ULL * 1024ULL * 1024ULL;
+	static_assert(ContentRuntime::MaximumCompressedPackageBytes == 100ULL * GiB, "Han package cap is 100 GiB");
+	// The free-space rule adds the package to a fixed 100 GiB headroom, so it scales with the cap.
+	static_assert(ContentRuntime::MinimumFreeStorageBytes == 100ULL * GiB, "free-space headroom is unchanged");
 }
 
 int main()
 {
+	TestPackageSizeCap();
 	TestManifestTrustAndPolicy();
 	TestCanonicalAndBoundedParsing();
 	TestInventoryAndPackageValidation();
