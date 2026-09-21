@@ -6,6 +6,7 @@
 #include "WorkoutHudWidget.h"
 
 #include "Engine/World.h"
+#include "Materials/MaterialInstanceDynamic.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -89,6 +90,21 @@ void FCoursePresentationSpec::Define()
 		HanCourse->SetAuthoredLevelActive(true);
 		TestTrue(TEXT("authored level can take over"), HanCourse->IsAuthoredLevelActiveForTesting());
 		HanCourse->Destroy(); });
+
+	It("animates the kit water and freezes it only for reduced motion", [this]()
+	   {
+		const UMaterialInterface *WaterMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Water/M_CourseWater.M_CourseWater"));
+		if (!TestNotNull(TEXT("the cooked water material exists"), WaterMaterial))
+			return;
+		TestTrue(TEXT("the kit water runs at the material's own motion by default"), Course->GetWaterMotionScaleForTesting() > 0.0f);
+		UMaterialInstanceDynamic *Probe = UMaterialInstanceDynamic::Create(const_cast<UMaterialInterface *>(WaterMaterial), nullptr);
+		AGrayBoxCourseActor::ApplyWaterMotion(*Probe, false);
+		float Scale = -1.0f;
+		Probe->GetScalarParameterValue(TEXT("MotionScale"), Scale);
+		TestTrue(TEXT("normal motion leaves the default"), Scale > 0.0f);
+		AGrayBoxCourseActor::ApplyWaterMotion(*Probe, true);
+		Probe->GetScalarParameterValue(TEXT("MotionScale"), Scale);
+		TestEqual(TEXT("reduced motion freezes the wave phase"), Scale, 0.0f); });
 
 	It("yields the kit's start-area landmarks to the authored level and restores them", [this]()
 	   {

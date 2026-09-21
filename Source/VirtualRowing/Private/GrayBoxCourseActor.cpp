@@ -7,9 +7,11 @@
 #include "Components/SplineMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/TextRenderComponent.h"
+#include "Engine/Level.h"
 #include "Engine/World.h"
 #include "Engine/StaticMesh.h"
 #include "Kismet/KismetMathLibrary.h"
+#include "Materials/Material.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
@@ -73,6 +75,10 @@ AGrayBoxCourseActor::AGrayBoxCourseActor()
 	CubeMesh = CubeFinder.Object;
 	CylinderMesh = CylinderFinder.Object;
 	CourseMaterial = MaterialFinder.Object;
+	// Water is authored as a texture-free, math-only material (Scripts/build_water_material.py),
+	// so it is plain cooked data. If it is missing the flat primitive water stays.
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> WaterFinder(TEXT("/Game/Water/M_CourseWater.M_CourseWater"));
+	WaterMaterial = WaterFinder.Object;
 }
 
 void AGrayBoxCourseActor::BeginPlay()
@@ -255,7 +261,17 @@ void AGrayBoxCourseActor::InitializeCourse()
 		CourseEdgeMeshes.Add(CourseEdge);
 	}
 
-	UStaticMeshComponent *Water = MakeMesh(TEXT("Water"), Cube, SceneRoot, bIsHanRiverRoute ? FVector(5'400.0, HanRiverWidthCm / 100.0, 0.1) : FVector(680.0, 205.0, 0.1), bIsHanRiverRoute ? FLinearColor(0.025f, 0.10f, 0.18f) : FLinearColor(0.03f, 0.20f, 0.35f));
+	const FLinearColor WaterColor = bIsHanRiverRoute ? FLinearColor(0.025f, 0.10f, 0.18f) : FLinearColor(0.03f, 0.20f, 0.35f);
+	UStaticMeshComponent *Water = MakeMesh(TEXT("Water"), Cube, SceneRoot, bIsHanRiverRoute ? FVector(5'400.0, HanRiverWidthCm / 100.0, 0.1) : FVector(680.0, 205.0, 0.1), WaterColor);
+	if (WaterMaterial)
+	{
+		// Ambient, world-anchored animation only: it reads no workout fact, so it can
+		// neither imply speed nor synthesize distance.
+		UMaterialInstanceDynamic *Dynamic = UMaterialInstanceDynamic::Create(WaterMaterial, Water);
+		Dynamic->SetVectorParameterValue(TEXT("DeepColor"), WaterColor);
+		ApplyWaterMotion(*Dynamic, ReduceMotionRequested());
+		Water->SetMaterial(0, Dynamic);
+	}
 	Water->SetRelativeLocation(FVector(0.0, 0.0, -10.0));
 	WaterSurface = Water;
 	EnvironmentMeshes.Add(Water);
@@ -380,6 +396,43 @@ void AGrayBoxCourseActor::ApplyPresentation(const FCoursePresentationSnapshot &S
 	CameraRotation.Roll = 0.0f;
 	InspectionCamera->SetFieldOfView(50.0f);
 	InspectionCamera->SetWorldLocationAndRotation(CameraLocation, CameraRotation);
+}
+
+void AGrayBoxCourseActor::ApplyWaterMotion(UMaterialInstanceDynamic &Water, bool bReduceMotion)
+{
+	// Only the reduced-motion case overrides the material's own calm default.
+	if (bReduceMotion)
+		Water.SetScalarParameterValue(TEXT("MotionScale"), 0.0f);
+}
+
+void AGrayBoxCourseActor::ApplyReducedMotionToLevelWater(ULevel &Level)
+{
+	for (const AActor *Actor : Level.Actors)
+	{
+		if (!Actor)
+			continue;
+		for (UActorComponent *Component : Actor->GetComponents())
+		{
+			UPrimitiveComponent *Primitive = Cast<UPrimitiveComponent>(Component);
+			if (!Primitive)
+				continue;
+			for (int32 Slot = 0; Slot < Primitive->GetNumMaterials(); ++Slot)
+			{
+				const UMaterialInterface *Material = Primitive->GetMaterial(Slot);
+				const UMaterial *Base = Material ? Material->GetMaterial() : nullptr;
+				if (Base && Base->GetName() == TEXT("M_Han_Water"))
+					ApplyWaterMotion(*Primitive->CreateDynamicMaterialInstance(Slot, nullptr), true);
+			}
+		}
+	}
+}
+
+float AGrayBoxCourseActor::GetWaterMotionScaleForTesting() const
+{
+	float Scale = -1.0f;
+	if (const UMaterialInstanceDynamic *Dynamic = WaterSurface ? Cast<UMaterialInstanceDynamic>(WaterSurface->GetMaterial(0)) : nullptr)
+		Dynamic->GetScalarParameterValue(TEXT("MotionScale"), Scale);
+	return Scale;
 }
 
 bool AGrayBoxCourseActor::ReduceMotionRequested()

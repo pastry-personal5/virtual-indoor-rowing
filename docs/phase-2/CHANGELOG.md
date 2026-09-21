@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Planned and partly implemented Phase 2 Milestone 3, enhanced water
+  ([07-milestone-3-enhanced-water.md](07-milestone-3-enhanced-water.md)). A
+  texture-free, math-only material (`/Game/Water/M_CourseWater`, five analytic
+  directional waves with deep-water dispersion, distance-faded detail, capped
+  Fresnel sky tint) was built and recompiled through Unreal MCP, and the kit
+  water now uses it with a reduced-motion override. `M_Han_Water` in the Han
+  package was rebuilt in place with the same graph after the owner authorized free
+  Han asset edits (saved; the level still references it). Not run: `make unreal-smoke`, `CoursePresentationSpec`, a re-cook (so the packaged Han level still has the old water), or
+  any visual/performance check; `Scripts/build_water_material.py` is syntax-checked
+  only.
+
 - Han content diagnostics and update path (development aids, presentation only).
   A new right-hand `UContentPanelWidget` now holds the Han level state, course
   selection, package build time, Download, Content Licenses / Credits, and a

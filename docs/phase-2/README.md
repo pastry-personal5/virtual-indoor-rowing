@@ -40,6 +40,8 @@ network failure must leave the local menu, safe route, and local workout usable.
 
 | [Phase 2 Milestone 2](05-milestone-2-han-river-wiring-and-production.md) — Wire and enhance Han River course assets | Load the mounted Han content at runtime, allow mid-session course switching, and raise the whole 5 km route to production quality with an optional audio bed. |
 
+| [Phase 2 Milestone 3](07-milestone-3-enhanced-water.md) — Enhanced water surface and animation | A calm, realistic, world-anchored animated water surface on the built-in kit and the Han level, presentation-only, with no current, wake, or PM-fact dependency. |
+
 | [Phase 2 Milestone 4](06-milestone-4-development-loop.md) — Shorten the development and content-iteration loops | Editor-safe Shipping builds, an uncooked Development run, a loose-level course reload, and a one-command local Han publish, without touching the Shipping trust boundary. |
 
 Only the current milestones are scoped. Later Phase 2 milestones are planned

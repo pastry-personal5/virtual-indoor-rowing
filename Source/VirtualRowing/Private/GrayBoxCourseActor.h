@@ -11,7 +11,9 @@ class UDirectionalLightComponent;
 class USceneComponent;
 class USplineComponent;
 class USplineMeshComponent;
+class UMaterialInstanceDynamic;
 class UMaterialInterface;
+class ULevel;
 class UStaticMesh;
 class UStaticMeshComponent;
 class UTextRenderComponent;
@@ -42,6 +44,10 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	static float InterpolateOarMotion(float Current, float Target, float DeltaSeconds);
 	float GetCameraFieldOfViewForTesting() const;
 	static bool ReduceMotionRequested();
+	// Presentation-only water animation. Reduced motion freezes the water's wave phase.
+	static void ApplyWaterMotion(UMaterialInstanceDynamic &Water, bool bReduceMotion);
+	static void ApplyReducedMotionToLevelWater(ULevel &Level);
+	float GetWaterMotionScaleForTesting() const;
 	float GetCourseLightIntensityForTesting() const;
 	int32 GetMarkerCountForTesting() const;
 	int32 GetCourseEdgeSegmentCountForTesting() const;
@@ -90,6 +96,8 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	TObjectPtr<UStaticMesh> CylinderMesh;
 	UPROPERTY()
 	TObjectPtr<UMaterialInterface> CourseMaterial;
+	UPROPERTY()
+	TObjectPtr<UMaterialInterface> WaterMaterial;
 	UPROPERTY(Transient)
 	TObjectPtr<UStaticMeshComponent> WaterSurface;
 	UPROPERTY(Transient)

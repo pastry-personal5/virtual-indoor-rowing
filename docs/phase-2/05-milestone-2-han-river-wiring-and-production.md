@@ -120,7 +120,9 @@ Technical approach:
   optimization was unavailable in UE 5.8 for the transient assemblies, so spike 2
   covers this.
 - Water: a single non-interactive surface with subtle normal variation and
-  restrained reflections. No current, wake, or challenge treatment.
+  restrained reflections. No current, wake, or challenge treatment. The water
+  surface and its animation are refined in
+  [Milestone 3](07-milestone-3-enhanced-water.md).
 - Lighting: one calibrated blue-hour preset, constrained exposure, warm
   practicals. Verified with the HUD at normal and large text and high contrast.
 - Third-party art is admitted per asset. CC0 and original assets are cooked-eligible.
