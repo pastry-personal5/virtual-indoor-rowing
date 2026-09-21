@@ -10,6 +10,16 @@
 #include "CourseSubsystem.generated.h"
 
 class AGrayBoxCourseActor;
+class ULevelStreamingDynamic;
+
+/** Lifecycle of the downloaded Han level; it never gates the workout. */
+enum class EAuthoredLevelState : uint8
+{
+	None,
+	Pending,
+	Shown,
+	Rejected
+};
 
 /** Pull-only world adapter from the workout snapshot to reversible course motion. */
 UCLASS()
@@ -32,6 +42,15 @@ class VIRTUALROWING_API UCourseSubsystem : public UWorldSubsystem, public FTicka
 	// world actor and active course camera behind it.
 	void EnsurePresentation();
 	void PumpForTesting(uint64 NowMonotonicNs);
+	EAuthoredLevelState GetAuthoredLevelStateForTesting() const
+	{
+		return AuthoredLevelState;
+	}
+	// Stable, redacted category for the last authored-level failure; empty when none.
+	const FString &GetAuthoredLevelFailure() const
+	{
+		return AuthoredLevelFailure;
+	}
 
   private:
 	FCoursePresentationRuntime Runtime;
@@ -39,8 +58,17 @@ class VIRTUALROWING_API UCourseSubsystem : public UWorldSubsystem, public FTicka
 	TObjectPtr<AGrayBoxCourseActor> CourseActor;
 	FString LastSampleKey;
 	FString LastRouteKey;
+	FString ActorRouteKey;
+	UPROPERTY(Transient)
+	TObjectPtr<ULevelStreamingDynamic> AuthoredLevel;
+	EAuthoredLevelState AuthoredLevelState = EAuthoredLevelState::None;
+	FString AuthoredLevelFailure;
 	uint64 SampleObservedNs = 0;
 
 	void EnsureCourseActor();
+	void DestroyCourseScene();
+	void BeginAuthoredLevelLoad();
+	void PollAuthoredLevel();
+	void RejectAuthoredLevel(const FString &Category);
 	void Pump(uint64 NowMonotonicNs);
 };

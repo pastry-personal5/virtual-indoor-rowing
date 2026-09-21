@@ -247,6 +247,7 @@ void AGrayBoxCourseActor::InitializeCourse()
 
 	UStaticMeshComponent *Water = MakeMesh(TEXT("Water"), Cube, SceneRoot, bIsHanRiverRoute ? FVector(5'400.0, HanRiverWidthCm / 100.0, 0.1) : FVector(680.0, 205.0, 0.1), bIsHanRiverRoute ? FLinearColor(0.025f, 0.10f, 0.18f) : FLinearColor(0.03f, 0.20f, 0.35f));
 	Water->SetRelativeLocation(FVector(0.0, 0.0, -10.0));
+	WaterSurface = Water;
 	EnvironmentMeshes.Add(Water);
 	for (int32 Side : {-1, 1})
 	{
@@ -397,6 +398,44 @@ int32 AGrayBoxCourseActor::GetHanLandmarkCountForTesting() const
 {
 	return HanLandmarkMeshes.Num();
 }
+FVector AGrayBoxCourseActor::GetAuthoredLevelOriginCm()
+{
+	// The Han spline starts at local X = -250,000 cm; the authored level's own
+	// origin is its route start.
+	return FVector(-250'000.0, 0.0, 0.0);
+}
+
+void AGrayBoxCourseActor::SetAuthoredLevelActive(bool bActive)
+{
+	if (!bIsHanRiverRoute || !bInitialized || bAuthoredLevelActive == bActive)
+		return;
+	bAuthoredLevelActive = bActive;
+	// Authored footprint: the first 500 m plus the bridge approach behind the start.
+	const double FootprintEndX = GetAuthoredLevelOriginCm().X + 50'000.0;
+	for (UStaticMeshComponent *Landmark : HanLandmarkMeshes)
+	{
+		if (Landmark && Landmark->GetComponentLocation().X < FootprintEndX)
+			Landmark->SetVisibility(!bActive);
+	}
+	if (CourseLight)
+		CourseLight->SetVisibility(!bActive);
+	if (WaterSurface)
+		WaterSurface->SetRelativeLocation(FVector(0.0, 0.0, bActive ? -80.0 : -10.0));
+}
+
+bool AGrayBoxCourseActor::IsAuthoredLevelActiveForTesting() const
+{
+	return bAuthoredLevelActive;
+}
+
+int32 AGrayBoxCourseActor::GetVisibleHanLandmarkCountForTesting() const
+{
+	int32 Count = 0;
+	for (const UStaticMeshComponent *Landmark : HanLandmarkMeshes)
+		Count += (Landmark && Landmark->IsVisible()) ? 1 : 0;
+	return Count;
+}
+
 bool AGrayBoxCourseActor::HasHanRiverEnvironmentForTesting() const
 {
 	return bIsHanRiverRoute && HanLandmarkMeshes.Num() > 0;

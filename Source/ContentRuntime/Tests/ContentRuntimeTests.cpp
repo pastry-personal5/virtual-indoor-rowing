@@ -1,6 +1,7 @@
 #include "ContentRuntime/ContentInventory.h"
 #include "ContentRuntime/ContentManifest.h"
 #include "ContentRuntime/ContentState.h"
+#include "ContentRuntime/CourseLevel.h"
 
 #include "rowing/v1/content.pb.h"
 
@@ -497,6 +498,18 @@ namespace
 	}
 } // namespace
 
+void TestCourseLevelTableAndAllowlist()
+{
+	assert(ContentRuntime::CourseLevelAssetPathForRoute("route.han-river.5k") == "/Game/Phase2/HanRiver/Maps/L_HanRiver_BlueHour" && "Han level is selected by route ID");
+	assert(!ContentRuntime::CourseLevelAssetPathForRoute("route.standard.2k").has_value() && "Standard has no downloaded level");
+	assert(!ContentRuntime::CourseLevelAssetPathForRoute("/Game/Evil/Map").has_value() && "a package path is never a route ID");
+	assert(ContentRuntime::IsCourseLevelActorClassAllowed("/Script/Engine.StaticMeshActor") && "static mesh actors are allowed");
+	assert(!ContentRuntime::IsCourseLevelActorClassAllowed("/Game/Evil/BP_Actor.BP_Actor_C") && "Blueprint classes are rejected");
+	assert(!ContentRuntime::IsCourseLevelActorClassAllowed("/Script/VirtualRowing.GrayBoxCourseActor") && "project classes are rejected");
+	assert(!ContentRuntime::IsCourseLevelActorClassAllowed("/Script/Engine.LevelScriptBlueprint") && "level Blueprints are rejected");
+	assert(!ContentRuntime::IsCourseLevelActorClassAllowed("") && "an empty class name is rejected");
+}
+
 int main()
 {
 	TestManifestTrustAndPolicy();
@@ -504,5 +517,6 @@ int main()
 	TestInventoryAndPackageValidation();
 	TestBootFallbackAndWorkoutGuard();
 	TestCcBySaVersionsAndNoticeFailures();
+	TestCourseLevelTableAndAllowlist();
 	std::cout << "content runtime tests passed\n";
 }

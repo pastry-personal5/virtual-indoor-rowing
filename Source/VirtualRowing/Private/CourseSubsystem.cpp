@@ -5,9 +5,13 @@
 #include "WorkoutSubsystem.h"
 
 #include "Engine/GameInstance.h"
+#include "Engine/Level.h"
+#include "Engine/LevelStreamingDynamic.h"
+#include "Misc/PackageName.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 
+#include "ContentRuntime/CourseLevel.h"
 #include "WorkoutRuntime/WorkoutSnapshot.h"
 
 #include <chrono>
@@ -52,6 +56,11 @@ namespace
 		}
 		return Input;
 	}
+
+	FString RouteKeyOf(const ContentRuntime::FRouteDefinition &Route)
+	{
+		return UTF8_TO_TCHAR((Route.RouteId + ":" + Route.SemanticVersion + ":" + Route.ContentSetId).c_str());
+	}
 } // namespace
 
 void UCourseSubsystem::Initialize(FSubsystemCollectionBase &Collection)
@@ -61,11 +70,7 @@ void UCourseSubsystem::Initialize(FSubsystemCollectionBase &Collection)
 
 void UCourseSubsystem::Deinitialize()
 {
-	if (CourseActor)
-	{
-		CourseActor->Destroy();
-		CourseActor = nullptr;
-	}
+	DestroyCourseScene();
 	Runtime.Reset();
 	Super::Deinitialize();
 }
@@ -110,7 +115,7 @@ void UCourseSubsystem::Pump(uint64 NowMonotonicNs)
 	if (Content)
 	{
 		const ContentRuntime::FRouteDefinition &Route = Content->GetSelectedRoute();
-		const FString RouteKey = UTF8_TO_TCHAR((Route.RouteId + ":" + Route.SemanticVersion + ":" + Route.ContentSetId).c_str());
+		const FString RouteKey = RouteKeyOf(Route);
 		if (RouteKey != LastRouteKey)
 		{
 			Runtime.SelectRoute(Route);
@@ -146,6 +151,106 @@ void UCourseSubsystem::Pump(uint64 NowMonotonicNs)
 		CourseActor->ApplyPresentation(Snapshot);
 }
 
+void UCourseSubsystem::DestroyCourseScene()
+{
+	if (AuthoredLevel && IsValid(AuthoredLevel))
+	{
+		AuthoredLevel->SetShouldBeVisible(false);
+		AuthoredLevel->SetShouldBeLoaded(false);
+	}
+	AuthoredLevel = nullptr;
+	AuthoredLevelState = EAuthoredLevelState::None;
+	AuthoredLevelFailure.Empty();
+	if (CourseActor)
+	{
+		CourseActor->Destroy();
+		CourseActor = nullptr;
+	}
+	ActorRouteKey.Empty();
+}
+
+void UCourseSubsystem::RejectAuthoredLevel(const FString &Category)
+{
+	// The built-in kit stays the visible course; only a redacted category is kept.
+	UE_LOG(LogTemp, Warning, TEXT("Han authored level rejected: %s"), *Category);
+	AuthoredLevelFailure = Category;
+	AuthoredLevelState = EAuthoredLevelState::Rejected;
+	if (AuthoredLevel && IsValid(AuthoredLevel))
+	{
+		AuthoredLevel->SetShouldBeVisible(false);
+		AuthoredLevel->SetShouldBeLoaded(false);
+	}
+	AuthoredLevel = nullptr;
+}
+
+void UCourseSubsystem::BeginAuthoredLevelLoad()
+{
+	UWorld *World = GetWorld();
+	const UGameInstance *GameInstance = World ? World->GetGameInstance() : nullptr;
+	const UContentSubsystem *Content = GameInstance ? GameInstance->GetSubsystem<UContentSubsystem>() : nullptr;
+	if (!Content || !Content->IsHanContentMounted())
+		return;
+	// The table is client-owned; the signed package never names the level.
+	const std::optional<std::string> LevelPath = ContentRuntime::CourseLevelAssetPathForRoute(Content->GetSelectedRoute().RouteId);
+	if (!LevelPath)
+		return;
+	const FString PackageName = UTF8_TO_TCHAR(LevelPath->c_str());
+	if (!FPackageName::DoesPackageExist(PackageName))
+	{
+		RejectAuthoredLevel(TEXT("course.level_missing"));
+		return;
+	}
+	ULevelStreamingDynamic::FLoadLevelInstanceParams Params(World, PackageName, FTransform(FRotator::ZeroRotator, AGrayBoxCourseActor::GetAuthoredLevelOriginCm()));
+	Params.bInitiallyVisible = false;
+	bool bSuccess = false;
+	ULevelStreamingDynamic *Streaming = ULevelStreamingDynamic::LoadLevelInstance(Params, bSuccess);
+	if (!bSuccess || !Streaming)
+	{
+		RejectAuthoredLevel(TEXT("course.level_load_failed"));
+		return;
+	}
+	AuthoredLevel = Streaming;
+	AuthoredLevelState = EAuthoredLevelState::Pending;
+}
+
+void UCourseSubsystem::PollAuthoredLevel()
+{
+	if (AuthoredLevelState != EAuthoredLevelState::Pending)
+		return;
+	if (!AuthoredLevel || !IsValid(AuthoredLevel))
+	{
+		RejectAuthoredLevel(TEXT("course.level_load_failed"));
+		return;
+	}
+	if (AuthoredLevel->GetLevelStreamingState() == ELevelStreamingState::FailedToLoad)
+	{
+		RejectAuthoredLevel(TEXT("course.level_load_failed"));
+		return;
+	}
+	ULevel *Loaded = AuthoredLevel->GetLoadedLevel();
+	if (!Loaded)
+		return;
+	// The level is still hidden here. Every actor must be a native, allowlisted
+	// engine class before it can be seen: no Blueprint or project code may ride in.
+	for (const AActor *Actor : Loaded->Actors)
+	{
+		if (!Actor)
+			continue;
+		const UClass *Class = Actor->GetClass();
+		const FString ClassPath = Class->GetClassPathName().ToString();
+		if (!Class->HasAnyClassFlags(CLASS_Native) || !ContentRuntime::IsCourseLevelActorClassAllowed(std::string(TCHAR_TO_UTF8(*ClassPath))))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Han authored level actor class not allowed: %s"), *ClassPath);
+			RejectAuthoredLevel(TEXT("course.level_class_rejected"));
+			return;
+		}
+	}
+	AuthoredLevel->SetShouldBeVisible(true);
+	AuthoredLevelState = EAuthoredLevelState::Shown;
+	if (CourseActor)
+		CourseActor->SetAuthoredLevelActive(true);
+}
+
 void UCourseSubsystem::EnsureCourseActor()
 {
 	if (IsRunningCommandlet())
@@ -153,18 +258,24 @@ void UCourseSubsystem::EnsureCourseActor()
 	UWorld *World = GetWorld();
 	if (!World || !SupportsWorldType(World->WorldType))
 		return;
+	const UGameInstance *GameInstance = World->GetGameInstance();
+	const UContentSubsystem *Content = GameInstance ? GameInstance->GetSubsystem<UContentSubsystem>() : nullptr;
+	const FString CurrentRouteKey = Content ? RouteKeyOf(Content->GetSelectedRoute()) : FString();
+	// A selection change (allowed only while idle) rebuilds the scene from scratch.
+	if (CourseActor && IsValid(CourseActor) && CurrentRouteKey != ActorRouteKey)
+		DestroyCourseScene();
 	if (!CourseActor || !IsValid(CourseActor))
 	{
 		CourseActor = World->SpawnActor<AGrayBoxCourseActor>();
 		if (!CourseActor)
 			return;
-		if (UGameInstance *GameInstance = World->GetGameInstance())
-		{
-			if (UContentSubsystem *Content = GameInstance->GetSubsystem<UContentSubsystem>())
-				CourseActor->ConfigureRoute(Content->GetSelectedRoute());
-		}
+		if (Content)
+			CourseActor->ConfigureRoute(Content->GetSelectedRoute());
 		CourseActor->InitializeCourse();
+		ActorRouteKey = CurrentRouteKey;
+		BeginAuthoredLevelLoad();
 	}
+	PollAuthoredLevel();
 	// The controller can appear after the subsystem's first tick. Reasserting the
 	// fixed view target also prevents gameplay input from replacing this milestone's
 	// deliberately non-configurable inspection camera.

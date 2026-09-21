@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Milestone 2 wiring (compiled, not yet run in a mounted package). The client
+  now owns a route-ID-to-level table (`ContentRuntime/CourseLevel.h`) and an
+  actor-class allowlist. `UCourseSubsystem` streams the mounted Han level as a
+  hidden dynamic sublevel, checks every actor is a native allowlisted class, and
+  only then shows it; any failure keeps the built-in kit and records a redacted
+  category. A route-selection change now destroys and rebuilds the course scene
+  (selection is already idle-only), so no restart is needed. The authored level
+  is 500 m, so it overlays the kit's start area instead of replacing the route
+  baseline; `AGrayBoxCourseActor::SetAuthoredLevelActive` is reversible.
+  Covered by `content_runtime_tests` and `CoursePresentationSpec`
+  (`make build && make test`, `make format-check`, `make unreal-smoke` pass).
+
 - Marked Phase 2 Milestone 1 completed by owner decision on 2026-09-21. The
   evidence record lists what was demonstrated (external cook, signed release,
   download, next-launch activation, mount) and the packaged-canary checks that

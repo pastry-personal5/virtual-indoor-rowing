@@ -185,6 +185,11 @@ bool UContentSubsystem::IsHanAvailable() const
 	return Impl && Impl->bHanAvailable;
 }
 
+bool UContentSubsystem::IsHanContentMounted() const
+{
+	return Impl && !Impl->MountedInstallPath.IsEmpty();
+}
+
 FString UContentSubsystem::GetActivePackageNotice() const
 {
 	return Impl ? Impl->ActivePackageNotice : FString();

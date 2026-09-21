@@ -66,6 +66,28 @@ void FCoursePresentationSpec::Define()
 		TestFalse(TEXT("Han endpoint stays open rather than wrapping"), HanCourse->GetCourseTransform(0.0).GetLocation().Equals(HanCourse->GetCourseTransform(5'000'000.0).GetLocation(), 1.0));
 		HanCourse->Destroy(); });
 
+	It("yields the kit's start-area landmarks to the authored level and restores them", [this]()
+	   {
+		AGrayBoxCourseActor *HanCourse = World->SpawnActor<AGrayBoxCourseActor>();
+		ContentRuntime::FRouteDefinition HanRoute = ContentRuntime::BuiltInStandardRouteDefinition();
+		HanRoute.RouteId = "route.han-river.5k";
+		HanRoute.SemanticVersion = "1.0.0";
+		HanRoute.ContentSetId = "han-river-alpha-1";
+		HanRoute.LengthMm = 5'000'000;
+		HanRoute.bClosed = false;
+		HanCourse->ConfigureRoute(HanRoute);
+		HanCourse->InitializeCourse();
+		const int32 AllLandmarks = HanCourse->GetVisibleHanLandmarkCountForTesting();
+		HanCourse->SetAuthoredLevelActive(true);
+		TestTrue(TEXT("overlap is hidden"), HanCourse->IsAuthoredLevelActiveForTesting());
+		TestTrue(TEXT("start-area landmarks yield"), HanCourse->GetVisibleHanLandmarkCountForTesting() < AllLandmarks);
+		TestTrue(TEXT("the rest of the route keeps the kit"), HanCourse->GetVisibleHanLandmarkCountForTesting() > 0);
+		HanCourse->SetAuthoredLevelActive(false);
+		TestEqual(TEXT("fallback restores every landmark"), HanCourse->GetVisibleHanLandmarkCountForTesting(), AllLandmarks);
+		Course->SetAuthoredLevelActive(true);
+		TestFalse(TEXT("the Standard route ignores the authored level"), Course->IsAuthoredLevelActiveForTesting());
+		HanCourse->Destroy(); });
+
 	It("applies catch drive finish recovery and disconnect-return proxy transforms", [this]()
 	   {
 		FCoursePresentationSnapshot Snapshot;

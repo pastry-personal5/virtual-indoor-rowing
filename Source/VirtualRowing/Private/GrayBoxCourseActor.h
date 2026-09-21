@@ -48,6 +48,16 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	bool HasHanRiverEnvironmentForTesting() const;
 	bool HasInputComponentForTesting() const;
 
+	// The downloaded Han level covers only the first ~500 m of the route, so the
+	// built-in kit stays as the whole-route baseline. While the level is shown the
+	// kit's own overlapping landmarks, light and water surface yield to it. The
+	// call is reversible and has no effect on any workout fact.
+	void SetAuthoredLevelActive(bool bActive);
+	bool IsAuthoredLevelActiveForTesting() const;
+	int32 GetVisibleHanLandmarkCountForTesting() const;
+	// Offset that places the authored level's origin at the route start.
+	static FVector GetAuthoredLevelOriginCm();
+
   private:
 	UPROPERTY(Transient)
 	TObjectPtr<USceneComponent> SceneRoot;
@@ -80,6 +90,8 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	UPROPERTY()
 	TObjectPtr<UMaterialInterface> CourseMaterial;
 	UPROPERTY(Transient)
+	TObjectPtr<UStaticMeshComponent> WaterSurface;
+	UPROPERTY(Transient)
 	TArray<TObjectPtr<UStaticMeshComponent>> EnvironmentMeshes;
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UStaticMeshComponent>> HanLandmarkMeshes;
@@ -90,6 +102,7 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 
 	bool bInitialized = false;
 	bool bIsHanRiverRoute = false;
+	bool bAuthoredLevelActive = false;
 	ContentRuntime::FRouteDefinition Route = ContentRuntime::BuiltInStandardRouteDefinition();
 	bool bHasOarPresentation = false;
 	float SmoothedHandsX = 0.0f;

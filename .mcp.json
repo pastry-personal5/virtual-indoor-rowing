@@ -1,14 +1,23 @@
 {
-  "mcpServers": {
-    "filesystem": {
-      "type": "stdio",
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-filesystem",
-        "/Users/user1/work/cur"
-      ],
-      "env": {}
-    }
-  }
+	"mcpServers":
+	{
+		"filesystem":
+		{
+			"type": "stdio",
+			"command": "npx",
+			"args": [
+				"-y",
+				"@modelcontextprotocol/server-filesystem",
+				"/Users/user1/work/cur"
+			],
+			"env":
+			{
+			}
+		},
+		"unreal-mcp":
+		{
+			"type": "http",
+			"url": "http://127.0.0.1:8000/mcp"
+		}
+	}
 }

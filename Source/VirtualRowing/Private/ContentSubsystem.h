@@ -24,6 +24,9 @@ class VIRTUALROWING_API UContentSubsystem : public UGameInstanceSubsystem
 	const ContentRuntime::FRouteDefinition &GetSelectedRoute() const;
 	FString GetHanAvailabilityReason() const;
 	bool IsHanAvailable() const;
+	// True once the verified Han IoStore is mounted in this process. Selecting the
+	// route alone never implies its authored level can be loaded.
+	bool IsHanContentMounted() const;
 	/** Returns the signed notice for the mounted package, for the Content Licenses/Credits view. */
 	FString GetActivePackageNotice() const;
 	FString GetContentLicensesCreditsText() const;

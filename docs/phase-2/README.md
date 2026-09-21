@@ -38,6 +38,8 @@ network failure must leave the local menu, safe route, and local workout usable.
 |---|---|
 | [Phase 2 Milestone 1](01-milestone-1-han-river-content-fallback.md) — Han River content delivery with Standard fallback | A data-only, signed Han River delivery path with a cooked Standard route that remains usable through content, renderer, network, storage, and catalog failure. |
 
+| [Phase 2 Milestone 2](05-milestone-2-han-river-wiring-and-production.md) — Wire and enhance Han River course assets | Load the mounted Han content at runtime, allow mid-session course switching, and raise the whole 5 km route to production quality with an optional audio bed. |
+
 Only the current milestone is scoped. Later Phase 2 milestones are planned
 individually, before work begins; no speculative sequencing or scope is
 recorded here. Passing this milestone records incremental progress only and
