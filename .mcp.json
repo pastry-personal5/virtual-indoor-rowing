@@ -18,6 +18,17 @@
 		{
 			"type": "http",
 			"url": "http://127.0.0.1:8000/mcp"
+		},
+		"blender":
+		{
+			"type": "stdio",
+			"command": "/Users/user1/.local/share/blender_mcp/mcp/.venv/bin/blender-mcp",
+			"args": [],
+			"env":
+			{
+				"BLENDER_MCP_HOST": "127.0.0.1",
+				"BLENDER_MCP_PORT": "9876"
+			}
 		}
 	}
 }
