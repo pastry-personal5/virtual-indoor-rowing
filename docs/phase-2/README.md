@@ -1,8 +1,8 @@
 # Delivery Phase 2: solo alpha and content pipeline
 
-Status: Planned — not started
+Status: In progress — Milestones 1 and 3 are owner-complete; Milestone 2 is in progress; the Phase 2 exit gate is not passed
 Owner: CTO / product
-Last reviewed: 2026-09-20
+Last reviewed: 2026-09-22
 
 ## Outcome
 
@@ -12,13 +12,13 @@ onboarding, app-guided training, local history/value, one production route,
 and a trustworthy content-delivery path without weakening PM authority, local
 durability, or offline completion.
 
-This packet is a plan, not authorization to start a milestone or a claim that
-the phase gate has passed.
+This packet records scoped Phase 2 work and does not claim that the phase exit
+gate has passed.
 
 ## Confirmed scope
 
 | Area | Phase 2 decision |
-|---|---|
+|---|---|---|
 | Alpha | CEO on the reference Model D/PM5 for four weeks; at least four completed rows and a recorded willingness-to-pay judgment |
 | Route | A downloadable 5 km Han River vertical slice plus a cooked-in 2 km Standard fallback route; both are peer course choices when Han River is usable |
 | Training | One beginner-friendly, fixed-time, app-guided plan; no PM-managed programming |
@@ -34,19 +34,19 @@ network failure must leave the local menu, safe route, and local workout usable.
 
 ## Scoped milestone
 
-| Milestone | Bounded outcome |
+| Milestone | Status | Bounded outcome |
 |---|---|
-| [Phase 2 Milestone 1](01-milestone-1-han-river-content-fallback.md) — Han River content delivery with Standard fallback | A data-only, signed Han River delivery path with a cooked Standard route that remains usable through content, renderer, network, storage, and catalog failure. |
+| [Phase 2 Milestone 1](01-milestone-1-han-river-content-fallback.md) — Han River content delivery with Standard fallback | Complete — owner decision | A data-only, signed Han River delivery path with a cooked Standard route that remains usable through content, renderer, network, storage, and catalog failure. |
 
-| [Phase 2 Milestone 2](05-milestone-2-han-river-wiring-and-production.md) — Wire and enhance Han River course assets | Load the mounted Han content at runtime, allow mid-session course switching, and raise the whole 5 km route to production quality with an optional audio bed. |
+| [Phase 2 Milestone 2](05-milestone-2-han-river-wiring-and-production.md) — Wire and enhance Han River course assets | In progress | Load the mounted Han content at runtime, allow mid-session course switching, and raise the whole 5 km route to production quality with an optional audio bed. |
 
-| [Phase 2 Milestone 3](07-milestone-3-enhanced-water.md) — Enhanced water surface and animation | A calm, realistic, world-anchored animated water surface on the built-in kit and the Han level, presentation-only, with no current, wake, or PM-fact dependency. |
+| [Phase 2 Milestone 3](07-milestone-3-enhanced-water.md) — Enhanced water surface and animation | Complete — owner decision | A calm, realistic, world-anchored animated water surface on the built-in kit and the Han level, presentation-only, with no current, wake, or PM-fact dependency. |
 
-| [Phase 2 Milestone 4](06-milestone-4-development-loop.md) — Shorten the development and content-iteration loops | Editor-safe Shipping builds, an uncooked Development run, a loose-level course reload, and a one-command local Han publish, without touching the Shipping trust boundary. |
+| [Phase 2 Milestone 10](06-milestone-10-development-loop.md) — Shorten the development and content-iteration loops | Planned — not started | Editor-safe Shipping builds, an uncooked Development run, a loose-level course reload, and a one-command local Han publish, without touching the Shipping trust boundary. |
 
-Only the current milestones are scoped. Later Phase 2 milestones are planned
+Only the listed milestones are currently scoped. Later Phase 2 milestones are planned
 individually, before work begins; no speculative sequencing or scope is
-recorded here. Passing this milestone records incremental progress only and
+recorded here. Completing a milestone records incremental progress only and
 does not pass the Phase 2 exit gate.
 
 ## Exit gate
@@ -64,7 +64,7 @@ does not pass the Phase 2 exit gate.
 
 QA-012 is excluded: executable signing, notarization, and the update channel
 begin in Phase 4 under [ADR-0008](../adr/0008-defer-macos-signing-to-phase-4.md).
-Before Milestone 2, resolve the existing QA-010 accessibility scope in the
+Before the Phase 2 exit gate, resolve the existing QA-010 accessibility scope in the
 [product scope](../architecture/01-product-scope.md); it cannot be weakened by
 omission.
 

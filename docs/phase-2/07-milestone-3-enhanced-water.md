@@ -1,8 +1,8 @@
 # Phase 2 Milestone 3: enhanced water surface and animation
 
-Status: In progress — kit and Han materials rebuilt in the editor; C++ not compiled, no re-cook, nothing observed in a running game
+Status: Complete — owner decision (2026-09-22); implementation scope complete, technical and runtime evidence deferred or unverified
 Owner: Client/content, technical art
-Last reviewed: 2026-09-21
+Last reviewed: 2026-09-22
 
 ## Purpose
 
@@ -100,19 +100,32 @@ and are needed before the packaged Han level shows the new water. The material
 has no imported bitmap, so the existing `han-river-unreal-editor-review-kit`
 provenance record still describes it; `provenance.json` is unchanged.
 
-## Gate
+## Completion record
 
-- `make build && make test`, `make format-check`, and `make unreal-smoke` pass.
-- `CoursePresentationSpec` passes, including the reduced-motion case.
-- Han `M_Han_Water` carries the same graph and `make content-canary` passes.
-- Owner-run, reference Mac: water reads as calm and realistic in the chase view at
-  normal and large text and high contrast; no reflection or highlight obscures the
-  HUD; no shimmer or visible tiling toward the horizon; `-ReduceMotion` freezes it.
-- Water GPU cost recorded against the 14.0 ms budget. No target is asserted before
-  it is measured.
-- No PM5 fact, distance, or rank path reads or is read by the water.
+The owner marks this milestone complete on 2026-09-22 for the scoped,
+presentation-only water implementation. This is incremental milestone
+completion and does not pass the Phase 2 exit gate.
 
-## Open decisions for the owner
+The following evidence remains deferred or unverified and must not be inferred
+from this completion decision:
+
+- `make build && make test`, `make format-check`, and `make unreal-smoke` have
+  not been rerun for this milestone's C++ changes.
+- `CoursePresentationSpec`, including the reduced-motion case, has not been run.
+- `M_Han_Water` has not been re-cooked or released, and `make content-canary`
+  has not been run against the rebuilt package.
+- Owner-run, reference-Mac review has not established that water reads as calm
+  and realistic in the chase view at normal and large text and high contrast;
+  no reflection or highlight obscures the HUD; no shimmer or visible tiling
+  appears toward the horizon; or `-ReduceMotion` freezes it.
+- Water GPU cost has not been recorded against the 14.0 ms budget.
+- The design has no PM5 fact, distance, or rank dependency; runtime evidence
+  for that isolation remains unrecorded.
+
+## Follow-up decisions for the owner
+
+These are follow-up presentation decisions, not blockers to the owner-decision
+completion above:
 
 1. Whether the kit should also get a real sky capture so reflections are physical
    instead of a tinted Fresnel term (needs lighting work in the kit map).

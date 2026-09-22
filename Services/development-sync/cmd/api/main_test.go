@@ -19,3 +19,29 @@ func TestObjectKeysRemainIdentityConfined(t *testing.T) {
 		t.Fatalf("object key = %q", got)
 	}
 }
+
+func TestSessionRoutesMatchOnlyDeclaredOpenAPIPaths(t *testing.T) {
+	const sessionID = "018b0c15-1234-7abc-8def-0123456789ab"
+	tests := []struct {
+		path   string
+		sid    string
+		action string
+		ok     bool
+	}{
+		{"/v1/sessions/" + sessionID, sessionID, "", true},
+		{"/v1/sessions/" + sessionID + "/finalize", sessionID, "finalize", true},
+		{"/v1/sessions/" + sessionID + "/upload", sessionID, "upload", true},
+		{"/v1/sessions/" + sessionID + "/upload-complete", sessionID, "upload-complete", true},
+		{"/v1/sessions/" + sessionID + "/processing-status", sessionID, "processing-status", true},
+		{"/v1/sessions/" + sessionID + "/", "", "", false},
+		{"/v1/sessions/" + sessionID + "/finalize/extra", "", "", false},
+		{"/v1/sessions/" + sessionID + "/extra/path", "", "", false},
+		{"//v1/sessions/" + sessionID, "", "", false},
+	}
+	for _, test := range tests {
+		sid, action, ok := parseSessionRoute(test.path)
+		if sid != test.sid || action != test.action || ok != test.ok {
+			t.Fatalf("parseSessionRoute(%q) = (%q, %q, %v)", test.path, sid, action, ok)
+		}
+	}
+}

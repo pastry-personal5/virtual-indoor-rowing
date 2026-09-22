@@ -23,6 +23,8 @@ namespace LocalData
 		using LocalData::Private::ComputeCrc32c;
 		using LocalData::Private::EncodeSamples;
 		using LocalData::Private::FSqliteConnection;
+		constexpr std::uint32_t SessionObjectContainerVersion = 1;
+		constexpr std::uint32_t SessionObjectSchemaVersion = 2;
 
 		std::string JournalEventKindToString(EJournalEventKind Kind)
 		{
@@ -142,7 +144,7 @@ namespace LocalData
 		void SerializeDeterministically(const rowing::v1::SessionObject &Object, std::string &Bytes)
 		{
 			Bytes.clear();
-			Bytes.resize(Object.ByteSizeLong());
+			Bytes.reserve(Object.ByteSizeLong());
 			google::protobuf::io::StringOutputStream Output(&Bytes);
 			google::protobuf::io::CodedOutputStream Coded(&Output);
 			Coded.SetSerializationDeterministic(true);
@@ -156,8 +158,8 @@ namespace LocalData
 		{
 			rowing::v1::SessionObject Object;
 			auto *Header = Object.mutable_header();
-			Header->set_container_version(1);
-			Header->set_schema_version(1);
+			Header->set_container_version(SessionObjectContainerVersion);
+			Header->set_schema_version(SessionObjectSchemaVersion);
 			Header->set_session_id(SessionIdBlob(Finalized.Summary.Id).data(), FRowingSessionId::ByteLength);
 			Header->set_disposition(SessionDispositionName(Finalized.TerminalEvent.Kind));
 			Header->set_provenance("local_journal");
@@ -198,7 +200,7 @@ namespace LocalData
 				Terminal->set_payload(Finalized.TerminalEvent.PayloadBlob);
 			}
 
-			auto Chunks = Connection.Prepare("SELECT first_sequence, last_sequence, codec, payload_blob, crc32c FROM sample_chunks WHERE session_id = ? ORDER BY first_sequence;");
+			auto Chunks = Connection.Prepare("SELECT first_sequence, last_sequence, codec, payload_blob FROM sample_chunks WHERE session_id = ? ORDER BY first_sequence;");
 			Chunks.BindText(1, Finalized.TerminalEvent.SessionId);
 			while (Chunks.Step())
 			{
@@ -216,7 +218,7 @@ namespace LocalData
 				else if (Codec != PlainCodec)
 					throw Private::FSqliteError("sample_chunks.codec has unknown value: " + Codec);
 				Chunk->set_validated_payload(Payload);
-				Chunk->set_crc32c(static_cast<std::uint32_t>(Chunks.ColumnInt64(4)));
+				Chunk->set_crc32c(ComputeCrc32c(Payload));
 			}
 			auto *Footer = Object.mutable_footer();
 			Footer->set_event_count(static_cast<std::uint64_t>(Object.events_size()));

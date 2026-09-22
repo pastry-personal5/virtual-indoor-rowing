@@ -3,6 +3,9 @@
 #include "LocalData/Crc32c.h"
 #include "LocalData/SampleChunkCodec.h"
 #include "LocalData/Sqlite.h"
+#include "rowing/v1/session_object.pb.h"
+
+#include <zstd.h>
 
 #include <atomic>
 #include <cstdlib>
@@ -10,6 +13,7 @@
 #include <functional>
 #include <iostream>
 #include <random>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -76,6 +80,30 @@ namespace
 			Chunk.Samples.push_back(MakeSample(FirstSequence + Index));
 		}
 		return Chunk;
+	}
+
+	rowing::v1::SessionObject DecodeSessionObject(std::string_view Compressed)
+	{
+		const unsigned long long DecodedSize =
+			ZSTD_getFrameContentSize(Compressed.data(), Compressed.size());
+		if (DecodedSize == ZSTD_CONTENTSIZE_ERROR ||
+			DecodedSize == ZSTD_CONTENTSIZE_UNKNOWN)
+		{
+			throw std::runtime_error("SessionObject has no bounded decoded size");
+		}
+		std::string Decoded(static_cast<std::size_t>(DecodedSize), '\0');
+		const std::size_t Written = ZSTD_decompress(
+			Decoded.data(), Decoded.size(), Compressed.data(), Compressed.size());
+		if (ZSTD_isError(Written) || Written != Decoded.size())
+		{
+			throw std::runtime_error("SessionObject decompression failed");
+		}
+		rowing::v1::SessionObject Object;
+		if (!Object.ParseFromString(Decoded))
+		{
+			throw std::runtime_error("SessionObject protobuf parsing failed");
+		}
+		return Object;
 	}
 
 	void schema_bootstrap_is_idempotent()
@@ -228,6 +256,7 @@ namespace
 		{
 			LocalData::FLocalDataJournalWriter Writer(Path, &Cipher);
 			Writer.CreateSession(MakeSessionRecord(Id));
+			Writer.AppendChunk(MakeChunk(Id.ToCanonicalString(), 0, 3));
 			LocalData::FFinalizedSession Finalized;
 			Finalized.TerminalEvent = {Id.ToCanonicalString(), 99, 1234, LocalData::EJournalEventKind::Completed, 1, "terminal"};
 			Finalized.Summary = {Id, 1, "summary", 7};
@@ -245,6 +274,15 @@ namespace
 		EXPECT_TRUE(Outbox.size() == 1 && Outbox[0].SessionId == Id && Outbox[0].ObjectDigestSha256.size() == 64);
 		const std::string Object = LocalData::ReadSessionObject(Path, Id, Cipher);
 		EXPECT_TRUE(Object.size() > 4 && static_cast<unsigned char>(Object[0]) == 0x28 && static_cast<unsigned char>(Object[1]) == 0xB5 && static_cast<unsigned char>(Object[2]) == 0x2F && static_cast<unsigned char>(Object[3]) == 0xFD);
+		const rowing::v1::SessionObject Decoded = DecodeSessionObject(Object);
+		EXPECT_TRUE(Decoded.header().container_version() == 1);
+		EXPECT_TRUE(Decoded.header().schema_version() == 2);
+		EXPECT_TRUE(Decoded.chunks_size() == 1);
+		EXPECT_TRUE(Decoded.chunks(0).crc32c() ==
+					LocalData::Private::ComputeCrc32c(Decoded.chunks(0).validated_payload()));
+		EXPECT_TRUE(LocalData::Private::DecodeSamples(
+						Decoded.chunks(0).validated_payload())
+						.size() == 3);
 
 		const FRowingSessionId Missing = MakeSessionId(11);
 		{

@@ -97,6 +97,20 @@ func sessionIDOK(v string) bool {
 }
 func objectKey(identity, sid string) string { return "development/" + identity + "/" + sid + ".zst" }
 
+func parseSessionRoute(path string) (string, string, bool) {
+	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
+	if (len(parts) != 3 && len(parts) != 4) || parts[0] != "v1" || parts[1] != "sessions" || parts[2] == "" {
+		return "", "", false
+	}
+	if len(parts) == 4 {
+		if parts[3] == "" {
+			return "", "", false
+		}
+		return parts[2], parts[3], true
+	}
+	return parts[2], "", true
+}
+
 func (s *server) auth(r *http.Request) (string, bool) {
 	const p = "Bearer "
 	h := r.Header.Get("Authorization")
@@ -135,30 +149,25 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, 401, "valid development bearer token required")
 		return
 	}
-	p := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-	if len(p) < 3 || p[0] != "v1" || p[1] != "sessions" {
+	sid, action, ok := parseSessionRoute(r.URL.Path)
+	if !ok {
 		writeProblem(w, 404, "route not found")
 		return
 	}
-	sid := p[2]
 	if !sessionIDOK(sid) {
 		writeProblem(w, 400, "session_id must be a canonical lowercase UUID")
 		return
 	}
-	a := ""
-	if len(p) == 4 {
-		a = p[3]
-	}
 	switch {
-	case r.Method == http.MethodPut && a == "":
+	case r.Method == http.MethodPut && action == "":
 		s.create(w, r, id, sid)
-	case r.Method == http.MethodPost && a == "finalize":
+	case r.Method == http.MethodPost && action == "finalize":
 		s.finalize(w, r, id, sid)
-	case r.Method == http.MethodPost && a == "upload":
+	case r.Method == http.MethodPost && action == "upload":
 		s.upload(w, r, id, sid)
-	case r.Method == http.MethodPost && a == "upload-complete":
+	case r.Method == http.MethodPost && action == "upload-complete":
 		s.complete(w, r, id, sid)
-	case r.Method == http.MethodGet && a == "processing-status":
+	case r.Method == http.MethodGet && action == "processing-status":
 		s.status(w, r, id, sid)
 	default:
 		writeProblem(w, 404, "route not found")
