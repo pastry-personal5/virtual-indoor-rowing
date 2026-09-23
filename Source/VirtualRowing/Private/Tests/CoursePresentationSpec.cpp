@@ -177,6 +177,126 @@ void FCoursePresentationSpec::Define()
 		TestTrue(TEXT("camera looks along the boat heading"), FMath::IsNearlyZero(FMath::FindDeltaAngleDegrees(Camera.Rotator().Yaw, Forward.Rotation().Yaw), 0.1));
 		HanCourse->Destroy(); });
 
+	It("uses only a fresh telemetry-backed Han rest for the cinematic reveal and resets its dwell", [this]()
+	   {
+		auto ConfigureHan = [this]()
+		{
+			AGrayBoxCourseActor *HanCourse = World->SpawnActor<AGrayBoxCourseActor>();
+			ContentRuntime::FRouteDefinition HanRoute = ContentRuntime::BuiltInStandardRouteDefinition();
+			HanRoute.RouteId = "route.han-river.5k";
+			HanRoute.LengthMm = 5'000'000;
+			HanRoute.bClosed = false;
+			HanCourse->ConfigureRoute(HanRoute);
+			HanCourse->InitializeCourse();
+			return HanCourse;
+		};
+		auto RestTelemetry = []()
+		{
+			FCourseTelemetryInput Telemetry;
+			Telemetry.bHasSession = true;
+			Telemetry.bHasValidSample = true;
+			Telemetry.bConnected = true;
+			Telemetry.SessionState = ERowingSessionState::Active;
+			Telemetry.WorkoutState = ERowingWorkoutState::Resting;
+			return Telemetry;
+		};
+		auto OffsetMatches = [this](const AGrayBoxCourseActor &HanCourse, float BehindCm, float StarboardCm, float HeightCm)
+		{
+			const FTransform Boat = HanCourse.GetBoatTransformForTesting();
+			const FVector Offset = HanCourse.GetCameraTransformForTesting().GetLocation() - Boat.GetLocation();
+			return FMath::IsNearlyEqual(FVector::DotProduct(Offset, Boat.GetUnitAxis(EAxis::X)), -BehindCm, 1.0f) &&
+				FMath::IsNearlyEqual(FVector::DotProduct(Offset, Boat.GetUnitAxis(EAxis::Y)), StarboardCm, 1.0f) &&
+				FMath::IsNearlyEqual(Offset.Z, HeightCm, 1.0f);
+		};
+
+		AGrayBoxCourseActor::SetReduceMotionForTesting(false);
+		AGrayBoxCourseActor *HanCourse = ConfigureHan();
+		FCoursePresentationSnapshot Snapshot;
+		Snapshot.WrappedCourseDistanceMm = 100'000.0;
+		FCourseTelemetryInput Telemetry = RestTelemetry();
+		HanCourse->ApplyPresentation(Snapshot, Telemetry, 1'000'000'000ULL);
+		HanCourse->ApplyPresentation(Snapshot, Telemetry, 6'000'000'000ULL);
+		TestTrue(TEXT("five-second dwell leaves the chase framing in place"), OffsetMatches(*HanCourse, 1'200.0f, 0.0f, 100.0f));
+		HanCourse->ApplyPresentation(Snapshot, Telemetry, 11'000'000'000ULL);
+		TestTrue(TEXT("outbound midpoint is 18 m astern, 6 m starboard, and 5 m above"), OffsetMatches(*HanCourse, 1'800.0f, 600.0f, 500.0f));
+		TestTrue(TEXT("midpoint widens to 84 degrees"), FMath::IsNearlyEqual(HanCourse->GetCameraFieldOfViewForTesting(), 84.0f));
+		HanCourse->ApplyPresentation(Snapshot, Telemetry, 16'000'000'000ULL);
+		const FTransform Reveal = HanCourse->GetCameraTransformForTesting();
+		TestTrue(TEXT("reveal is 32 m astern, 18 m starboard, and 14 m above"), OffsetMatches(*HanCourse, 3'200.0f, 1'800.0f, 1'400.0f));
+		TestTrue(TEXT("reveal widens to 92 degrees with a level horizon"), FMath::IsNearlyEqual(HanCourse->GetCameraFieldOfViewForTesting(), 92.0f) && FMath::IsNearlyZero(Reveal.Rotator().Roll, 0.01f));
+		HanCourse->ApplyPresentation(Snapshot, Telemetry, 24'000'000'000ULL);
+		TestTrue(TEXT("wide reveal holds for the rest interval"), HanCourse->GetCameraTransformForTesting().Equals(Reveal, 0.01f));
+
+		Telemetry.WorkoutState = ERowingWorkoutState::Active;
+		HanCourse->ApplyPresentation(Snapshot, Telemetry, 24'000'000'000ULL);
+		HanCourse->ApplyPresentation(Snapshot, Telemetry, 26'000'000'000ULL);
+		TestTrue(TEXT("four-second return restores FOV smoothly"), FMath::IsNearlyEqual(HanCourse->GetCameraFieldOfViewForTesting(), 85.0f, 0.1f));
+		HanCourse->ApplyPresentation(Snapshot, Telemetry, 28'000'000'000ULL);
+		TestTrue(TEXT("return restores the normal Han chase"), OffsetMatches(*HanCourse, 1'200.0f, 0.0f, 100.0f) && FMath::IsNearlyEqual(HanCourse->GetCameraFieldOfViewForTesting(), 78.0f));
+
+		Telemetry = RestTelemetry();
+		HanCourse->ApplyPresentation(Snapshot, Telemetry, 29'000'000'000ULL);
+		HanCourse->ApplyPresentation(Snapshot, Telemetry, 33'999'000'000ULL);
+		TestTrue(TEXT("a new rest does not inherit its prior dwell"), FMath::IsNearlyEqual(HanCourse->GetCameraFieldOfViewForTesting(), 78.0f));
+		HanCourse->ApplyPresentation(Snapshot, Telemetry, 34'000'000'000ULL);
+		HanCourse->ApplyPresentation(Snapshot, Telemetry, 39'000'000'000ULL);
+		TestTrue(TEXT("a new rest reveals only after its fresh dwell"), FMath::IsNearlyEqual(HanCourse->GetCameraFieldOfViewForTesting(), 84.0f));
+		HanCourse->Destroy();
+
+		AGrayBoxCourseActor *SuppressedCourse = ConfigureHan();
+		for (const TCHAR *Reason : {TEXT("stale"), TEXT("frozen"), TEXT("reconnecting")})
+		{
+			FCourseTelemetryInput Suppressed = RestTelemetry();
+			if (FCString::Strcmp(Reason, TEXT("stale")) == 0)
+				Suppressed.bStale = true;
+			else if (FCString::Strcmp(Reason, TEXT("frozen")) == 0)
+				Suppressed.bFrozen = true;
+			else
+				Suppressed.bConnected = false;
+			SuppressedCourse->ApplyPresentation(Snapshot, Suppressed, 1'000'000'000ULL);
+			SuppressedCourse->ApplyPresentation(Snapshot, Suppressed, 12'000'000'000ULL);
+			TestTrue(FString::Printf(TEXT("%s rest cannot start an automatic view"), Reason), FMath::IsNearlyEqual(SuppressedCourse->GetCameraFieldOfViewForTesting(), 78.0f));
+		}
+		SuppressedCourse->Destroy();
+
+		AGrayBoxCourseActor *EarlyCancellationCourse = ConfigureHan();
+		Telemetry = RestTelemetry();
+		EarlyCancellationCourse->ApplyPresentation(Snapshot, Telemetry, 1'000'000'000ULL);
+		Telemetry.WorkoutState = ERowingWorkoutState::Active;
+		EarlyCancellationCourse->ApplyPresentation(Snapshot, Telemetry, 3'000'000'000ULL);
+		TestTrue(TEXT("rest ending before dwell cancellation leaves the chase untouched"), OffsetMatches(*EarlyCancellationCourse, 1'200.0f, 0.0f, 100.0f) && FMath::IsNearlyEqual(EarlyCancellationCourse->GetCameraFieldOfViewForTesting(), 78.0f));
+		EarlyCancellationCourse->Destroy();
+
+		Course->ApplyPresentation(Snapshot, RestTelemetry(), 1'000'000'000ULL);
+		Course->ApplyPresentation(Snapshot, RestTelemetry(), 20'000'000'000ULL);
+		TestTrue(TEXT("Standard remains on its existing camera during rest"), FMath::IsNearlyEqual(Course->GetCameraFieldOfViewForTesting(), 50.0f));
+		AGrayBoxCourseActor *OtherRouteCourse = World->SpawnActor<AGrayBoxCourseActor>();
+		ContentRuntime::FRouteDefinition OtherRoute = ContentRuntime::BuiltInStandardRouteDefinition();
+		OtherRoute.RouteId = "route.example.5k";
+		OtherRoute.LengthMm = 5'000'000;
+		OtherRoute.bClosed = false;
+		OtherRouteCourse->ConfigureRoute(OtherRoute);
+		OtherRouteCourse->InitializeCourse();
+		OtherRouteCourse->ApplyPresentation(Snapshot, RestTelemetry(), 1'000'000'000ULL);
+		OtherRouteCourse->ApplyPresentation(Snapshot, RestTelemetry(), 6'000'000'000ULL);
+		OtherRouteCourse->ApplyPresentation(Snapshot, RestTelemetry(), 11'000'000'000ULL);
+		TestTrue(TEXT("every non-Standard route receives camera cutscene one"), FMath::IsNearlyEqual(OtherRouteCourse->GetCameraFieldOfViewForTesting(), 84.0f));
+		OtherRouteCourse->Destroy();
+
+		AGrayBoxCourseActor *ReducedMotionCourse = ConfigureHan();
+		AGrayBoxCourseActor::SetReduceMotionForTesting(true);
+		ReducedMotionCourse->ApplyPresentation(Snapshot, RestTelemetry(), 1'000'000'000ULL);
+		TestTrue(TEXT("reduced motion exposes a rest-only static-view action"), ReducedMotionCourse->CanToggleRestView() && !ReducedMotionCourse->IsRestViewEnabled());
+		ReducedMotionCourse->ToggleRestView();
+		ReducedMotionCourse->ApplyPresentation(Snapshot, RestTelemetry(), 2'000'000'000ULL);
+		TestTrue(TEXT("reduced motion uses the static wide view without an automatic move"), ReducedMotionCourse->IsRestViewEnabled() && FMath::IsNearlyEqual(ReducedMotionCourse->GetCameraFieldOfViewForTesting(), 92.0f));
+		Telemetry = RestTelemetry();
+		Telemetry.WorkoutState = ERowingWorkoutState::Active;
+		ReducedMotionCourse->ApplyPresentation(Snapshot, Telemetry, 3'000'000'000ULL);
+		TestTrue(TEXT("active rowing restores reduced-motion chase"), !ReducedMotionCourse->CanToggleRestView() && !ReducedMotionCourse->IsRestViewEnabled() && FMath::IsNearlyEqual(ReducedMotionCourse->GetCameraFieldOfViewForTesting(), 78.0f));
+		AGrayBoxCourseActor::SetReduceMotionForTesting({});
+		ReducedMotionCourse->Destroy(); });
+
 	It("applies catch drive finish recovery and disconnect-return proxy transforms", [this]()
 	   {
 		FCoursePresentationSnapshot Snapshot;

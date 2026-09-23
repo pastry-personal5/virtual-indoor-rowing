@@ -1,8 +1,8 @@
 # Phase 2 Milestone 4: import Blender buildings into the Han River course
 
-Status: Planned — not started
+Status: Complete — owner decision
 Owner: Client/content, technical art
-Last reviewed: 2026-09-22
+Last reviewed: 2026-09-23
 
 ## Purpose
 
@@ -16,6 +16,14 @@ This is presentation-only content work. It does not change
 `route.han-river.5k`, workout facts, boat movement, course distance, journal
 behavior, or the Phase 2 exit gate. The cooked-in Standard route remains the
 safe fallback whenever Han content is unavailable or rejected.
+
+## Completion disposition
+
+The owner marked Milestone 4 complete on 2026-09-23. Importing several
+additional OSM maps remains follow-up Han content work, to be independently
+scoped and reviewed under the existing OSM acquisition, provenance, staging,
+and import controls. That follow-up neither reopens this milestone nor passes
+the Phase 2 exit gate.
 
 ## Bounded outcome
 

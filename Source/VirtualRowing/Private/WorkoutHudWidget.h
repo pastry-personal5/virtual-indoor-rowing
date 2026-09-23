@@ -46,8 +46,12 @@ class VIRTUALROWING_API UWorkoutHudWidget : public UUserWidget
 	void HandleEndClicked();
 	UFUNCTION()
 	void HandleStartNewClicked();
+	UFUNCTION()
+	void HandleViewSurroundingsClicked();
 	UWorkoutSubsystem *GetWorkoutSubsystem() const;
+	class UCourseSubsystem *GetCourseSubsystem() const;
 	void ApplyDisplay(const UWorkoutSubsystem &Subsystem);
+	void UpdateRestViewAction();
 	bool IsActionFocused() const;
 	void ApplyFocusCue();
 
@@ -77,12 +81,17 @@ class VIRTUALROWING_API UWorkoutHudWidget : public UUserWidget
 	TObjectPtr<UButton> EndButton;
 	UPROPERTY(Transient)
 	TObjectPtr<UButton> StartNewButton;
+	UPROPERTY(Transient)
+	TObjectPtr<UButton> ViewSurroundingsButton;
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> ViewSurroundingsLabel;
 
 	uint64 AppliedGeneration = 0;
 	bool bHasApplied = false;
 	bool bAppliedCanEnd = false;
 	bool bEndFocusedApplied = false;
 	bool bStartNewFocusedApplied = false;
+	bool bViewSurroundingsFocusedApplied = false;
 	bool bFocusCueApplied = false;
 	// Initial focus is retried each frame until Slate reports it landed, because it
 	// cannot land before the widget has been arranged in the viewport.

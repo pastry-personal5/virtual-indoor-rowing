@@ -27,18 +27,24 @@ namespace
 	constexpr double CameraStarboardCm = 900.0;
 	constexpr double CameraElevationCm = 650.0;
 	constexpr double CameraLookAheadCm = 700.0;
-	// Han River chase view: centred on the boat's axis, 12 m astern and 1 m above the
-	// boat's waterline, level and looking along the (smoothed) heading so the boat is
-	// seen moving away through the river's bends. Tuning values, not derived geometry.
-	constexpr double HanCameraBehindCm = 1'200.0;
-	constexpr double HanCameraHeightCm = 100.0;
-	constexpr float HanCameraFieldOfView = 78.0f;
 	// Heading lag so bends read as a camera swing rather than a rigid turn.
 	constexpr float HanCameraHeadingInterpSpeed = 2.5f;
 	constexpr float OarInterpolationSpeed = 16.0f;
 	constexpr float MaxOarInterpolationStepSeconds = 1.0f / 30.0f;
 	constexpr double HanRiverWidthCm = 42'000.0;
 	constexpr double HanBankOffsetCm = 25'000.0;
+	TOptional<bool> GReduceMotionOverrideForTesting;
+
+	uint64 ElapsedNs(uint64 NowMonotonicNs, uint64 StartedNs)
+	{
+		return NowMonotonicNs >= StartedNs ? NowMonotonicNs - StartedNs : 0;
+	}
+
+	float SmoothStep(float Value)
+	{
+		const float T = FMath::Clamp(Value, 0.0f, 1.0f);
+		return T * T * (3.0f - 2.0f * T);
+	}
 
 } // namespace
 
@@ -71,9 +77,21 @@ AGrayBoxCourseActor::AGrayBoxCourseActor()
 	// not a reliable cooking contract for a code-only actor in a Shipping package.
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> CubeFinder(TEXT("/Engine/BasicShapes/Cube.Cube"));
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> CylinderFinder(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> OarFinder(TEXT("/Game/Boat/Meshes/SM_ScullOar.SM_ScullOar"));
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> HullFinder(TEXT("/Game/Boat/Meshes/SM_ScullHull.SM_ScullHull"));
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> RowerTorsoFinder(TEXT("/Game/Boat/Character/SM_RowerTorso.SM_RowerTorso"));
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> RowerArmFinder(TEXT("/Game/Boat/Character/SM_RowerArm.SM_RowerArm"));
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> RowerLegFinder(TEXT("/Game/Boat/Character/SM_RowerLeg.SM_RowerLeg"));
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> RowerShoeFinder(TEXT("/Game/Boat/Character/SM_RowerShoe.SM_RowerShoe"));
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> MaterialFinder(TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
 	CubeMesh = CubeFinder.Object;
 	CylinderMesh = CylinderFinder.Object;
+	OarMesh = OarFinder.Object;
+	HullMesh = HullFinder.Object;
+	RowerTorsoMesh = RowerTorsoFinder.Object;
+	RowerArmMesh = RowerArmFinder.Object;
+	RowerLegMesh = RowerLegFinder.Object;
+	RowerShoeMesh = RowerShoeFinder.Object;
 	CourseMaterial = MaterialFinder.Object;
 	// Water is authored as a texture-free, math-only material (Scripts/build_water_material.py),
 	// so it is plain cooked data. If it is missing the flat primitive water stays.
@@ -93,6 +111,7 @@ void AGrayBoxCourseActor::ConfigureRoute(const ContentRuntime::FRouteDefinition 
 		return;
 	Route = InRoute;
 	bIsHanRiverRoute = Route.RouteId == "route.han-river.5k";
+	CameraMetadata = CameraMetadataForRoute(Route.RouteId);
 }
 
 UStaticMeshComponent *AGrayBoxCourseActor::MakeMesh(const TCHAR *Name,
@@ -107,7 +126,9 @@ UStaticMeshComponent *AGrayBoxCourseActor::MakeMesh(const TCHAR *Name,
 	Component->SetRelativeScale3D(Scale);
 	Component->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	Component->SetCastShadow(false);
-	if (CourseMaterial)
+	if (CourseMaterial && Mesh != OarMesh.Get() && Mesh != HullMesh.Get() &&
+		Mesh != RowerTorsoMesh.Get() && Mesh != RowerArmMesh.Get() &&
+		Mesh != RowerLegMesh.Get() && Mesh != RowerShoeMesh.Get())
 	{
 		UMaterialInstanceDynamic *Dynamic = UMaterialInstanceDynamic::Create(CourseMaterial, Component);
 		Dynamic->SetVectorParameterValue(TEXT("Color"), Color);
@@ -307,14 +328,35 @@ void AGrayBoxCourseActor::InitializeCourse()
 		MarkerLabels.Add(Label);
 	}
 
-	Hull = MakeMesh(TEXT("Hull"), Cube, BoatRoot, FVector(4.8, 0.28, 0.18), FLinearColor(0.85f, 0.88f, 0.92f));
-	Hull->SetRelativeLocation(FVector(0.0, 0.0, 45.0));
+	Hull = MakeMesh(TEXT("Hull"), HullMesh ? HullMesh.Get() : Cube, BoatRoot,
+						HullMesh ? FVector::OneVector : FVector(4.8, 0.28, 0.18),
+						FLinearColor(0.85f, 0.88f, 0.92f));
+	if (!HullMesh)
+		Hull->SetRelativeLocation(FVector(0.0, 0.0, 45.0));
+	bHasRowerCharacterMeshes = RowerTorsoMesh && RowerArmMesh && RowerLegMesh && RowerShoeMesh;
 	Seat = MakeMesh(TEXT("SlidingSeat"), Cube, BoatRoot, FVector(0.35, 0.42, 0.09), FLinearColor(0.08f, 0.08f, 0.09f));
-	Torso = MakeMesh(TEXT("Torso"), Cube, BoatRoot, FVector(0.22, 0.32, 0.65), FLinearColor(0.85f, 0.42f, 0.12f));
-	LeftArm = MakeMesh(TEXT("LeftArm"), Cube, BoatRoot, FVector(0.55, 0.07, 0.07), FLinearColor(0.84f, 0.64f, 0.45f));
-	RightArm = MakeMesh(TEXT("RightArm"), Cube, BoatRoot, FVector(0.55, 0.07, 0.07), FLinearColor(0.84f, 0.64f, 0.45f));
-	LeftOar = MakeMesh(TEXT("PortOar"), Cube, BoatRoot, FVector(1.8, 0.04, 0.04), FLinearColor(0.80f, 0.12f, 0.10f));
-	RightOar = MakeMesh(TEXT("StarboardOar"), Cube, BoatRoot, FVector(1.8, 0.04, 0.04), FLinearColor(0.80f, 0.12f, 0.10f));
+	Torso = MakeMesh(TEXT("Torso"), bHasRowerCharacterMeshes ? RowerTorsoMesh.Get() : Cube, BoatRoot,
+						 bHasRowerCharacterMeshes ? FVector::OneVector : FVector(0.22, 0.32, 0.65),
+						 FLinearColor(0.85f, 0.42f, 0.12f));
+	LeftArm = MakeMesh(TEXT("LeftArm"), bHasRowerCharacterMeshes ? RowerArmMesh.Get() : Cube, BoatRoot,
+						   bHasRowerCharacterMeshes ? FVector::OneVector : FVector(0.55, 0.07, 0.07),
+						   FLinearColor(0.84f, 0.64f, 0.45f));
+	RightArm = MakeMesh(TEXT("RightArm"), bHasRowerCharacterMeshes ? RowerArmMesh.Get() : Cube, BoatRoot,
+							bHasRowerCharacterMeshes ? FVector::OneVector : FVector(0.55, 0.07, 0.07),
+							FLinearColor(0.84f, 0.64f, 0.45f));
+	if (bHasRowerCharacterMeshes)
+	{
+		LeftThigh = MakeMesh(TEXT("LeftThigh"), RowerLegMesh, BoatRoot, FVector::OneVector, FLinearColor::White);
+		RightThigh = MakeMesh(TEXT("RightThigh"), RowerLegMesh, BoatRoot, FVector::OneVector, FLinearColor::White);
+		LeftShin = MakeMesh(TEXT("LeftShin"), RowerLegMesh, BoatRoot, FVector::OneVector, FLinearColor::White);
+		RightShin = MakeMesh(TEXT("RightShin"), RowerLegMesh, BoatRoot, FVector::OneVector, FLinearColor::White);
+		LeftShoe = MakeMesh(TEXT("LeftShoe"), RowerShoeMesh, BoatRoot, FVector::OneVector, FLinearColor::White);
+		RightShoe = MakeMesh(TEXT("RightShoe"), RowerShoeMesh, BoatRoot, FVector::OneVector, FLinearColor::White);
+	}
+	UStaticMesh *OarGeometry = OarMesh ? OarMesh.Get() : Cube;
+	const FVector OarScale = OarMesh ? FVector::OneVector : FVector(1.8, 0.04, 0.04);
+	LeftOar = MakeMesh(TEXT("PortOar"), OarGeometry, BoatRoot, OarScale, FLinearColor(0.80f, 0.12f, 0.10f));
+	RightOar = MakeMesh(TEXT("StarboardOar"), OarGeometry, BoatRoot, OarScale, FLinearColor(0.80f, 0.12f, 0.10f));
 	ApplyPresentation({});
 }
 
@@ -337,6 +379,13 @@ FVector AGrayBoxCourseActor::GetCourseTangent(double WrappedDistanceMm) const
 }
 
 void AGrayBoxCourseActor::ApplyPresentation(const FCoursePresentationSnapshot &Snapshot)
+{
+	ApplyPresentation(Snapshot, FCourseTelemetryInput{}, 0);
+}
+
+void AGrayBoxCourseActor::ApplyPresentation(const FCoursePresentationSnapshot &Snapshot,
+											const FCourseTelemetryInput &Telemetry,
+											uint64 NowMonotonicNs)
 {
 	if (!bInitialized)
 		return;
@@ -361,34 +410,65 @@ void AGrayBoxCourseActor::ApplyPresentation(const FCoursePresentationSnapshot &S
 		SmoothedHandsX = InterpolateOarMotion(SmoothedHandsX, TargetHandsX, WorldDeltaSeconds);
 		SmoothedOarYaw = InterpolateOarMotion(SmoothedOarYaw, TargetOarYaw, WorldDeltaSeconds);
 	}
-	LeftArm->SetRelativeLocation(FVector(TargetHandsX, -25.0, 148.0));
-	RightArm->SetRelativeLocation(FVector(TargetHandsX, 25.0, 148.0));
-	LeftOar->SetRelativeLocation(FVector(SmoothedHandsX, -155.0, 105.0));
-	RightOar->SetRelativeLocation(FVector(SmoothedHandsX, 155.0, 105.0));
-	LeftOar->SetRelativeRotation(FRotator(0.0, SmoothedOarYaw, 0.0));
-	RightOar->SetRelativeRotation(FRotator(0.0, -SmoothedOarYaw, 0.0));
-
-	const FVector BoatLocation = CourseTransform.GetLocation();
-	const FVector Forward = CourseTransform.GetUnitAxis(EAxis::X);
-	if (bIsHanRiverRoute)
+	if (bHasRowerCharacterMeshes)
 	{
-		const float TargetYaw = Forward.Rotation().Yaw;
-		if (!bHasCameraHeading || ReduceMotionRequested())
+		// The procedural segments use local +X as a 100 cm bone. All poses are
+		// cosmetic and consume the existing presentation snapshot only.
+		auto PoseSegment = [](UStaticMeshComponent *Component, const FVector &Start, const FVector &End)
 		{
-			SmoothedCameraYaw = TargetYaw;
-			bHasCameraHeading = true;
-		}
-		else
+			const FVector Delta = End - Start;
+			Component->SetRelativeLocation(Start);
+			Component->SetRelativeRotation(Delta.Rotation());
+			Component->SetRelativeScale3D(FVector(Delta.Size() / 100.0, 1.0, 1.0));
+		};
+		for (int32 Side : {-1, 1})
 		{
-			const float DeltaYaw = FMath::FindDeltaAngleDegrees(SmoothedCameraYaw, TargetYaw);
-			SmoothedCameraYaw = FRotator::NormalizeAxis(SmoothedCameraYaw + FMath::FInterpTo(0.0f, DeltaYaw, FMath::Max(WorldDeltaSeconds, 0.0f), HanCameraHeadingInterpSpeed));
+			UStaticMeshComponent *Arm = Side < 0 ? LeftArm.Get() : RightArm.Get();
+			UStaticMeshComponent *Thigh = Side < 0 ? LeftThigh.Get() : RightThigh.Get();
+			UStaticMeshComponent *Shin = Side < 0 ? LeftShin.Get() : RightShin.Get();
+			UStaticMeshComponent *Shoe = Side < 0 ? LeftShoe.Get() : RightShoe.Get();
+			const FVector Shoulder = Torso->GetRelativeLocation() +
+				Torso->GetRelativeRotation().RotateVector(FVector(0.0, Side * 20.0, 18.0));
+			const FVector Hand(TargetHandsX, Side * 25.0, 148.0);
+			PoseSegment(Arm, Shoulder, Hand);
+			const FVector Hip(SeatX + 10.0f, Side * 13.0, 80.0);
+			const FVector Foot(140.0, Side * 13.0, 65.0);
+			const FVector Knee(FMath::Lerp(Hip.X, Foot.X, 0.52), Side * 13.0,
+									95.0 + (55.0 - SeatX) * 0.25);
+			PoseSegment(Thigh, Hip, Knee);
+			PoseSegment(Shin, Knee, Foot);
+			Shoe->SetRelativeLocation(Foot);
 		}
-		const FRotator CameraRotation(0.0, SmoothedCameraYaw, 0.0);
-		const FVector CameraLocation = BoatLocation - CameraRotation.Vector() * HanCameraBehindCm + FVector(0.0, 0.0, HanCameraHeightCm);
-		InspectionCamera->SetFieldOfView(HanCameraFieldOfView);
-		InspectionCamera->SetWorldLocationAndRotation(CameraLocation, CameraRotation);
+	}
+	else
+	{
+		LeftArm->SetRelativeLocation(FVector(TargetHandsX, -25.0, 148.0));
+		RightArm->SetRelativeLocation(FVector(TargetHandsX, 25.0, 148.0));
+	}
+	if (OarMesh)
+	{
+		// The mesh origin is the oarlock and its +X points outboard. Mirror it
+		// across the hull while retaining the existing smoothed stroke sweep.
+		LeftOar->SetRelativeLocation(FVector(SmoothedHandsX, -95.0, 105.0));
+		RightOar->SetRelativeLocation(FVector(SmoothedHandsX, 95.0, 105.0));
+		LeftOar->SetRelativeRotation(FRotator(0.0, -90.0 - SmoothedOarYaw, 0.0));
+		RightOar->SetRelativeRotation(FRotator(0.0, 90.0 + SmoothedOarYaw, 0.0));
+	}
+	else
+	{
+		LeftOar->SetRelativeLocation(FVector(SmoothedHandsX, -155.0, 105.0));
+		RightOar->SetRelativeLocation(FVector(SmoothedHandsX, 155.0, 105.0));
+		LeftOar->SetRelativeRotation(FRotator(0.0, SmoothedOarYaw, 0.0));
+		RightOar->SetRelativeRotation(FRotator(0.0, -SmoothedOarYaw, 0.0));
+	}
+
+	if (CameraMetadata.bRestViewEnabled)
+	{
+		ApplyRouteCamera(CourseTransform, Telemetry, NowMonotonicNs, WorldDeltaSeconds);
 		return;
 	}
+	const FVector BoatLocation = CourseTransform.GetLocation();
+	const FVector Forward = CourseTransform.GetUnitAxis(EAxis::X);
 	const FVector Starboard = CourseTransform.GetUnitAxis(EAxis::Y);
 	const FVector CameraLocation = BoatLocation - Forward * CameraBehindCm + Starboard * CameraStarboardCm + FVector(0.0, 0.0, CameraElevationCm);
 	const FVector CameraFocus = BoatLocation + Forward * CameraLookAheadCm + FVector(0.0, 0.0, 90.0);
@@ -396,6 +476,192 @@ void AGrayBoxCourseActor::ApplyPresentation(const FCoursePresentationSnapshot &S
 	CameraRotation.Roll = 0.0f;
 	InspectionCamera->SetFieldOfView(50.0f);
 	InspectionCamera->SetWorldLocationAndRotation(CameraLocation, CameraRotation);
+}
+
+AGrayBoxCourseActor::FRouteCameraMetadata AGrayBoxCourseActor::CameraMetadataForRoute(const std::string &RouteId)
+{
+	FRouteCameraMetadata Metadata;
+	if (RouteId == "route.standard.2k")
+		return Metadata;
+
+	// Cutscene #1 is the shared non-Standard presentation default. Routes can still
+	// supply unique keyframes here later; no domain or content contract changes just
+	// to tune a cosmetic camera.
+	Metadata.bRestViewEnabled = true;
+	Metadata.Chase = {1'200.0f, 0.0f, 100.0f, 78.0f, 0.0f};
+	Metadata.Midpoint = {1'800.0f, 600.0f, 500.0f, 84.0f, 3'500.0f};
+	Metadata.Reveal = {3'200.0f, 1'800.0f, 1'400.0f, 92.0f, 3'500.0f};
+	return Metadata;
+}
+
+bool AGrayBoxCourseActor::IsRestCameraEligible(const FCourseTelemetryInput &Telemetry)
+{
+	return Telemetry.bHasSession && Telemetry.bHasValidSample &&
+		   Telemetry.SessionState == ERowingSessionState::Active &&
+		   Telemetry.bConnected && !Telemetry.bFrozen && !Telemetry.bStale &&
+		   Telemetry.WorkoutState == ERowingWorkoutState::Resting;
+}
+
+AGrayBoxCourseActor::FCameraPose AGrayBoxCourseActor::BuildChaseCameraPose(const FTransform &CourseTransform,
+																		   float DeltaSeconds)
+{
+	const FVector BoatLocation = CourseTransform.GetLocation();
+	const float TargetYaw = CourseTransform.GetUnitAxis(EAxis::X).Rotation().Yaw;
+	if (!bHasCameraHeading || ReduceMotionRequested())
+	{
+		SmoothedCameraYaw = TargetYaw;
+		bHasCameraHeading = true;
+	}
+	else
+	{
+		const float DeltaYaw = FMath::FindDeltaAngleDegrees(SmoothedCameraYaw, TargetYaw);
+		SmoothedCameraYaw = FRotator::NormalizeAxis(SmoothedCameraYaw + FMath::FInterpTo(0.0f, DeltaYaw, FMath::Max(DeltaSeconds, 0.0f), HanCameraHeadingInterpSpeed));
+	}
+	FCameraPose Pose;
+	Pose.Rotation = FRotator(0.0f, SmoothedCameraYaw, 0.0f);
+	Pose.Location = BoatLocation - Pose.Rotation.Vector() * CameraMetadata.Chase.BehindCm + FVector(0.0f, 0.0f, CameraMetadata.Chase.HeightCm);
+	Pose.FieldOfView = CameraMetadata.Chase.FieldOfView;
+	return Pose;
+}
+
+AGrayBoxCourseActor::FCameraPose AGrayBoxCourseActor::BuildRestCameraPose(const FTransform &CourseTransform,
+																		  const FRestCameraKeyframe &Keyframe) const
+{
+	const FVector BoatLocation = CourseTransform.GetLocation();
+	const FVector Forward = CourseTransform.GetUnitAxis(EAxis::X);
+	const FVector Starboard = CourseTransform.GetUnitAxis(EAxis::Y);
+	FCameraPose Pose;
+	Pose.Location = BoatLocation - Forward * Keyframe.BehindCm + Starboard * Keyframe.StarboardCm + FVector(0.0f, 0.0f, Keyframe.HeightCm);
+	Pose.Rotation = UKismetMathLibrary::FindLookAtRotation(Pose.Location, BoatLocation + Forward * Keyframe.LookAheadCm);
+	Pose.Rotation.Roll = 0.0f;
+	Pose.FieldOfView = Keyframe.FieldOfView;
+	return Pose;
+}
+
+AGrayBoxCourseActor::FCameraPose AGrayBoxCourseActor::InterpolateCameraPose(const FCameraPose &Start,
+																			const FCameraPose &End,
+																			float Alpha)
+{
+	const float EasedAlpha = SmoothStep(Alpha);
+	FCameraPose Pose;
+	Pose.Location = FMath::Lerp(Start.Location, End.Location, EasedAlpha);
+	Pose.Rotation = FQuat::Slerp(Start.Rotation.Quaternion(), End.Rotation.Quaternion(), EasedAlpha).Rotator();
+	Pose.Rotation.Roll = 0.0f;
+	Pose.FieldOfView = FMath::Lerp(Start.FieldOfView, End.FieldOfView, EasedAlpha);
+	return Pose;
+}
+
+void AGrayBoxCourseActor::ApplyCameraPose(const FCameraPose &Pose)
+{
+	InspectionCamera->SetFieldOfView(Pose.FieldOfView);
+	InspectionCamera->SetWorldLocationAndRotation(Pose.Location, Pose.Rotation);
+}
+
+void AGrayBoxCourseActor::ApplyRouteCamera(const FTransform &CourseTransform,
+										   const FCourseTelemetryInput &Telemetry,
+										   uint64 NowMonotonicNs,
+										   float DeltaSeconds)
+{
+	const FCameraPose ChasePose = BuildChaseCameraPose(CourseTransform, DeltaSeconds);
+	const bool bEligible = CameraMetadata.bRestViewEnabled && IsRestCameraEligible(Telemetry);
+	bRestCameraEligible = bEligible;
+
+	if (ReduceMotionRequested())
+	{
+		// Reduced motion replaces the automatic travel with an explicit, static
+		// framing choice. Leaving a valid rest clears the choice immediately.
+		RestCameraState = ERestCameraState::Chase;
+		RestCameraStateStartedNs = NowMonotonicNs;
+		if (!bEligible)
+			bRestViewRequested = false;
+		ApplyCameraPose(bRestViewRequested ? BuildRestCameraPose(CourseTransform, CameraMetadata.Reveal) : ChasePose);
+		return;
+	}
+
+	bRestViewRequested = false;
+	if (RestCameraState == ERestCameraState::Dwell)
+	{
+		if (!bEligible)
+			RestCameraState = ERestCameraState::Chase;
+		else if (ElapsedNs(NowMonotonicNs, RestCameraStateStartedNs) >= static_cast<uint64>(CameraMetadata.RestDwellSeconds * 1'000'000'000.0f))
+		{
+			RestCameraState = ERestCameraState::Outbound;
+			RestCameraStateStartedNs = NowMonotonicNs;
+		}
+	}
+	else if (RestCameraState == ERestCameraState::Outbound || RestCameraState == ERestCameraState::Hold)
+	{
+		if (!bEligible)
+		{
+			ReturnStartPose = {InspectionCamera->GetComponentLocation(), InspectionCamera->GetComponentRotation(), InspectionCamera->FieldOfView};
+			RestCameraState = ERestCameraState::Returning;
+			RestCameraStateStartedNs = NowMonotonicNs;
+		}
+	}
+
+	if (RestCameraState == ERestCameraState::Returning)
+	{
+		const float Alpha = static_cast<float>(ElapsedNs(NowMonotonicNs, RestCameraStateStartedNs)) /
+							CameraMetadata.ReturnSeconds / 1'000'000'000.0f;
+		if (Alpha >= 1.0f)
+		{
+			RestCameraState = ERestCameraState::Chase;
+			ApplyCameraPose(ChasePose);
+			return;
+		}
+		ApplyCameraPose(InterpolateCameraPose(ReturnStartPose, ChasePose, Alpha));
+		return;
+	}
+
+	if (RestCameraState == ERestCameraState::Outbound)
+	{
+		const float Progress = static_cast<float>(ElapsedNs(NowMonotonicNs, RestCameraStateStartedNs)) /
+							   CameraMetadata.OutboundSeconds / 1'000'000'000.0f;
+		if (Progress >= 1.0f)
+		{
+			RestCameraState = ERestCameraState::Hold;
+			ApplyCameraPose(BuildRestCameraPose(CourseTransform, CameraMetadata.Reveal));
+			return;
+		}
+		const FCameraPose MidpointPose = BuildRestCameraPose(CourseTransform, CameraMetadata.Midpoint);
+		const FCameraPose RevealPose = BuildRestCameraPose(CourseTransform, CameraMetadata.Reveal);
+		if (Progress <= 0.5f)
+			ApplyCameraPose(InterpolateCameraPose(ChasePose, MidpointPose, Progress * 2.0f));
+		else
+			ApplyCameraPose(InterpolateCameraPose(MidpointPose, RevealPose, (Progress - 0.5f) * 2.0f));
+		return;
+	}
+
+	if (RestCameraState == ERestCameraState::Hold)
+	{
+		ApplyCameraPose(BuildRestCameraPose(CourseTransform, CameraMetadata.Reveal));
+		return;
+	}
+
+	// The next rest interval must dwell from this point; a just-completed return
+	// deliberately does not credit rest time that elapsed while returning.
+	if (RestCameraState == ERestCameraState::Chase && bEligible)
+	{
+		RestCameraState = ERestCameraState::Dwell;
+		RestCameraStateStartedNs = NowMonotonicNs;
+	}
+	ApplyCameraPose(ChasePose);
+}
+
+bool AGrayBoxCourseActor::CanToggleRestView() const
+{
+	return ReduceMotionRequested() && bRestCameraEligible;
+}
+
+bool AGrayBoxCourseActor::IsRestViewEnabled() const
+{
+	return bRestViewRequested;
+}
+
+void AGrayBoxCourseActor::ToggleRestView()
+{
+	if (CanToggleRestView())
+		bRestViewRequested = !bRestViewRequested;
 }
 
 void AGrayBoxCourseActor::ApplyWaterMotion(UMaterialInstanceDynamic &Water, bool bReduceMotion)
@@ -439,8 +705,15 @@ bool AGrayBoxCourseActor::ReduceMotionRequested()
 {
 	// Launch-flag stand-in for the platform Reduce Motion preference, which needs an
 	// Apple adapter outside game code and is not wired yet.
+	if (GReduceMotionOverrideForTesting.IsSet())
+		return GReduceMotionOverrideForTesting.GetValue();
 	static const bool bRequested = FParse::Param(FCommandLine::Get(), TEXT("ReduceMotion"));
 	return bRequested;
+}
+
+void AGrayBoxCourseActor::SetReduceMotionForTesting(TOptional<bool> bRequested)
+{
+	GReduceMotionOverrideForTesting = bRequested;
 }
 
 float AGrayBoxCourseActor::InterpolateOarMotion(float Current, float Target, float DeltaSeconds)

@@ -1,0 +1,15 @@
+# Original VIR hull colors; no bitmap dependencies
+newmtl Shell
+Kd 0.8400 0.8800 0.9100
+
+newmtl Sheer
+Kd 0.0700 0.1500 0.2400
+
+newmtl Deck
+Kd 0.7400 0.7900 0.8200
+
+newmtl Cockpit
+Kd 0.0250 0.0350 0.0450
+
+newmtl Rigger
+Kd 0.4800 0.5300 0.5700

@@ -1,8 +1,8 @@
 # Delivery Phase 2: solo alpha and content pipeline
 
-Status: In progress — Milestones 1 and 3 are owner-complete; Milestone 2 is in progress; the Phase 2 exit gate is not passed
+Status: In progress — Milestones 1, 3, and 4 are owner-complete; Milestone 2 is in progress; the Phase 2 exit gate is not passed
 Owner: CTO / product
-Last reviewed: 2026-09-22
+Last reviewed: 2026-09-23
 
 ## Outcome
 
@@ -42,12 +42,22 @@ network failure must leave the local menu, safe route, and local workout usable.
 
 | [Phase 2 Milestone 3](07-milestone-3-enhanced-water.md) — Enhanced water surface and animation | Complete — owner decision | A calm, realistic, world-anchored animated water surface on the built-in kit and the Han level, presentation-only, with no current, wake, or PM-fact dependency. |
 
+| [Phase 2 Milestone 4](08-milestone-4-blender-building-import.md) — Import Blender buildings into the Han River course | Complete — owner decision | The Blender building-import milestone is closed; importing several additional OSM maps remains separately tracked follow-up content work. |
+
+| [Phase 2 Milestone 5](12-realistic-water-refinement-plan.md) — Photorealistic water refinement | In progress — boat and rower geometry applied | Compare scene reflections, filtered water normals, approved bitmap detail, and restrained hull and oar interaction on Standard and mounted Han, with packaged visual, performance, and reduced-motion evidence. |
+
 | [Phase 2 Milestone 10](06-milestone-10-development-loop.md) — Shorten the development and content-iteration loops | Planned — not started | Editor-safe Shipping builds, an uncooked Development run, a loose-level course reload, and a one-command local Han publish, without touching the Shipping trust boundary. |
 
 Only the listed milestones are currently scoped. Later Phase 2 milestones are planned
 individually, before work begins; no speculative sequencing or scope is
 recorded here. Completing a milestone records incremental progress only and
 does not pass the Phase 2 exit gate.
+
+## Follow-up plans
+
+- Import several additional OSM maps as separately scoped, review-gated Han
+  content work. The existing Area 01 OSM runbooks remain the applicable
+  acquisition, provenance, staging, and import controls.
 
 ## Runbooks
 

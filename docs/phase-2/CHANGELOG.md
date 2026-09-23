@@ -2,6 +2,68 @@
 
 ## Unreleased
 
+- Added an original multipolygon rower as four modular Unreal static meshes:
+  torso/head, arm, leg, and shoe. The course actor applies them on both routes
+  using the existing presentation poses, with connected arm and leg segments
+  and cube torso/arm fallback when the character assets are missing. Editor
+  asset bounds and thumbnails were inspected; in-scene motion, packaged visual
+  review, and GPU cost remain unverified.
+
+- Replaced the course actor's cube hull with an original 840 cm multipolygon
+  scull hull on both routes. The editor-imported mesh includes a shaped shell,
+  recessed cockpit, deck, and riggers; it has five material slots, no collision,
+  and no Nanite. The cube remains the missing-asset fallback. Editor asset
+  inspection passed; packaged chase-camera review and GPU measurement remain
+  open.
+
+- Began Milestone 5 implementation on 2026-09-24 with an original, multi-face
+  sculling-oar mesh. The editor-imported asset has shaped grip, shaft, collar,
+  and blade sections and replaces the cube oars in the cooked-in course actor
+  for both routes. Water-contact animation and effects are still pending;
+  `make format-check` and `make unreal-smoke` passed; packaged visual review
+  and performance evidence are open.
+
+- Accepted [ADR-0013](../adr/0013-increase-reference-gpu-frame-budget.md) on
+  2026-09-23: the reference whole-scene GPU p95 budget rises from 14.0 to
+  16.5 ms, as confirmed by the owner. QA-001's 60 fps, 16.7 ms p95 frame-time,
+  and thermal requirements remain unchanged. Milestone 5 now uses the revised
+  budget; no Shipping performance result is claimed by this decision.
+
+- Scoped Phase 2 Milestone 5 from the water-refinement research on 2026-09-23.
+  New research adds a measured comparison of scene reflection captures, SSR,
+  and a bounded planar prototype before material-shading changes; it also
+  specifies slope-variance filtering and the Han content-allowlist consequence.
+  The bitmap trial now includes two CC0 water-normal candidates, texture import
+  checks, source provenance, and Han cook/dependency coverage. The owner also
+  included restrained hull and oar water effects, and chose to review the
+  exact license terms of any non-CC0 candidate before import if the CC0 trial
+  fails. This is documentation only; no water asset, source shader, or
+  acceptance evidence changed.
+
+- Completed Phase 2 Milestone 4 by owner decision on 2026-09-23. The
+  Blender-building import scope is closed. Importing several additional OSM
+  maps remains separately scoped, review-gated Han content follow-up work; it
+  does not reopen Milestone 4 or pass the Phase 2 exit gate.
+
+- Added interval-rest camera cutscene #1 for every non-Standard route on
+  2026-09-23. It is a route-local Unreal-only state machine driven by immutable workout snapshots:
+  five seconds of continuously fresh PM-reported rest lead to a ten-second
+  rear/starboard reveal; leaving rest returns to the chase view over four
+  seconds. Reduce Motion keeps the chase view and exposes a keyboard-reachable
+  static "View surroundings" action during a valid rest. The feature has no
+  write path to PM facts, route selection, or the local journal. Automated
+  source coverage was added; editor scene/HUD review and reference-Mac
+  frame-time evidence remain required before acceptance.
+
+- Initially documented the [realistic water refinement plan](12-realistic-water-refinement-plan.md)
+  on 2026-09-23. It specifies projected-footprint wave filtering, restrained
+  reflections, explicit reduced-motion checks, editor asset review, Han
+  re-cook, and packaged reference-Mac visual and thermal evidence. Han water
+  remains animated by default; automatic reduced motion or a changed default
+  requires a separate owner decision. At that point it was a follow-up plan,
+  before Milestone 5 was scoped. This is planning only;
+  no water source or Unreal asset changed and no acceptance gate passed.
+
 - Extended the direct Area 01 OSM path on 2026-09-23 to fetch
   `type=multipolygon` relations with their way/node members, assemble split
   outer and inner rings, leave holes empty in building and water tiles, and

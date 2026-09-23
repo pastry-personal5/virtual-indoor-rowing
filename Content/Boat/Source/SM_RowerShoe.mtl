@@ -1,0 +1,3 @@
+# Original VIR rower palette; no bitmap dependencies
+newmtl RowerShoe
+Kd 0.0250 0.0350 0.0450

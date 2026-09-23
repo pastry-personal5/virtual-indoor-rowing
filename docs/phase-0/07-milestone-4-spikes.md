@@ -79,6 +79,11 @@ Ties to `FR-006` and `QA-001` (`docs/architecture/01-product-scope.md`) and the 
 
 **Acceptance gate:** over the 6-minute run, game thread ≤4.0 ms p95, render thread ≤5.0 ms p95, GPU ≤14.0 ms p95, sustained 60 fps, and no observed thermal throttling in that window — or an explicit recorded miss with margin. The evidence report states plainly that this is a 6-minute measurement, not a 60-minute one.
 
+The 14.0 ms figure above records the original Phase 0 spike plan. For the
+deferred Phase 4 visual-performance runs, [ADR-0013](../adr/0013-increase-reference-gpu-frame-budget.md)
+replaces the whole-scene GPU ceiling with 16.5 ms p95; QA-001's frame-time,
+60 fps, and thermal objectives remain unchanged.
+
 **Owner:** A3 (Unreal client/content — first work assigned into this previously-unassigned slot; see [architecture and ownership](01-architecture-and-ownership.md)). Scope review: A0. Integration review: A8.
 
 ## Overall acceptance gate

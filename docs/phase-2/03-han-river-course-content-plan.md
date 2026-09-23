@@ -86,6 +86,11 @@ vertical slice:
    windows, and a wet-after-rain material response. Avoid thunder, heavy rain,
    lens effects, bloom spikes, or high-contrast reflection bands.
 
+The later [Milestone 5 water refinement](12-realistic-water-refinement-plan.md)
+adds restrained boat-local hull and oar effects to this presentation kit. They
+do not introduce river current or the intensified wake treatment excluded at
+the Hangang Bridge beat.
+
 Use camera-facing or low-detail far scenery where it is visually equivalent.
 Near-field content needs real parallax and silhouette quality around the boat;
 everything else must earn its cost in repeated rowing view. The default camera

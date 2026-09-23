@@ -37,6 +37,9 @@ class VIRTUALROWING_API UCourseSubsystem : public UWorldSubsystem, public FTicka
 	static bool SupportsWorldType(EWorldType::Type WorldType);
 	const FCoursePresentationSnapshot &GetPresentation() const;
 	ECourseAnimationQuality GetAnimationQuality() const;
+	bool CanToggleRestView() const;
+	bool IsRestViewEnabled() const;
+	void ToggleRestView();
 	AGrayBoxCourseActor *GetCourseActorForTesting() const;
 	// Called before the HUD enters the viewport so the same visible frame has a
 	// world actor and active course camera behind it.

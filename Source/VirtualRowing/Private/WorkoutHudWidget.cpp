@@ -142,10 +142,12 @@ void UWorkoutHudWidget::NativeOnInitialized()
 	AddRow(TEXT("STROKE RATE (spm)"), Unused, StrokeRateText);
 	AddRow(TEXT("HEART RATE (bpm)"), HeartRateLabel, HeartRateText);
 
-	auto MakeButton = [&](const TCHAR *Caption, TObjectPtr<UButton> &OutButton)
+	auto MakeButton = [&](const TCHAR *Caption, TObjectPtr<UButton> &OutButton, TObjectPtr<UTextBlock> *OutLabel = nullptr)
 	{
 		OutButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass());
 		UTextBlock *Label = MakeText(Caption, BannerFontSize, ETextJustify::Center, "Bold");
+		if (OutLabel)
+			*OutLabel = Label;
 		OutButton->AddChild(Label);
 		UWidget *Content = OutButton->GetContent();
 		if (UButtonSlot *ButtonSlot = Cast<UButtonSlot>(Content ? Content->Slot : nullptr))
@@ -154,12 +156,16 @@ void UWorkoutHudWidget::NativeOnInitialized()
 	UHorizontalBox *Actions = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
 	MakeButton(TEXT("End Session"), EndButton);
 	MakeButton(TEXT("Start New"), StartNewButton);
+	MakeButton(TEXT("View surroundings"), ViewSurroundingsButton, &ViewSurroundingsLabel);
 	Actions->AddChildToHorizontalBox(EndButton)->SetPadding(FMargin(0.0f, 0.0f, 12.0f, 0.0f));
-	Actions->AddChildToHorizontalBox(StartNewButton);
+	Actions->AddChildToHorizontalBox(StartNewButton)->SetPadding(FMargin(0.0f, 0.0f, 12.0f, 0.0f));
+	Actions->AddChildToHorizontalBox(ViewSurroundingsButton);
+	ViewSurroundingsButton->SetVisibility(ESlateVisibility::Hidden);
 	Column->AddChildToVerticalBox(Actions)->SetPadding(FMargin(0.0f, 12.0f, 0.0f, 0.0f));
 
 	EndButton->OnClicked.AddDynamic(this, &UWorkoutHudWidget::HandleEndClicked);
 	StartNewButton->OnClicked.AddDynamic(this, &UWorkoutHudWidget::HandleStartNewClicked);
+	ViewSurroundingsButton->OnClicked.AddDynamic(this, &UWorkoutHudWidget::HandleViewSurroundingsClicked);
 
 	UBorder *Root = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
 	// The root fills the viewport. It must remain transparent so the gray-box world
@@ -199,17 +205,21 @@ UWorkoutSubsystem *UWorkoutHudWidget::GetWorkoutSubsystem() const
 	return GameInstance ? GameInstance->GetSubsystem<UWorkoutSubsystem>() : nullptr;
 }
 
+UCourseSubsystem *UWorkoutHudWidget::GetCourseSubsystem() const
+{
+	UWorld *World = GetWorld();
+	return World ? World->GetSubsystem<UCourseSubsystem>() : nullptr;
+}
+
 void UWorkoutHudWidget::NativeTick(const FGeometry &MyGeometry, float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
 	const UWorkoutSubsystem *Subsystem = GetWorkoutSubsystem();
 	if (!Subsystem)
 		return;
-	if (UWorld *World = GetWorld())
-	{
-		if (const UCourseSubsystem *Course = World->GetSubsystem<UCourseSubsystem>())
-			EstimatedStrokeText->SetVisibility(AnimationLabelVisibility(Course->GetAnimationQuality()));
-	}
+	if (const UCourseSubsystem *Course = GetCourseSubsystem())
+		EstimatedStrokeText->SetVisibility(AnimationLabelVisibility(Course->GetAnimationQuality()));
+	UpdateRestViewAction();
 	if (!bHasApplied || Subsystem->GetDisplayGeneration() != AppliedGeneration)
 	{
 		ApplyDisplay(*Subsystem);
@@ -257,7 +267,7 @@ const TCHAR *UWorkoutHudWidget::MetricAccuracyNotice()
 
 bool UWorkoutHudWidget::IsActionFocused() const
 {
-	return EndButton->HasKeyboardFocus() || StartNewButton->HasKeyboardFocus();
+	return EndButton->HasKeyboardFocus() || StartNewButton->HasKeyboardFocus() || ViewSurroundingsButton->HasKeyboardFocus();
 }
 
 void UWorkoutHudWidget::NativeConstruct()
@@ -284,15 +294,32 @@ void UWorkoutHudWidget::ApplyFocusCue()
 	// contrasting fill, others are dark. Restyled only when focus actually changes.
 	const bool bEndFocused = EndButton->HasKeyboardFocus();
 	const bool bStartNewFocused = StartNewButton->HasKeyboardFocus();
-	if (bFocusCueApplied && bEndFocused == bEndFocusedApplied && bStartNewFocused == bStartNewFocusedApplied)
+	const bool bViewSurroundingsFocused = ViewSurroundingsButton->HasKeyboardFocus();
+	if (bFocusCueApplied && bEndFocused == bEndFocusedApplied && bStartNewFocused == bStartNewFocusedApplied && bViewSurroundingsFocused == bViewSurroundingsFocusedApplied)
 		return;
 	bFocusCueApplied = true;
 	bEndFocusedApplied = bEndFocused;
 	bStartNewFocusedApplied = bStartNewFocused;
+	bViewSurroundingsFocusedApplied = bViewSurroundingsFocused;
 	const FLinearColor FocusedFill(0.10f, 0.45f, 0.95f, 1.0f);
 	const FLinearColor RestingFill(0.16f, 0.18f, 0.22f, 1.0f);
 	EndButton->SetBackgroundColor(bEndFocused ? FocusedFill : RestingFill);
 	StartNewButton->SetBackgroundColor(bStartNewFocused ? FocusedFill : RestingFill);
+	ViewSurroundingsButton->SetBackgroundColor(bViewSurroundingsFocused ? FocusedFill : RestingFill);
+}
+
+void UWorkoutHudWidget::UpdateRestViewAction()
+{
+	UCourseSubsystem *Course = GetCourseSubsystem();
+	const bool bCanView = Course && Course->CanToggleRestView();
+	const ESlateVisibility Visibility = bCanView ? ESlateVisibility::Visible : ESlateVisibility::Hidden;
+	if (ViewSurroundingsButton->GetVisibility() != Visibility)
+		ViewSurroundingsButton->SetVisibility(Visibility);
+	ViewSurroundingsButton->SetIsEnabled(bCanView);
+	if (bCanView && ViewSurroundingsLabel)
+		ViewSurroundingsLabel->SetText(FText::FromString(Course->IsRestViewEnabled() ? TEXT("Return to chase") : TEXT("View surroundings")));
+	if (!bCanView && ViewSurroundingsButton->HasKeyboardFocus())
+		FocusAction();
 }
 
 void UWorkoutHudWidget::ApplyDisplay(const UWorkoutSubsystem &Subsystem)
@@ -367,4 +394,10 @@ void UWorkoutHudWidget::HandleStartNewClicked()
 {
 	if (UWorkoutSubsystem *Subsystem = GetWorkoutSubsystem())
 		Subsystem->StartNewSession();
+}
+
+void UWorkoutHudWidget::HandleViewSurroundingsClicked()
+{
+	if (UCourseSubsystem *Course = GetCourseSubsystem())
+		Course->ToggleRestView();
 }

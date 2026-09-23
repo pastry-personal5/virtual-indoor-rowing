@@ -212,13 +212,13 @@ The reference Mac is powerful, but the shipping baseline avoids preview/beta ren
 - Water uses bounded screen-space/mesh simulation; no gameplay decision reads render water physics.
 - Niagara particle counts, translucent overdraw, skeletal meshes, texture pools, draw calls, and shader permutations have per-route budgets enforced by the editor validator.
 
-Initial frame budget at 60 fps:
+Frame budget at 60 fps (GPU revised by [ADR-0013](../adr/0013-increase-reference-gpu-frame-budget.md)):
 
 | Work | Budget |
 |---|---:|
 | Game thread | 4.0 ms p95 |
 | Render thread | 5.0 ms p95 |
-| GPU | 14.0 ms p95 |
+| GPU | 16.5 ms p95 |
 | Device decode + domain update | 0.5 ms per 100 ms telemetry cycle |
 | HUD update | 0.5 ms per frame; values need not invalidate layout every frame |
 

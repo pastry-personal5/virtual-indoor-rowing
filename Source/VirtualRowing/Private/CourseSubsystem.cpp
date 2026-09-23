@@ -149,9 +149,10 @@ void UCourseSubsystem::Pump(uint64 NowMonotonicNs)
 		LastSampleKey.Empty();
 		SampleObservedNs = 0;
 	}
-	const FCoursePresentationSnapshot Snapshot = Runtime.Update(TranslateSnapshot(WorkoutSnapshot, SampleTimestampNs), NowMonotonicNs);
+	const FCourseTelemetryInput Telemetry = TranslateSnapshot(WorkoutSnapshot, SampleTimestampNs);
+	const FCoursePresentationSnapshot Snapshot = Runtime.Update(Telemetry, NowMonotonicNs);
 	if (CourseActor)
-		CourseActor->ApplyPresentation(Snapshot);
+		CourseActor->ApplyPresentation(Snapshot, Telemetry, NowMonotonicNs);
 }
 
 void UCourseSubsystem::NoteLevel(const FString &Message)
@@ -485,6 +486,22 @@ const FCoursePresentationSnapshot &UCourseSubsystem::GetPresentation() const
 ECourseAnimationQuality UCourseSubsystem::GetAnimationQuality() const
 {
 	return Runtime.GetSnapshot().AnimationQuality;
+}
+
+bool UCourseSubsystem::CanToggleRestView() const
+{
+	return CourseActor && CourseActor->CanToggleRestView();
+}
+
+bool UCourseSubsystem::IsRestViewEnabled() const
+{
+	return CourseActor && CourseActor->IsRestViewEnabled();
+}
+
+void UCourseSubsystem::ToggleRestView()
+{
+	if (CourseActor)
+		CourseActor->ToggleRestView();
 }
 
 AGrayBoxCourseActor *UCourseSubsystem::GetCourseActorForTesting() const
