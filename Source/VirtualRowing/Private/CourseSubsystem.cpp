@@ -313,7 +313,7 @@ void UCourseSubsystem::BeginAuthoredLevelLoad()
 	LastLevelStreamingState.Empty();
 	if (!Content || !Content->IsHanContentMounted())
 	{
-		LevelSkipReason = TEXT("Han content is not mounted (no active package).");
+		LevelSkipReason = FString::Printf(TEXT("Han content is not mounted (%s)."), Content ? *Content->GetHanAvailabilityReason() : TEXT("content.unavailable"));
 		NoteLevel(LevelSkipReason);
 		return;
 	}

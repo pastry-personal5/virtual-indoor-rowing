@@ -29,9 +29,11 @@ replace a real UE 5.8 cook.
 
 1. Run the route, asset-budget, reference, redirector, and provenance
    validators against the reviewed source.
-2. Produce the external UE 5.8 IoStore pair and its required metadata Pak with
-   `make han-external-cook`. It cooks the Han map and the whole
-   `Content/Phase2/HanRiver` directory, routes that content into its own
+2. Run `make han-source-verify` from the release revision, then produce the
+   external UE 5.8 IoStore pair and its required metadata Pak with
+   `make han-external-cook`. It cooks the runtime Han map plus its `Materials`
+   and `Meshes` directories (including the referenced Area 01 OSM tiles),
+   excluding review and backup maps, and routes that content into its own
    `pakchunk1001` chunk through a temporary, git-ignored
    `Config/GeneratedPakFileRules.ini` and `Config/GeneratedGame.ini` (removed
    after the run, so ordinary Shipping packages are unaffected), and copies the

@@ -45,6 +45,22 @@ phase1-check: ## Validate Phase 1 milestone numbering, links, and evidence statu
 development-sync-test: ## Run the development-sync Go test suite.
 	cd Services/development-sync && GOCACHE="$(VIR_GO_CACHE)" GOMODCACHE="$(VIR_GO_MOD_CACHE)" go test ./...
 
+.PHONY: han-area-audit han-area-register han-area-osm-acquire han-area-osm-generate han-area-test
+han-area-audit: ## Inspect local OSM batches; set HAN_OSM_DIR. Writes only Saved/HanArea/.
+	$(DEV) han-area-audit
+
+han-area-register: ## Fit reviewed geographic controls; set HAN_AREA_REVIEW to local JSON.
+	$(DEV) han-area-register
+
+han-area-osm-acquire: ## Acquire an offline or reviewed Overpass OSM snapshot; set HAN_OSM_ACQUIRE_CONFIG and HAN_OSM_ACQUIRE_OUTPUT.
+	$(DEV) han-area-osm-acquire
+
+han-area-osm-generate: ## Generate reviewed OSM OBJ tiles; set HAN_OSM_GENERATE_CONFIG and HAN_OSM_GENERATE_OUTPUT.
+	$(DEV) han-area-osm-generate
+
+han-area-test: ## Test Han area projection, registration, and import preflight without editors.
+	$(DEV) han-area-test
+
 # --- Optional loopback development sync -------------------------------------
 
 .PHONY: development-sync-bootstrap development-sync-up development-sync-migrate development-sync-down development-sync-reset
@@ -76,7 +92,10 @@ pm5-tui-journal: ## Launch the TUI with the opt-in Keychain-sealed workout journ
 
 # --- Unreal ------------------------------------------------------------------
 
-.PHONY: unreal-native-app unreal-smoke unreal-shipping han-external-cook unreal-package-verify unreal-bluetooth-probe unreal-bluetooth-probe-clean content-canary content-fixture content-release-package
+.PHONY: unreal-native-app unreal-smoke unreal-shipping han-source-verify han-external-cook unreal-package-verify unreal-bluetooth-probe unreal-bluetooth-probe-clean content-canary content-fixture content-release-package
+
+han-source-verify: ## Check that the runtime Han map and all referenced Han assets are present and tracked.
+	$(DEV) han-source-verify
 
 # The first configure downloads hash-pinned protobuf and abseil sources (network).
 unreal-native-app: ## Build the Release static archive (Build/native-app/) the Unreal module links.

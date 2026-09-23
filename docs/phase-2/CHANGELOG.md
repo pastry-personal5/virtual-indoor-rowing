@@ -2,6 +2,87 @@
 
 ## Unreleased
 
+- Extended the direct Area 01 OSM path on 2026-09-23 to fetch
+  `type=multipolygon` relations with their way/node members, assemble split
+  outer and inner rings, leave holes empty in building and water tiles, and
+  avoid duplicate member-way output. Tags on older outer members are accepted
+  when they agree on the feature class. Invalid relation topology is counted
+  and excluded from generated geometry; deterministic fixture tests cover
+  split rings, holes, multiple outers, and a broken relation. No live Overpass
+  acquisition or Unreal import has been run for this change.
+
+- Fixed the Area 01 live Overpass snapshot query on 2026-09-23 to request the
+  same closed water-way tag categories accepted by the generator. The fixed
+  query test now checks every water selector; the Phase 2 runbook describes
+  the query scope. The index-linked runbooks are included in the Git index.
+
+- Clarified the Han package mount failure on 2026-09-23. The course line now
+  shows the content availability category, the Content panel identifies a
+  failed mount, and the Shipping mount event captures Unreal's IoStore error
+  category and system error without recording a local path. The packaging
+  runbook now gives a packaged-app recovery path and records the local failed
+  `1.0.0`/`1.0.1` canary evidence; no new signed release has been validated.
+
+- Expanded the Han River packaging runbook on 2026-09-23 with clean-source and
+  Git LFS checks, fresh cook transfer and hash matching, previous-catalog
+  retrieval, release-file verification, a reproducible local Caddy smoke,
+  remote digest checks, an immutable-catalog packaged canary before promotion,
+  and a post-promotion catalog comparison. The origin upload remains the
+  restricted operator's provider-specific procedure.
+
+- Tightened the Han release path on 2026-09-23: the external cook now selects
+  the runtime `L_HanRiver_BlueHour` map and the Han Materials/Meshes directories
+  without sweeping in review or backup maps. `make han-source-verify` rejects
+  missing, empty, LFS-pointer, or untracked map dependencies before a cook.
+  The packaging runbook now identifies the 164 Area 01 OSM mesh packages and
+  the Han-area scripts required in the release revision, and spells out the
+  immutable upload, digest, catalog-pointer, and packaged-app checks.
+
+- Added the [Han River packaging runbook](11-han-river-packaging-runbook.md) on
+  2026-09-22. It documents the prerequisite checks, external IoStore cook,
+  signed `HanRiver.vircontent` release, restricted-origin publication, and
+  packaged Shipping verification without changing the content trust boundary.
+
+- Split the planned Area 01 geospatial-source guidance into a detailed
+  [OSM-to-Unreal runbook](09-han-area-01-osm-unreal-runbook.md) and a separate
+  [OSM-to-Blender-to-Unreal runbook](10-han-area-01-osm-blender-unreal-runbook.md)
+  on 2026-09-22. The OSM acquisition boundary explicitly selects either a
+  reviewed offline source or one fixed, capped, HTTPS Overpass snapshot before
+  it becomes a hash-pinned local input. The work records an Area 01
+  registration contract, audits the local OSM source, and stages only unsaved
+  review assets after explicit Unreal-MCP map inspection. It does not mutate
+  the Han level, import a mesh, establish an OSM license/provenance approval,
+  complete Milestone 4, or pass any Phase 2 gate.
+
+- Corrected the Area 01 registration examples on 2026-09-22. The old
+  illustrative review-level coordinates implied an invalid scale transform; the
+  runbooks now use the tested scale-preserving bootstrap controls and explain
+  the fitted-scale/residual diagnostics required when registering an existing
+  hand-authored review map.
+
+- Documented the Unreal Python module-path bootstrap on 2026-09-22. Unreal
+  Editor does not automatically search the repository `Scripts/` directory,
+  so the runbooks now add that path before importing the staging modules.
+
+- Made the OSM Unreal staging map configurable, while restricting it to a
+  `/Game/Phase2/HanRiver/Maps/*_Review` level, on 2026-09-22. The error now
+  reports both the required and currently loaded map paths. Added exact Unreal
+  console verification and retry guidance to both import runbooks.
+
+- Owner decision on 2026-09-22: the runtime Han map is
+  `/Game/Phase2/HanRiver/Maps/L_HanRiver_BlueHour`, not
+  `L_HanRiver_Area01_BlueHour`. The repaired level (13 HISM actors plus the
+  staged OSM tiles) was saved at the `L_HanRiver_BlueHour` path, so the client
+  route table, the cook `-map`, the editor-asset authoring script, and the
+  loose-level dev path all name that one level. `L_HanRiver_Area01_BlueHour`
+  and `L_HanRiver_Area01_Review` stay unsaved-state review assets only; the
+  dated `L_HanRiver_BlueHour_20260922` map remains the rollback backup.
+
+- Owner decision on 2026-09-22: the narrow direct OSM path now includes closed
+  river/water polygons as separate static visual tiles with `M_Han_Water` and
+  no collision. It does not add water relations/multipolygons, terrain, flow,
+  wake, depth, safety, routing, or workout-fact semantics.
+
 - Completed Phase 2 Milestone 3 by owner decision on 2026-09-22. The
   texture-free, math-only material (`/Game/Water/M_CourseWater`, five analytic
   directional waves with deep-water dispersion, distance-faded detail, capped

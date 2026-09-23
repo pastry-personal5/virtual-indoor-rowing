@@ -113,6 +113,19 @@ HAN_GENERATED_CONFIG = {
 HAN_IOSTORE_MAGIC = b"-==--==--==--==-"
 
 
+def han_source_verify() -> int:
+	project = common.ROOT / "VirtualRowing.uproject"
+	failures = packaging.han_source_failures(project, require_tracked=True)
+	for failure in failures[:10]:
+		print(f"ERROR: {failure}", file=sys.stderr)
+	if failures:
+		if len(failures) > 10:
+			print(f"ERROR: {len(failures) - 10} further Han source failures omitted", file=sys.stderr)
+		return 1
+	print("OK Han runtime map and referenced source packages are present and tracked")
+	return 0
+
+
 def _han_chunk_files(stage_dir: Path) -> dict[str, Path] | None:
 	"""Find the staged Han chunk trio, or None unless each extension resolves to exactly one file."""
 	found = {}
@@ -131,6 +144,8 @@ def han_external_cook() -> int:
 	Output goes to $VIR_HAN_IOSTORE_DIR (the same variable `content-release-package`
 	consumes) or Build/han-cook/HanRiver.
 	"""
+	if han_source_verify():
+		return 1
 	versions = common.load_versions()
 	ue_root = common.find_unreal(versions)
 	if not ue_root:

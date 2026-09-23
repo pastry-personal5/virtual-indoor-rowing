@@ -6,6 +6,8 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
+import subprocess
 
 from vir_dev import common
 
@@ -41,6 +43,8 @@ def unreal_shipping_command(ue_root: Path, project: Path, archive_dir: Path) -> 
 
 HAN_MAP = "/Game/Phase2/HanRiver/Maps/L_HanRiver_BlueHour"
 HAN_CONTENT_RELATIVE_DIR = Path("Content") / "Phase2" / "HanRiver"
+HAN_MAP_RELATIVE_PATH = HAN_CONTENT_RELATIVE_DIR / "Maps" / "L_HanRiver_BlueHour.umap"
+HAN_ASSET_REFERENCE = re.compile(rb"/Game/Phase2/HanRiver/(?:Maps|Materials|Meshes)/[A-Za-z0-9_+/-]+")
 HAN_PAK_CHUNK = "pakchunk1001"
 # Written to Config/GeneratedPakFileRules.ini and GeneratedGame.ini (UAT's build-machine-only, git-ignored
 # layer) for the duration of one Han cook so ordinary Shipping packages are unaffected.
@@ -55,7 +59,7 @@ bGenerateChunks=True
 
 
 def han_cook_command(ue_root: Path, project: Path, stage_dir: Path) -> list[str]:
-	"""BuildCookRun that cooks only the Han map and stages Han content as its own IoStore chunk."""
+	"""Cook the runtime map and reviewed asset directories into one IoStore chunk."""
 	return [
 		str(ue_root / "Engine" / "Build" / "BatchFiles" / "RunUAT.sh"),
 		"BuildCookRun",
@@ -69,8 +73,8 @@ def han_cook_command(ue_root: Path, project: Path, stage_dir: Path) -> list[str]
 		"-cook",
 		"-manifests",
 		f"-map={HAN_MAP}",
-		# The map does not reference every reviewed Han asset (e.g. meshes); cook the whole directory.
-		f"-cookdir={project.parent / HAN_CONTENT_RELATIVE_DIR}",
+		# Keep review and dated backup maps out of the release cook.
+		f"-cookdir={project.parent / HAN_CONTENT_RELATIVE_DIR / 'Materials'}+{project.parent / HAN_CONTENT_RELATIVE_DIR / 'Meshes'}",
 		"-pak",
 		"-iostore",
 		"-stage",
@@ -79,6 +83,47 @@ def han_cook_command(ue_root: Path, project: Path, stage_dir: Path) -> list[str]
 		"-CookCultures=en",
 		"-I18NPreset=English",
 	]
+
+
+def han_source_failures(project: Path, *, require_tracked: bool = False) -> list[str]:
+	"""Check source packages named by the runtime map before the expensive cook."""
+	root = project.parent
+	level = root / HAN_MAP_RELATIVE_PATH
+	try:
+		data = level.read_bytes()
+	except OSError:
+		return [f"missing runtime Han map: {level}"]
+	if not data.startswith(bytes.fromhex("c1832a9e")):
+		return [f"runtime Han map is not an Unreal package (or is an LFS pointer): {level}"]
+	references = {match.decode("ascii") for match in HAN_ASSET_REFERENCE.findall(data)}
+	osm_references = {reference for reference in references if "/Meshes/Area01/OSM/" in reference}
+	failures = []
+	if not osm_references:
+		failures.append("runtime Han map has no Area 01 OSM mesh references")
+	required = {HAN_MAP_RELATIVE_PATH}
+	for reference in sorted(references):
+		# The map's own package name is expected among its references.
+		if reference == HAN_MAP:
+			continue
+		relative = Path("Content") / reference.removeprefix("/Game/")
+		relative = relative.with_suffix(".uasset")
+		required.add(relative)
+		asset = root / relative
+		if not asset.is_file() or asset.stat().st_size == 0:
+			failures.append(f"missing or empty Han map dependency: {asset}")
+		else:
+			with asset.open("rb") as source:
+				if source.read(4) != bytes.fromhex("c1832a9e"):
+					failures.append(f"Han map dependency is not an Unreal package (or is an LFS pointer): {asset}")
+	if require_tracked:
+		result = subprocess.run(["git", "ls-files", "-z", "--", *(path.as_posix() for path in sorted(required))], cwd=root, capture_output=True, check=False)
+		if result.returncode:
+			failures.append("cannot check Git index for Han source packages")
+		else:
+			tracked = {path.decode("utf-8") for path in result.stdout.split(b"\0") if path}
+			for relative in sorted(required - {Path(path) for path in tracked}):
+				failures.append(f"Han source package is not tracked by Git: {relative}")
+	return failures
 
 
 def staged_app(archive_dir: Path) -> Path | None:

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import plistlib
+import re
 import sys
 import tempfile
 import unittest
@@ -56,8 +57,42 @@ class UnrealShippingPackagingTests(unittest.TestCase):
 		self.assertIn(f"-map={packaging.HAN_MAP}", command)
 		for flag in ("-cook", "-pak", "-iostore", "-stage", "-stagingdirectory=/stage"):
 			self.assertIn(flag, command)
-		self.assertIn("-cookdir=/repo/Content/Phase2/HanRiver", command)
+		self.assertIn("-cookdir=/repo/Content/Phase2/HanRiver/Materials+/repo/Content/Phase2/HanRiver/Meshes", command)
+		self.assertNotIn("-cookdir=/repo/Content/Phase2/HanRiver", command)
 		self.assertNotIn("-archive", command)
+
+	def test_han_runtime_map_dependencies_are_present(self) -> None:
+		self.assertEqual(packaging.han_source_failures(common.ROOT / "VirtualRowing.uproject"), [])
+		level = common.ROOT / packaging.HAN_MAP_RELATIVE_PATH
+		osm_references = set(re.findall(rb"/Game/Phase2/HanRiver/Meshes/Area01/OSM/[A-Za-z0-9_+-]+", level.read_bytes()))
+		self.assertEqual(len(osm_references), 164)
+
+	def test_han_source_preflight_reports_missing_osm_mesh(self) -> None:
+		level = self.root / packaging.HAN_MAP_RELATIVE_PATH
+		level.parent.mkdir(parents=True)
+		level.write_bytes(bytes.fromhex("c1832a9e") + b"/Game/Phase2/HanRiver/Meshes/Area01/OSM/SM_Han_A01_OSM_BuildingTile_E+0000_N+0000")
+		failures = packaging.han_source_failures(self.root / "VirtualRowing.uproject")
+		self.assertEqual(len(failures), 1)
+		self.assertIn("missing or empty Han map dependency", failures[0])
+
+	def test_han_source_preflight_rejects_untracked_mesh(self) -> None:
+		level = self.root / packaging.HAN_MAP_RELATIVE_PATH
+		level.parent.mkdir(parents=True)
+		level.write_bytes(bytes.fromhex("c1832a9e") + b"/Game/Phase2/HanRiver/Meshes/Area01/OSM/SM_Han_A01_OSM_BuildingTile_E+0000_N+0000")
+		mesh = self.root / "Content/Phase2/HanRiver/Meshes/Area01/OSM/SM_Han_A01_OSM_BuildingTile_E+0000_N+0000.uasset"
+		mesh.parent.mkdir(parents=True)
+		mesh.write_bytes(bytes.fromhex("c1832a9e") + b"mesh")
+		with patch.object(packaging.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout=b"Content/Phase2/HanRiver/Maps/L_HanRiver_BlueHour.umap\0")):
+			failures = packaging.han_source_failures(self.root / "VirtualRowing.uproject", require_tracked=True)
+		self.assertEqual(failures, [f"Han source package is not tracked by Git: {mesh.relative_to(self.root)}"])
+
+	def test_han_river_runtime_map_is_the_bluehour_level_not_area01(self) -> None:
+		# The binary is shipped separately from the cook; both must name the same
+		# level or the cooked map never resolves at runtime.
+		self.assertEqual(packaging.HAN_MAP, "/Game/Phase2/HanRiver/Maps/L_HanRiver_BlueHour")
+		route_table = (common.ROOT / "Source" / "ContentRuntime" / "Private" / "CourseLevel.cpp").read_text(encoding="utf-8")
+		self.assertIn(f'return std::string("{packaging.HAN_MAP}")', route_table)
+		self.assertNotIn("Area01_BlueHour", route_table)
 
 	def test_han_pak_rules_route_han_content_to_a_dedicated_chunk(self) -> None:
 		self.assertIn(f"OverridePaks={packaging.HAN_PAK_CHUNK}", packaging.HAN_PAK_FILE_RULES)

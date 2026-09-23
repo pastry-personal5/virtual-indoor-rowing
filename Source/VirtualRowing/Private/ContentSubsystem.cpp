@@ -7,6 +7,7 @@
 #include "HAL/PlatformProcess.h"
 #include "HAL/PlatformTime.h"
 #include "IPlatformFilePak.h"
+#include "IO/IoStatus.h"
 #include "HttpModule.h"
 #include "Interfaces/IHttpResponse.h"
 #include "Misc/CommandLine.h"
@@ -188,6 +189,19 @@ void UContentSubsystem::Initialize(FSubsystemCollectionBase &Collection)
 			Impl->HanAvailabilityReason = LastFailure.IsEmpty()
 											  ? UTF8_TO_TCHAR(Selection.HanUnavailableReason.c_str())
 											  : LastFailure;
+			// A previous launch already marked this package failed. Keep that
+			// reason visible after a restart instead of reporting "not installed".
+			if (Impl->HanAvailabilityReason == TEXT("content.han.not_installed"))
+			{
+				for (const auto &Record : Impl->Repository->ListRetained())
+				{
+					if (Record.State == ContentRuntime::EInstalledContentState::Failed && !Record.FailureCategory.empty())
+					{
+						Impl->HanAvailabilityReason = UTF8_TO_TCHAR(Record.FailureCategory.c_str());
+						break;
+					}
+				}
+			}
 		}
 	}
 	catch (const std::exception &Error)
@@ -364,7 +378,12 @@ FString UContentSubsystem::GetDiagnosticsText() const
 		{
 			Lines.Add(FString::Printf(TEXT("accepted catalog revision: %llu"), static_cast<uint64>(Impl->Repository->AcceptedCatalogRevision())));
 			for (const auto &Record : Impl->Repository->ListRetained())
-				Lines.Add(FString::Printf(TEXT("installed: v%s %s (catalog r%llu, built %s UTC)"), UTF8_TO_TCHAR(Record.SemanticVersion.c_str()), UTF8_TO_TCHAR(ContentRuntime::InstalledContentStateName(Record.State)), static_cast<uint64>(Record.CatalogRevision), *UtcText(Record.IssuedAtUnixSeconds)));
+			{
+				FString Line = FString::Printf(TEXT("installed: v%s %s (catalog r%llu, built %s UTC)"), UTF8_TO_TCHAR(Record.SemanticVersion.c_str()), UTF8_TO_TCHAR(ContentRuntime::InstalledContentStateName(Record.State)), static_cast<uint64>(Record.CatalogRevision), *UtcText(Record.IssuedAtUnixSeconds));
+				if (Record.State == ContentRuntime::EInstalledContentState::Failed && !Record.FailureCategory.empty())
+					Line += FString::Printf(TEXT(" failure=%s"), UTF8_TO_TCHAR(Record.FailureCategory.c_str()));
+				Lines.Add(MoveTemp(Line));
+			}
 		}
 		catch (const std::exception &Error)
 		{
@@ -613,11 +632,22 @@ bool UContentSubsystem::TryMountInstalledContent(const FString &InstallPath, FSt
 	}
 	IPlatformFile *PlatformFile = FPlatformFileManager::Get().FindPlatformFile(TEXT("PakFile"));
 	FPakPlatformFile *PakPlatformFile = static_cast<FPakPlatformFile *>(PlatformFile);
-	if (!PakPlatformFile || !PakPlatformFile->Mount(*PakPath, 100, nullptr))
+	if (!PakPlatformFile)
 	{
 		OutFailureCategory = TEXT("content.mount_failed");
 		if (Impl)
-			Impl->Note(TEXT("mount: FPakPlatformFile::Mount refused HanRiver.pak"));
+			Impl->Note(TEXT("mount: PakFile platform file is unavailable"));
+		return false;
+	}
+	FPakMountArgs MountArgs;
+	MountArgs.PakFilename = *PakPath;
+	MountArgs.PakOrder = 100;
+	FIoStatus MountStatus;
+	if (!PakPlatformFile->Mount(MountArgs, &MountStatus))
+	{
+		OutFailureCategory = TEXT("content.mount_failed");
+		if (Impl)
+			Impl->Note(FString::Printf(TEXT("mount: HanRiver.pak refused (%s, system error %u)"), GetIoErrorText(MountStatus.GetErrorCode()), MountStatus.GetSystemErrorCode()));
 		return false;
 	}
 	if (Impl)

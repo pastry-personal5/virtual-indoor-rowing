@@ -41,6 +41,8 @@ namespace
 			return TEXT("Han River unavailable: refresh content while online.");
 		if (Reason == TEXT("content.han.withdrawn"))
 			return TEXT("Han River is currently unavailable.");
+		if (Reason == TEXT("content.mount_failed") || Reason == TEXT("content.mount_missing_iostore"))
+			return TEXT("Han River package failed to mount. Open Details for the cause and install a compatible signed release.");
 		return TEXT("Han River unavailable: download and restart to activate it.");
 	}
 } // namespace

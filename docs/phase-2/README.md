@@ -49,6 +49,15 @@ individually, before work begins; no speculative sequencing or scope is
 recorded here. Completing a milestone records incremental progress only and
 does not pass the Phase 2 exit gate.
 
+## Runbooks
+
+- [Content-origin runbook](02-content-origin-runbook.md) — publication,
+  withdrawal, and rollback of signed Han content.
+- [Han River packaging runbook](11-han-river-packaging-runbook.md) — produce
+  the external IoStore cook and signed `HanRiver.vircontent` release.
+- [Han Area 01 OSM-to-Unreal runbook](09-han-area-01-osm-unreal-runbook.md)
+- [Han Area 01 OSM-to-Blender-to-Unreal runbook](10-han-area-01-osm-blender-unreal-runbook.md)
+
 ## Exit gate
 
 - The internal alpha participant can manually install the unsigned ad-hoc build,
