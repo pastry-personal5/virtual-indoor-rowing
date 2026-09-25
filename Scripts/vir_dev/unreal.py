@@ -3,14 +3,103 @@
 from __future__ import annotations
 
 import os
+import json
 import shutil
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from vir_dev import common, doctor, native, packaging
 
 
+def editor_closed_preflight() -> bool:
+	"""Native builds/cleanup require closed Editors, including commandlets.
+
+	Query executable names only, never process arguments (which may contain
+	credentials). Treat denied/incomplete process inspection as unknown, not
+	proof that no Editor is running. MCP availability is not a process check.
+	"""
+	try:
+		result = subprocess.run(["/bin/ps", "-axo", "pid=,comm="], capture_output=True, text=True, check=False, timeout=10)
+		if result.returncode or not result.stdout.strip():
+			raise RuntimeError("process listing unavailable")
+		editors = []
+		for line in result.stdout.splitlines():
+			parts = line.strip().split(None, 1)
+			if len(parts) != 2 or not parts[0].isdigit():
+				raise RuntimeError("incomplete process listing")
+			name = Path(parts[1]).name
+			if name == "UnrealEditor" or name.startswith("UnrealEditor-"):
+				editors.append(f"{name} (PID {parts[0]})")
+	except (OSError, subprocess.TimeoutExpired, RuntimeError) as exc:
+		print(f"ERROR: cannot establish that Unreal Editor is closed: {exc}. Build/cleanup stopped before changing native binaries. Use an owner terminal with process-inspection access; do not infer Editor state from a port or stale PID file.", file=sys.stderr)
+		return False
+	if editors:
+		print(f"ERROR: close Unreal Editor/commandlets before native build or cleanup: {', '.join(editors)}. Save your work and quit normally, then rerun this target. Native hot reload can retain obsolete automation classes.", file=sys.stderr)
+		return False
+	return True
+
+
+def verify_editor_module() -> bool:
+	"""Verify the module the next Editor will load, not a leftover base dylib."""
+	binaries = common.ROOT / "Binaries" / "Mac"
+	name = "libUnrealEditor-VirtualRowing.dylib"
+	try:
+		manifest = json.loads((binaries / "UnrealEditor.modules").read_text(encoding="utf-8"))
+		if manifest["Modules"]["VirtualRowing"] != name:
+			raise ValueError("manifest still selects a hot-reload module; a closed-Editor build is required")
+		module = binaries / name
+		if not module.is_file():
+			raise ValueError(f"missing compiled module {name}")
+		if packaging.homebrew_load_commands(module):
+			raise ValueError(f"{name} loads Homebrew libraries")
+	except (OSError, ValueError, KeyError, TypeError) as exc:
+		print(f"ERROR: Unreal Editor module verification failed: {exc}", file=sys.stderr)
+		return False
+	return True
+
+
+def unreal_build_preflight(ue_root: Path, *, automation_tool: bool = True) -> bool:
+	"""Check stock macOS UAT's mandatory per-user writes without changing caches.
+
+	PlatformExports.Initialize calls ReadConfigFiles(null, null) before any
+	BuildCookRun command: neither -project nor -ubtargs redirects that cache.
+	"""
+	if sys.platform != "darwin":
+		return True
+	if not (ue_root / "Engine" / "Build" / "InstalledBuild.txt").is_file():
+		return True
+	epic = Path.home() / "Library" / "Application Support" / "Epic"
+	settings = epic / ("UnrealEngine" if automation_tool else "UnrealBuildTool")
+	cache = settings / f"XmlConfigCache-{str(ue_root.resolve()).replace(':', '').replace('/', '+')}.bin"
+	directories = (settings, settings / "Intermediate" / "Build") if automation_tool else (settings,)
+	files = (cache, settings / "Intermediate" / "Build" / "UnrealBuildTool.Env.BuildConfiguration.xml") if automation_tool else (settings / "Trace.uba", *settings.glob("Trace-backup-*.uba"))
+	try:
+		for directory in directories:
+			directory.mkdir(parents=True, exist_ok=True)
+			# os.access does not reliably detect managed-runner sandbox denials.
+			with tempfile.TemporaryFile(prefix="vir-uat-preflight-", dir=directory):
+				pass
+		for path in files:
+			if path.exists():
+				# No truncation, writes or timestamp changes to existing user files.
+				with path.open("r+b"):
+					pass
+	except OSError as exc:
+		print(f"ERROR: Unreal build tools require writable per-user build state at {settings}: {exc}", file=sys.stderr)
+		print("This blocks the build before compilation/cooking; it is not an Unreal Editor crash. Run this make target from an owner terminal with write access to that directory. Do not delete caches or change engine files to work around the denial.", file=sys.stderr)
+		if automation_tool:
+			print("-XmlConfigCache is load-only in UBT and does not redirect UAT startup.", file=sys.stderr)
+		else:
+			print("UE 5.8 rotates Trace.uba before processing -NoLog/-NoUBA; those flags cannot prevent this denial.", file=sys.stderr)
+		return False
+	return True
+
+
 def unreal_smoke() -> int:
+	if not editor_closed_preflight():
+		return 1
 	versions = common.load_versions()
 	ue_root = common.find_unreal(versions)
 	if not ue_root:
@@ -27,37 +116,42 @@ def unreal_smoke() -> int:
 	if not project.is_file():
 		print(f"ERROR: Unreal smoke host is missing: {project}", file=sys.stderr)
 		return 1
+	if not unreal_build_preflight(ue_root, automation_tool=False):
+		return 1
 	# The VirtualRowing module links the prebuilt CMake archive; build it first so
 	# a missing or stale archive fails here, not inside UBT.
 	native_result = native.native_app()
 	if native_result:
 		print("ERROR: `make unreal-native-app` failed; the Unreal module cannot link without it", file=sys.stderr)
 		return native_result
+	# Native dependencies can take minutes. Recheck before UBT can replace DLLs.
+	if not editor_closed_preflight():
+		return 1
+	log = common.ROOT / "Saved" / "Logs" / "UnrealBuildTool.log"
+	log.parent.mkdir(parents=True, exist_ok=True)
 	result = common.run([
 		str(ubt),
-		"UnrealEditor",
+		"VirtualRowingEditor",
 		"Mac",
 		"Development",
 		f"-Project={project}",
 		"-WaitMutex",
-		# The managed runner may deny UnrealBuildTool's default per-user log
-		# rotation. Keep this compile smoke test read-only outside the worktree.
-		"-NoLog",
+		"-NoHotReload",
+		# Preserve diagnostics at a supported project-local log path. This does
+		# not redirect UBA's separate per-user trace or XML configuration cache.
+		f"-Log={log}",
 		# An explicit XmlConfigCache is load-only in UBT. Omitting it lets UBT
 		# generate and maintain the project-local cache under Intermediate/.
 	], env=common.tool_env(versions)).returncode
 	if result:
 		return result
 	# Phase 1 Milestone 5 closing bar: the UBT-built module must not load Homebrew libraries.
-	module = common.ROOT / "Binaries" / "Mac" / "libUnrealEditor-VirtualRowing.dylib"
-	homebrew = packaging.homebrew_load_commands(module) if module.is_file() else []
-	if homebrew:
-		print(f"ERROR: {module.name} is not self-contained; it loads Homebrew libraries: {homebrew}", file=sys.stderr)
-		return 1
-	return 0
+	return 0 if verify_editor_module() else 1
 
 
 def unreal_shipping() -> int:
+	if not editor_closed_preflight():
+		return 1
 	versions = common.load_versions()
 	ue_root = common.find_unreal(versions)
 	if not ue_root:
@@ -68,12 +162,19 @@ def unreal_shipping() -> int:
 	if not project.is_file() or not uat.is_file():
 		print("ERROR: Unreal project or RunUAT.sh is missing", file=sys.stderr)
 		return 1
+	if not unreal_build_preflight(ue_root):
+		return 1
+	if doctor.check_doctor() != 0:
+		print("ERROR: Unreal Shipping is blocked until `make doctor` passes", file=sys.stderr)
+		return 1
 	# The Shipping module links the prebuilt CMake archive; rebuild it so a stale
 	# archive can never be packaged (UBT does not notice archive changes by itself).
 	native_result = native.native_app()
 	if native_result:
 		print("ERROR: `make unreal-native-app` failed; the Unreal module cannot link without it", file=sys.stderr)
 		return native_result
+	if not editor_closed_preflight():
+		return 1
 	packaging.write_shipping_provenance(versions)
 	env = common.tool_env(versions)
 	env["VIR_SOURCE_REVISION"] = common.source_revision()
@@ -122,6 +223,11 @@ def han_source_verify() -> int:
 		if len(failures) > 10:
 			print(f"ERROR: {len(failures) - 10} further Han source failures omitted", file=sys.stderr)
 		return 1
+	candidates = packaging.han_external_reference_candidates(project)
+	for candidate in candidates[:10]:
+		print(f"WARNING: serialized external project path needs Editor dependency review: {candidate}", file=sys.stderr)
+	if len(candidates) > 10:
+		print(f"WARNING: {len(candidates) - 10} further external-path candidates omitted", file=sys.stderr)
 	print("OK Han runtime map and referenced source packages are present and tracked")
 	return 0
 
@@ -144,7 +250,19 @@ def han_external_cook() -> int:
 	Output goes to $VIR_HAN_IOSTORE_DIR (the same variable `content-release-package`
 	consumes) or Build/han-cook/HanRiver.
 	"""
+	if not editor_closed_preflight():
+		return 1
 	if han_source_verify():
+		return 1
+	# Serialized names can be stale, so the editor-open source check reports
+	# them as candidates. A release cook must wait for an Editor dependency
+	# inspection and a clean saved runtime map instead of risking an external
+	# trial asset in the signed Han package.
+	external_candidates = packaging.han_external_reference_candidates(common.ROOT / "VirtualRowing.uproject")
+	if external_candidates:
+		for candidate in external_candidates[:10]:
+			print(f"ERROR: Han cook has an unresolved external project path: {candidate}", file=sys.stderr)
+		print("ERROR: inspect live dependencies in Unreal Editor, remove external references, and save before cooking", file=sys.stderr)
 		return 1
 	versions = common.load_versions()
 	ue_root = common.find_unreal(versions)
@@ -155,6 +273,11 @@ def han_external_cook() -> int:
 	uat = ue_root / "Engine" / "Build" / "BatchFiles" / "RunUAT.sh"
 	if not project.is_file() or not uat.is_file():
 		print("ERROR: Unreal project or RunUAT.sh is missing", file=sys.stderr)
+		return 1
+	if not unreal_build_preflight(ue_root):
+		return 1
+	if doctor.check_doctor() != 0:
+		print("ERROR: Han cook is blocked until `make doctor` passes", file=sys.stderr)
 		return 1
 	for generated in HAN_GENERATED_CONFIG:
 		if generated.exists():
@@ -168,6 +291,8 @@ def han_external_cook() -> int:
 	if native_result:
 		print("ERROR: `make unreal-native-app` failed; the Unreal module cannot link without it", file=sys.stderr)
 		return native_result
+	if not editor_closed_preflight():
+		return 1
 	stage_dir = common.HAN_COOK_DIR / "stage"
 	shutil.rmtree(stage_dir, ignore_errors=True)
 	env = common.tool_env(versions)
@@ -225,6 +350,8 @@ UNREAL_INTERMEDIATE_DIRS = (
 
 
 def clean_unreal() -> int:
+	if not editor_closed_preflight():
+		return 1
 	for directory in UNREAL_INTERMEDIATE_DIRS:
 		if directory.exists():
 			shutil.rmtree(directory)

@@ -29,8 +29,13 @@ namespace
 	constexpr double CameraLookAheadCm = 700.0;
 	// Heading lag so bends read as a camera swing rather than a rigid turn.
 	constexpr float HanCameraHeadingInterpSpeed = 2.5f;
+	constexpr float HanCameraHeadingSnapTravelCm = 250.0f;
 	constexpr float OarInterpolationSpeed = 16.0f;
 	constexpr float MaxOarInterpolationStepSeconds = 1.0f / 30.0f;
+	constexpr int32 HullWakePoolSize = 12;
+	constexpr int32 OarRipplePoolSize = 4;
+	constexpr uint64 HullWakeLifetimeNs = 1'400'000'000ULL;
+	constexpr uint64 OarRippleLifetimeNs = 650'000'000ULL;
 	constexpr double HanRiverWidthCm = 42'000.0;
 	constexpr double HanBankOffsetCm = 25'000.0;
 	TOptional<bool> GReduceMotionOverrideForTesting;
@@ -77,6 +82,7 @@ AGrayBoxCourseActor::AGrayBoxCourseActor()
 	// not a reliable cooking contract for a code-only actor in a Shipping package.
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> CubeFinder(TEXT("/Engine/BasicShapes/Cube.Cube"));
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> CylinderFinder(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> PlaneFinder(TEXT("/Engine/BasicShapes/Plane.Plane"));
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> OarFinder(TEXT("/Game/Boat/Meshes/SM_ScullOar.SM_ScullOar"));
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> HullFinder(TEXT("/Game/Boat/Meshes/SM_ScullHull.SM_ScullHull"));
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> RowerTorsoFinder(TEXT("/Game/Boat/Character/SM_RowerTorso.SM_RowerTorso"));
@@ -86,6 +92,7 @@ AGrayBoxCourseActor::AGrayBoxCourseActor()
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> MaterialFinder(TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
 	CubeMesh = CubeFinder.Object;
 	CylinderMesh = CylinderFinder.Object;
+	PlaneMesh = PlaneFinder.Object;
 	OarMesh = OarFinder.Object;
 	HullMesh = HullFinder.Object;
 	RowerTorsoMesh = RowerTorsoFinder.Object;
@@ -93,10 +100,12 @@ AGrayBoxCourseActor::AGrayBoxCourseActor()
 	RowerLegMesh = RowerLegFinder.Object;
 	RowerShoeMesh = RowerShoeFinder.Object;
 	CourseMaterial = MaterialFinder.Object;
-	// Water is authored as a texture-free, math-only material (Scripts/build_water_material.py),
-	// so it is plain cooked data. If it is missing the flat primitive water stays.
+	// Water is authored as plain cooked material data by Scripts/build_water_material.py.
+	// If it is missing, the flat primitive water stays.
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> WaterFinder(TEXT("/Game/Water/M_CourseWater.M_CourseWater"));
 	WaterMaterial = WaterFinder.Object;
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> WaterInteractionFinder(TEXT("/Game/Water/M_WaterInteraction.M_WaterInteraction"));
+	WaterInteractionMaterial = WaterInteractionFinder.Object;
 }
 
 void AGrayBoxCourseActor::BeginPlay()
@@ -256,6 +265,9 @@ void AGrayBoxCourseActor::InitializeCourse()
 	{
 		const int32 NextIndex = Route.bClosed ? (Index + 1) % PointCount : Index + 1;
 		USplineMeshComponent *CourseEdge = NewObject<USplineMeshComponent>(this, *FString::Printf(TEXT("CourseEdge%d"), Index));
+		// Dynamic spline edges inherit a movable course root. A static child cannot
+		// attach to that root, leaving the visual edge out of the hierarchy.
+		CourseEdge->SetMobility(EComponentMobility::Movable);
 		CourseEdge->SetupAttachment(SceneRoot);
 		CourseEdge->SetStaticMesh(Cube);
 		CourseEdge->SetForwardAxis(ESplineMeshAxis::X, false);
@@ -294,6 +306,7 @@ void AGrayBoxCourseActor::InitializeCourse()
 		Water->SetMaterial(0, Dynamic);
 	}
 	Water->SetRelativeLocation(FVector(0.0, 0.0, -10.0));
+	Water->SetVisibility(!WaterHiddenForBenchmark());
 	WaterSurface = Water;
 	EnvironmentMeshes.Add(Water);
 	for (int32 Side : {-1, 1})
@@ -328,22 +341,14 @@ void AGrayBoxCourseActor::InitializeCourse()
 		MarkerLabels.Add(Label);
 	}
 
-	Hull = MakeMesh(TEXT("Hull"), HullMesh ? HullMesh.Get() : Cube, BoatRoot,
-						HullMesh ? FVector::OneVector : FVector(4.8, 0.28, 0.18),
-						FLinearColor(0.85f, 0.88f, 0.92f));
+	Hull = MakeMesh(TEXT("Hull"), HullMesh ? HullMesh.Get() : Cube, BoatRoot, HullMesh ? FVector::OneVector : FVector(4.8, 0.28, 0.18), FLinearColor(0.85f, 0.88f, 0.92f));
 	if (!HullMesh)
 		Hull->SetRelativeLocation(FVector(0.0, 0.0, 45.0));
 	bHasRowerCharacterMeshes = RowerTorsoMesh && RowerArmMesh && RowerLegMesh && RowerShoeMesh;
 	Seat = MakeMesh(TEXT("SlidingSeat"), Cube, BoatRoot, FVector(0.35, 0.42, 0.09), FLinearColor(0.08f, 0.08f, 0.09f));
-	Torso = MakeMesh(TEXT("Torso"), bHasRowerCharacterMeshes ? RowerTorsoMesh.Get() : Cube, BoatRoot,
-						 bHasRowerCharacterMeshes ? FVector::OneVector : FVector(0.22, 0.32, 0.65),
-						 FLinearColor(0.85f, 0.42f, 0.12f));
-	LeftArm = MakeMesh(TEXT("LeftArm"), bHasRowerCharacterMeshes ? RowerArmMesh.Get() : Cube, BoatRoot,
-						   bHasRowerCharacterMeshes ? FVector::OneVector : FVector(0.55, 0.07, 0.07),
-						   FLinearColor(0.84f, 0.64f, 0.45f));
-	RightArm = MakeMesh(TEXT("RightArm"), bHasRowerCharacterMeshes ? RowerArmMesh.Get() : Cube, BoatRoot,
-							bHasRowerCharacterMeshes ? FVector::OneVector : FVector(0.55, 0.07, 0.07),
-							FLinearColor(0.84f, 0.64f, 0.45f));
+	Torso = MakeMesh(TEXT("Torso"), bHasRowerCharacterMeshes ? RowerTorsoMesh.Get() : Cube, BoatRoot, bHasRowerCharacterMeshes ? FVector::OneVector : FVector(0.22, 0.32, 0.65), FLinearColor(0.85f, 0.42f, 0.12f));
+	LeftArm = MakeMesh(TEXT("LeftArm"), bHasRowerCharacterMeshes ? RowerArmMesh.Get() : Cube, BoatRoot, bHasRowerCharacterMeshes ? FVector::OneVector : FVector(0.55, 0.07, 0.07), FLinearColor(0.84f, 0.64f, 0.45f));
+	RightArm = MakeMesh(TEXT("RightArm"), bHasRowerCharacterMeshes ? RowerArmMesh.Get() : Cube, BoatRoot, bHasRowerCharacterMeshes ? FVector::OneVector : FVector(0.55, 0.07, 0.07), FLinearColor(0.84f, 0.64f, 0.45f));
 	if (bHasRowerCharacterMeshes)
 	{
 		LeftThigh = MakeMesh(TEXT("LeftThigh"), RowerLegMesh, BoatRoot, FVector::OneVector, FLinearColor::White);
@@ -357,6 +362,7 @@ void AGrayBoxCourseActor::InitializeCourse()
 	const FVector OarScale = OarMesh ? FVector::OneVector : FVector(1.8, 0.04, 0.04);
 	LeftOar = MakeMesh(TEXT("PortOar"), OarGeometry, BoatRoot, OarScale, FLinearColor(0.80f, 0.12f, 0.10f));
 	RightOar = MakeMesh(TEXT("StarboardOar"), OarGeometry, BoatRoot, OarScale, FLinearColor(0.80f, 0.12f, 0.10f));
+	InitializeWaterEffects();
 	ApplyPresentation({});
 }
 
@@ -398,6 +404,27 @@ void AGrayBoxCourseActor::ApplyPresentation(const FCoursePresentationSnapshot &S
 	Torso->SetRelativeRotation(FRotator(FMath::Lerp(22.0f, -14.0f, static_cast<float>(Snapshot.TorsoPose)), 0.0, 0.0));
 	const float TargetHandsX = FMath::Lerp(SeatX + 72.0f, SeatX - 58.0f, static_cast<float>(Snapshot.ArmsPose));
 	const float TargetOarYaw = FMath::Lerp(-34.0f, 42.0f, static_cast<float>(Snapshot.OarPose));
+	const float OarPose = FMath::Clamp(static_cast<float>(Snapshot.OarPose), 0.0f, 1.0f);
+	const bool bFreshStroke = Telemetry.bHasSession && Telemetry.bHasValidSample && Telemetry.bConnected &&
+							  !Telemetry.bFrozen && !Telemetry.bStale && Telemetry.SessionState == ERowingSessionState::Active &&
+							  Telemetry.WorkoutState == ERowingWorkoutState::Active && Telemetry.RowingState == ERowingState::Active &&
+							  Snapshot.AnimationQuality != ECourseAnimationQuality::Unavailable;
+	if (!bFreshStroke)
+	{
+		bHasOarPoseHistory = false;
+		bOarDrivePhase = false;
+	}
+	else
+	{
+		if (Telemetry.StrokeState == ERowingStrokeState::Drive)
+			bOarDrivePhase = true;
+		else if (Telemetry.StrokeState != ERowingStrokeState::Unknown)
+			bOarDrivePhase = false;
+		else if (bHasOarPoseHistory && !FMath::IsNearlyEqual(OarPose, PreviousOarPose, 0.001f))
+			bOarDrivePhase = OarPose > PreviousOarPose;
+		bHasOarPoseHistory = true;
+		PreviousOarPose = OarPose;
+	}
 	const float WorldDeltaSeconds = GetWorld() ? GetWorld()->GetDeltaSeconds() : 0.0f;
 	if (!bHasOarPresentation)
 	{
@@ -428,13 +455,12 @@ void AGrayBoxCourseActor::ApplyPresentation(const FCoursePresentationSnapshot &S
 			UStaticMeshComponent *Shin = Side < 0 ? LeftShin.Get() : RightShin.Get();
 			UStaticMeshComponent *Shoe = Side < 0 ? LeftShoe.Get() : RightShoe.Get();
 			const FVector Shoulder = Torso->GetRelativeLocation() +
-				Torso->GetRelativeRotation().RotateVector(FVector(0.0, Side * 20.0, 18.0));
+									 Torso->GetRelativeRotation().RotateVector(FVector(0.0, Side * 20.0, 18.0));
 			const FVector Hand(TargetHandsX, Side * 25.0, 148.0);
 			PoseSegment(Arm, Shoulder, Hand);
 			const FVector Hip(SeatX + 10.0f, Side * 13.0, 80.0);
 			const FVector Foot(140.0, Side * 13.0, 65.0);
-			const FVector Knee(FMath::Lerp(Hip.X, Foot.X, 0.52), Side * 13.0,
-									95.0 + (55.0 - SeatX) * 0.25);
+			const FVector Knee(FMath::Lerp(Hip.X, Foot.X, 0.52), Side * 13.0, 95.0 + (55.0 - SeatX) * 0.25);
 			PoseSegment(Thigh, Hip, Knee);
 			PoseSegment(Shin, Knee, Foot);
 			Shoe->SetRelativeLocation(Foot);
@@ -449,10 +475,13 @@ void AGrayBoxCourseActor::ApplyPresentation(const FCoursePresentationSnapshot &S
 	{
 		// The mesh origin is the oarlock and its +X points outboard. Mirror it
 		// across the hull while retaining the existing smoothed stroke sweep.
+		// During a fresh drive the blade tip dips below the flat waterline; it
+		// feathers clear for recovery and whenever presentation input is stale.
+		const float BladePitch = OarBladePitch(OarPose, bFreshStroke && bOarDrivePhase);
 		LeftOar->SetRelativeLocation(FVector(SmoothedHandsX, -95.0, 105.0));
 		RightOar->SetRelativeLocation(FVector(SmoothedHandsX, 95.0, 105.0));
-		LeftOar->SetRelativeRotation(FRotator(0.0, -90.0 - SmoothedOarYaw, 0.0));
-		RightOar->SetRelativeRotation(FRotator(0.0, 90.0 + SmoothedOarYaw, 0.0));
+		LeftOar->SetRelativeRotation(FRotator(BladePitch, -90.0 - SmoothedOarYaw, 0.0));
+		RightOar->SetRelativeRotation(FRotator(BladePitch, 90.0 + SmoothedOarYaw, 0.0));
 	}
 	else
 	{
@@ -461,6 +490,9 @@ void AGrayBoxCourseActor::ApplyPresentation(const FCoursePresentationSnapshot &S
 		LeftOar->SetRelativeRotation(FRotator(0.0, SmoothedOarYaw, 0.0));
 		RightOar->SetRelativeRotation(FRotator(0.0, -SmoothedOarYaw, 0.0));
 	}
+	UpdateHullWake(bFreshStroke, NowMonotonicNs);
+	UpdateOarWaterContacts(bFreshStroke, NowMonotonicNs);
+	UpdateWaterEffects(NowMonotonicNs);
 
 	if (CameraMetadata.bRestViewEnabled)
 	{
@@ -507,7 +539,12 @@ AGrayBoxCourseActor::FCameraPose AGrayBoxCourseActor::BuildChaseCameraPose(const
 {
 	const FVector BoatLocation = CourseTransform.GetLocation();
 	const float TargetYaw = CourseTransform.GetUnitAxis(EAxis::X).Rotation().Yaw;
-	if (!bHasCameraHeading || ReduceMotionRequested())
+	// A seek, reconnect, or route handover can move the boat beyond a normal
+	// presentation step. Snap the camera heading there so it stays behind the
+	// visible boat instead of swinging around from an unrelated earlier pose.
+	const bool bJumped = bHasCameraHeading && FVector::Dist2D(BoatLocation, PreviousCameraBoatLocation) > HanCameraHeadingSnapTravelCm;
+	PreviousCameraBoatLocation = BoatLocation;
+	if (!bHasCameraHeading || ReduceMotionRequested() || DeltaSeconds <= 0.0f || bJumped)
 	{
 		SmoothedCameraYaw = TargetYaw;
 		bHasCameraHeading = true;
@@ -671,8 +708,15 @@ void AGrayBoxCourseActor::ApplyWaterMotion(UMaterialInstanceDynamic &Water, bool
 		Water.SetScalarParameterValue(TEXT("MotionScale"), 0.0f);
 }
 
-void AGrayBoxCourseActor::ApplyReducedMotionToLevelWater(ULevel &Level)
+void AGrayBoxCourseActor::ApplyPresentationOptionsToLevelWater(ULevel &Level)
 {
+	ApplyPresentationOptionsToLevelWater(Level, ReduceMotionRequested(), WaterHiddenForBenchmark());
+}
+
+void AGrayBoxCourseActor::ApplyPresentationOptionsToLevelWater(ULevel &Level, bool bReduceMotion, bool bHideWater)
+{
+	if (!bReduceMotion && !bHideWater)
+		return;
 	for (const AActor *Actor : Level.Actors)
 	{
 		if (!Actor)
@@ -682,13 +726,19 @@ void AGrayBoxCourseActor::ApplyReducedMotionToLevelWater(ULevel &Level)
 			UPrimitiveComponent *Primitive = Cast<UPrimitiveComponent>(Component);
 			if (!Primitive)
 				continue;
-			for (int32 Slot = 0; Slot < Primitive->GetNumMaterials(); ++Slot)
+			const int32 MaterialCount = Primitive->GetNumMaterials();
+			bool bAllSlotsAreWater = MaterialCount > 0;
+			for (int32 Slot = 0; Slot < MaterialCount; ++Slot)
 			{
 				const UMaterialInterface *Material = Primitive->GetMaterial(Slot);
 				const UMaterial *Base = Material ? Material->GetMaterial() : nullptr;
-				if (Base && Base->GetName() == TEXT("M_Han_Water"))
+				const bool bWaterSlot = Base && Base->GetPathName() == TEXT("/Game/Phase2/HanRiver/Materials/M_Han_Water.M_Han_Water");
+				bAllSlotsAreWater &= bWaterSlot;
+				if (bWaterSlot && bReduceMotion && !bHideWater)
 					ApplyWaterMotion(*Primitive->CreateDynamicMaterialInstance(Slot, nullptr), true);
 			}
+			if (bHideWater && bAllSlotsAreWater)
+				Primitive->SetVisibility(false);
 		}
 	}
 }
@@ -711,6 +761,18 @@ bool AGrayBoxCourseActor::ReduceMotionRequested()
 	return bRequested;
 }
 
+bool AGrayBoxCourseActor::WaterHiddenForBenchmark()
+{
+	static const bool bRequested = FParse::Param(FCommandLine::Get(), TEXT("HideWaterForBenchmark"));
+	return bRequested;
+}
+
+bool AGrayBoxCourseActor::WaterEffectsHiddenForBenchmark()
+{
+	static const bool bRequested = WaterHiddenForBenchmark() || FParse::Param(FCommandLine::Get(), TEXT("HideWaterEffectsForBenchmark"));
+	return bRequested;
+}
+
 void AGrayBoxCourseActor::SetReduceMotionForTesting(TOptional<bool> bRequested)
 {
 	GReduceMotionOverrideForTesting = bRequested;
@@ -720,6 +782,173 @@ float AGrayBoxCourseActor::InterpolateOarMotion(float Current, float Target, flo
 {
 	const float BoundedDeltaSeconds = FMath::Clamp(DeltaSeconds, 0.0f, MaxOarInterpolationStepSeconds);
 	return FMath::FInterpTo(Current, Target, BoundedDeltaSeconds, OarInterpolationSpeed);
+}
+
+float AGrayBoxCourseActor::OarBladePitch(float OarPose, bool bDrivePhase)
+{
+	if (!bDrivePhase)
+		return -30.0f;
+	const float Entry = SmoothStep((OarPose - 0.03f) / 0.15f);
+	const float Exit = 1.0f - SmoothStep((OarPose - 0.77f) / 0.18f);
+	return -30.0f - 14.0f * Entry * Exit;
+}
+
+void AGrayBoxCourseActor::InitializeWaterEffects()
+{
+	if (!PlaneMesh || !WaterInteractionMaterial || WaterEffectsHiddenForBenchmark())
+		return;
+	const int32 PoolSize = HullWakePoolSize + OarRipplePoolSize;
+	WaterEffectStates.SetNum(PoolSize);
+	for (int32 Index = 0; Index < PoolSize; ++Index)
+	{
+		UStaticMeshComponent *Effect = NewObject<UStaticMeshComponent>(this, *FString::Printf(TEXT("WaterEffect%d"), Index));
+		Effect->SetupAttachment(SceneRoot);
+		Effect->SetStaticMesh(PlaneMesh);
+		Effect->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Effect->SetCastShadow(false);
+		Effect->SetVisibility(false);
+		UMaterialInstanceDynamic *Material = UMaterialInstanceDynamic::Create(WaterInteractionMaterial, Effect);
+		Material->SetScalarParameterValue(TEXT("EffectKind"), Index < HullWakePoolSize ? 0.0f : 1.0f);
+		Effect->SetMaterial(0, Material);
+		AddInstanceComponent(Effect);
+		Effect->RegisterComponent();
+		WaterEffectMeshes.Add(Effect);
+		WaterEffectMaterials.Add(Material);
+	}
+}
+
+void AGrayBoxCourseActor::ClearWaterEffects()
+{
+	bHasWakeAnchor = false;
+	bOarContactsArmed = false;
+	for (int32 Index = 0; Index < WaterEffectStates.Num(); ++Index)
+	{
+		WaterEffectStates[Index].bActive = false;
+		WaterEffectMeshes[Index]->SetVisibility(false);
+	}
+}
+
+void AGrayBoxCourseActor::SpawnWaterEffect(bool bOarRipple, const FVector &Position, uint64 NowMonotonicNs)
+{
+	if (NowMonotonicNs == 0 || WaterEffectMeshes.IsEmpty() || ReduceMotionRequested())
+		return;
+	const int32 Begin = bOarRipple ? HullWakePoolSize : 0;
+	const int32 End = bOarRipple ? HullWakePoolSize + OarRipplePoolSize : HullWakePoolSize;
+	int32 Chosen = Begin;
+	for (int32 Index = Begin; Index < End; ++Index)
+	{
+		if (!WaterEffectStates[Index].bActive)
+		{
+			Chosen = Index;
+			break;
+		}
+		if (WaterEffectStates[Index].StartedNs < WaterEffectStates[Chosen].StartedNs)
+			Chosen = Index;
+	}
+	FWaterEffectState &State = WaterEffectStates[Chosen];
+	State = {NowMonotonicNs, true};
+	UStaticMeshComponent *Effect = WaterEffectMeshes[Chosen];
+	Effect->SetWorldLocation(Position);
+	Effect->SetWorldRotation(bOarRipple ? FRotator::ZeroRotator : BoatRoot->GetComponentRotation());
+	Effect->SetVisibility(true);
+}
+
+void AGrayBoxCourseActor::UpdateWaterEffects(uint64 NowMonotonicNs)
+{
+	if (ReduceMotionRequested() || WaterEffectsHiddenForBenchmark())
+	{
+		ClearWaterEffects();
+		return;
+	}
+	for (int32 Index = 0; Index < WaterEffectStates.Num(); ++Index)
+	{
+		FWaterEffectState &State = WaterEffectStates[Index];
+		if (!State.bActive)
+			continue;
+		const bool bRipple = Index >= HullWakePoolSize;
+		const uint64 LifetimeNs = bRipple ? OarRippleLifetimeNs : HullWakeLifetimeNs;
+		if (NowMonotonicNs < State.StartedNs || NowMonotonicNs - State.StartedNs >= LifetimeNs)
+		{
+			State.bActive = false;
+			WaterEffectMeshes[Index]->SetVisibility(false);
+			continue;
+		}
+		const float Age = static_cast<float>(NowMonotonicNs - State.StartedNs) / static_cast<float>(LifetimeNs);
+		const float SizeCm = bRipple ? FMath::Lerp(24.0f, 95.0f, Age) : FMath::Lerp(110.0f, 190.0f, Age);
+		WaterEffectMeshes[Index]->SetWorldScale3D(FVector(SizeCm / 100.0f, (bRipple ? SizeCm : 42.0f) / 100.0f, 1.0f));
+		WaterEffectMaterials[Index]->SetScalarParameterValue(TEXT("Age"), Age);
+		WaterEffectMaterials[Index]->SetScalarParameterValue(TEXT("Opacity"), (bRipple ? 0.20f : 0.12f) * FMath::Square(1.0f - Age));
+	}
+}
+
+void AGrayBoxCourseActor::UpdateHullWake(bool bFreshStroke, uint64 NowMonotonicNs)
+{
+	if (!bFreshStroke || ReduceMotionRequested() || WaterEffectsHiddenForBenchmark() || NowMonotonicNs == 0)
+	{
+		bHasWakeAnchor = false;
+		return;
+	}
+	const FVector Stern = BoatRoot->GetComponentTransform().TransformPosition(FVector(-350.0, 0.0, 0.0));
+	if (bHasWakeAnchor)
+	{
+		const double TravelCm = FVector::Dist2D(Stern, PreviousWakeAnchor);
+		// One sample per update, never a bridge across a skipped distance or reconnect.
+		if (TravelCm >= 55.0 && TravelCm <= 250.0)
+		{
+			const double WaterlineZ = bAuthoredLevelActive ? -10.0 : -5.0;
+			SpawnWaterEffect(false, FVector(Stern.X, Stern.Y, WaterlineZ + 1.0), NowMonotonicNs);
+		}
+		if (TravelCm < 55.0)
+			return;
+	}
+	PreviousWakeAnchor = Stern;
+	bHasWakeAnchor = true;
+}
+
+void AGrayBoxCourseActor::UpdateOarWaterContacts(bool bFreshStroke, uint64 NowMonotonicNs)
+{
+	// Contacts are presentation events from the rendered blade, never PM5 facts.
+	// A missing mesh has no recognizable blade. Re-arm after stale input or a
+	// reconnect without replaying the crossing that happened during the gap.
+	if (!bFreshStroke || ReduceMotionRequested() || WaterEffectsHiddenForBenchmark() || !OarMesh)
+	{
+		bOarContactsArmed = false;
+		return;
+	}
+	const double WaterlineZ = bAuthoredLevelActive ? -10.0 : -5.0;
+	const FVector LeftTip = LeftOar->GetComponentTransform().TransformPosition(FVector(205.0, 0.0, 0.0));
+	const FVector RightTip = RightOar->GetComponentTransform().TransformPosition(FVector(205.0, 0.0, 0.0));
+	const bool bLeftNowSubmerged = LeftTip.Z < WaterlineZ;
+	const bool bRightNowSubmerged = RightTip.Z < WaterlineZ;
+	if (bOarContactsArmed)
+	{
+		if (bLeftNowSubmerged != bLeftBladeSubmerged)
+		{
+			++OarWaterContactCount;
+			SpawnWaterEffect(true, FVector(LeftTip.X, LeftTip.Y, WaterlineZ + 1.0), NowMonotonicNs);
+		}
+		if (bRightNowSubmerged != bRightBladeSubmerged)
+		{
+			++OarWaterContactCount;
+			SpawnWaterEffect(true, FVector(RightTip.X, RightTip.Y, WaterlineZ + 1.0), NowMonotonicNs);
+		}
+	}
+	bLeftBladeSubmerged = bLeftNowSubmerged;
+	bRightBladeSubmerged = bRightNowSubmerged;
+	bOarContactsArmed = true;
+}
+
+int32 AGrayBoxCourseActor::GetOarWaterContactCountForTesting() const
+{
+	return OarWaterContactCount;
+}
+
+int32 AGrayBoxCourseActor::GetActiveWaterEffectCountForTesting() const
+{
+	int32 Count = 0;
+	for (const FWaterEffectState &State : WaterEffectStates)
+		Count += State.bActive ? 1 : 0;
+	return Count;
 }
 
 FTransform AGrayBoxCourseActor::GetBoatTransformForTesting() const
@@ -758,6 +987,15 @@ int32 AGrayBoxCourseActor::GetCourseEdgeSegmentCountForTesting() const
 {
 	return CourseEdgeMeshes.Num();
 }
+bool AGrayBoxCourseActor::AreCourseEdgesAttachedForTesting() const
+{
+	for (const USplineMeshComponent *Edge : CourseEdgeMeshes)
+	{
+		if (!Edge || Edge->GetAttachParent() != SceneRoot)
+			return false;
+	}
+	return true;
+}
 int32 AGrayBoxCourseActor::GetHanLandmarkCountForTesting() const
 {
 	return HanLandmarkMeshes.Num();
@@ -774,6 +1012,7 @@ void AGrayBoxCourseActor::SetAuthoredLevelActive(bool bActive)
 	if (!bIsHanRiverRoute || !bInitialized || bAuthoredLevelActive == bActive)
 		return;
 	bAuthoredLevelActive = bActive;
+	ClearWaterEffects();
 	// Authored footprint: the first 500 m plus the bridge approach behind the start.
 	const double FootprintEndX = GetAuthoredLevelOriginCm().X + 50'000.0;
 	for (UStaticMeshComponent *Landmark : HanLandmarkMeshes)

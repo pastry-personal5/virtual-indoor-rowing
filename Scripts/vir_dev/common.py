@@ -80,19 +80,21 @@ def tool_env(versions: dict) -> dict[str, str]:
 
 
 def find_unreal(versions: dict) -> Path | None:
-	candidates: list[Path] = []
-	configured = os.environ.get("UE_ROOT")
+	# An explicit selection is authoritative. A moved/mistyped installation
+	# must not silently switch the build to an unrelated default engine.
+	configured = os.environ.get("UE_ROOT") or versions["unreal"].get("installation_root")
 	if configured:
-		candidates.append(Path(configured).expanduser())
-	configured = versions["unreal"].get("installation_root")
-	if configured:
-		candidates.append(Path(configured).expanduser())
-	candidates.extend([
+		candidate = Path(configured).expanduser()
+		if not candidate.is_absolute() or not (candidate / "Engine" / "Build" / "Build.version").is_file():
+			print(f"ERROR: explicitly configured Unreal installation is invalid: {candidate}; set an absolute UE_ROOT or fix unreal.installation_root. No fallback engine was selected.", file=sys.stderr)
+			return None
+		return candidate.resolve()
+	candidates = [
 		Path("/Users/Shared/Epic Games/UE_5.8"),
 		Path("/Applications/Epic Games/UE_5.8"),
 		Path("/Volumes/Unreal_Engine_Volume/work/UE_5.8"),
 		Path("/Volumes/Work_Volume/UnrealEngine/UE_5.8"),
-	])
+	]
 	for candidate in candidates:
 		if (candidate / "Engine" / "Build" / "Build.version").is_file():
 			return candidate.resolve()

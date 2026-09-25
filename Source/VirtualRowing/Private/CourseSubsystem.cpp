@@ -431,8 +431,7 @@ void UCourseSubsystem::PollAuthoredLevel()
 	}
 	bLevelAllowlistPassed = true;
 	NoteLevel(TEXT("allowlist passed; making level visible"));
-	if (AGrayBoxCourseActor::ReduceMotionRequested())
-		AGrayBoxCourseActor::ApplyReducedMotionToLevelWater(*Loaded);
+	AGrayBoxCourseActor::ApplyPresentationOptionsToLevelWater(*Loaded);
 	AuthoredLevel->SetShouldBeVisible(true);
 	AuthoredLevelState = EAuthoredLevelState::Shown;
 	if (CourseActor)

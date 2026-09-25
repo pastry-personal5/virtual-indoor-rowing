@@ -44,7 +44,7 @@ network failure must leave the local menu, safe route, and local workout usable.
 
 | [Phase 2 Milestone 4](08-milestone-4-blender-building-import.md) — Import Blender buildings into the Han River course | Complete — owner decision | The Blender building-import milestone is closed; importing several additional OSM maps remains separately tracked follow-up content work. |
 
-| [Phase 2 Milestone 5](12-realistic-water-refinement-plan.md) — Photorealistic water refinement | In progress — boat and rower geometry applied | Compare scene reflections, filtered water normals, approved bitmap detail, and restrained hull and oar interaction on Standard and mounted Han, with packaged visual, performance, and reduced-motion evidence. |
+| [Phase 2 Milestone 5](12-realistic-water-refinement-plan.md) — Photorealistic water refinement | In progress — boat and rower geometry applied | Compare scene reflections, filtered water normals, approved bitmap detail, and restrained hull and oar interaction on Standard and mounted Han, with packaged visual, six-minute thermal/performance, and reduced-motion evidence. |
 
 | [Phase 2 Milestone 10](06-milestone-10-development-loop.md) — Shorten the development and content-iteration loops | Planned — not started | Editor-safe Shipping builds, an uncooked Development run, a loose-level course reload, and a one-command local Han publish, without touching the Shipping trust boundary. |
 
@@ -67,6 +67,8 @@ does not pass the Phase 2 exit gate.
   the external IoStore cook and signed `HanRiver.vircontent` release.
 - [Han Area 01 OSM-to-Unreal runbook](09-han-area-01-osm-unreal-runbook.md)
 - [Han Area 01 OSM-to-Blender-to-Unreal runbook](10-han-area-01-osm-blender-unreal-runbook.md)
+- [Milestone 5 six-minute thermal run](14-milestone-5-six-minute-thermal-run.md)
+  — reference-Mac Shipping measurement worksheet.
 
 ## Exit gate
 

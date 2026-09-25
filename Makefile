@@ -92,7 +92,13 @@ pm5-tui-journal: ## Launch the TUI with the opt-in Keychain-sealed workout journ
 
 # --- Unreal ------------------------------------------------------------------
 
-.PHONY: unreal-native-app unreal-smoke unreal-shipping han-source-verify han-external-cook unreal-package-verify unreal-bluetooth-probe unreal-bluetooth-probe-clean content-canary content-fixture content-release-package
+.PHONY: unreal-native-app unreal-smoke unreal-shipping han-source-verify han-external-cook unreal-package-verify unreal-bluetooth-probe unreal-bluetooth-probe-clean content-canary content-fixture content-release-package water-source-check
+
+water-source-check: ## Check Milestone 5 source, native tests, and Han references while Editor is open; does not compile Unreal.
+	$(DEV) format-check
+	$(DEV) build
+	$(DEV) test
+	$(DEV) han-source-verify
 
 han-source-verify: ## Check that the runtime Han map and all referenced Han assets are present and tracked.
 	$(DEV) han-source-verify
@@ -101,7 +107,7 @@ han-source-verify: ## Check that the runtime Han map and all referenced Han asse
 unreal-native-app: ## Build the Release static archive (Build/native-app/) the Unreal module links.
 	$(DEV) unreal-native-app
 
-unreal-smoke: ## Build unreal-native-app, then compile the UnrealEditor Development target.
+unreal-smoke: ## With Editor closed, build native libraries and the VirtualRowingEditor Development target.
 	$(DEV) unreal-smoke
 
 unreal-shipping: ## BuildCookRun the unsigned arm64 Shipping diagnostic host.

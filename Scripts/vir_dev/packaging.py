@@ -14,6 +14,9 @@ from vir_dev import common
 
 BLUETOOTH_USAGE_DESCRIPTION = "Virtual Rowing uses Bluetooth to find and connect to your Concept2 PM5 rowing monitor and read your rowing data. It only scans after you choose to connect."
 CONCEPT2PM_MODULE_NAME = "Concept2PMUnreal"
+# UE's MCP plugin auto-starts in cook commandlets too. Override only the child
+# process so a cook cannot contend with the interactive editor's MCP listener.
+COOKER_MCP_OVERRIDE = "-ini:EditorPerProjectUserSettings:[/Script/ModelContextProtocolEngine.ModelContextProtocolSettings]:bAutoStartServer=False"
 
 
 def unreal_shipping_command(ue_root: Path, project: Path, archive_dir: Path) -> list[str]:
@@ -27,8 +30,9 @@ def unreal_shipping_command(ue_root: Path, project: Path, archive_dir: Path) -> 
 		"-clientconfig=Shipping",
 		"-build",
 		# Shipping builds remain local and reproducible on clean builders.
-		'-ubtargs=-NoUBA',
+		'-ubtargs=-NoUBA -NoHotReload',
 		"-cook",
+		f"-AdditionalCookerOptions={COOKER_MCP_OVERRIDE}",
 		"-pak",
 		"-iostore",
 		"-stage",
@@ -44,7 +48,8 @@ def unreal_shipping_command(ue_root: Path, project: Path, archive_dir: Path) -> 
 HAN_MAP = "/Game/Phase2/HanRiver/Maps/L_HanRiver_BlueHour"
 HAN_CONTENT_RELATIVE_DIR = Path("Content") / "Phase2" / "HanRiver"
 HAN_MAP_RELATIVE_PATH = HAN_CONTENT_RELATIVE_DIR / "Maps" / "L_HanRiver_BlueHour.umap"
-HAN_ASSET_REFERENCE = re.compile(rb"/Game/Phase2/HanRiver/(?:Maps|Materials|Meshes)/[A-Za-z0-9_+/-]+")
+HAN_ASSET_REFERENCE = re.compile(rb"/Game/Phase2/HanRiver/(?:Maps|Materials|Meshes|Textures)/[A-Za-z0-9_+/-]+")
+PROJECT_ASSET_REFERENCE = re.compile(rb"/Game/[A-Za-z0-9_+/-]+")
 HAN_PAK_CHUNK = "pakchunk1001"
 # Written to Config/GeneratedPakFileRules.ini and GeneratedGame.ini (UAT's build-machine-only, git-ignored
 # layer) for the duration of one Han cook so ordinary Shipping packages are unaffected.
@@ -69,12 +74,13 @@ def han_cook_command(ue_root: Path, project: Path, stage_dir: Path) -> list[str]
 		"-targetplatform=Mac",
 		"-clientconfig=Shipping",
 		"-build",
-		'-ubtargs=-NoUBA',
+		'-ubtargs=-NoUBA -NoHotReload',
 		"-cook",
+		f"-AdditionalCookerOptions={COOKER_MCP_OVERRIDE}",
 		"-manifests",
 		f"-map={HAN_MAP}",
 		# Keep review and dated backup maps out of the release cook.
-		f"-cookdir={project.parent / HAN_CONTENT_RELATIVE_DIR / 'Materials'}+{project.parent / HAN_CONTENT_RELATIVE_DIR / 'Meshes'}",
+		f"-cookdir={project.parent / HAN_CONTENT_RELATIVE_DIR / 'Materials'}+{project.parent / HAN_CONTENT_RELATIVE_DIR / 'Meshes'}+{project.parent / HAN_CONTENT_RELATIVE_DIR / 'Textures'}",
 		"-pak",
 		"-iostore",
 		"-stage",
@@ -86,35 +92,37 @@ def han_cook_command(ue_root: Path, project: Path, stage_dir: Path) -> list[str]
 
 
 def han_source_failures(project: Path, *, require_tracked: bool = False) -> list[str]:
-	"""Check source packages named by the runtime map before the expensive cook."""
+	"""Check the runtime map's transitive Han package references before cooking."""
 	root = project.parent
 	level = root / HAN_MAP_RELATIVE_PATH
-	try:
-		data = level.read_bytes()
-	except OSError:
-		return [f"missing runtime Han map: {level}"]
-	if not data.startswith(bytes.fromhex("c1832a9e")):
-		return [f"runtime Han map is not an Unreal package (or is an LFS pointer): {level}"]
-	references = {match.decode("ascii") for match in HAN_ASSET_REFERENCE.findall(data)}
-	osm_references = {reference for reference in references if "/Meshes/Area01/OSM/" in reference}
-	failures = []
-	if not osm_references:
-		failures.append("runtime Han map has no Area 01 OSM mesh references")
-	required = {HAN_MAP_RELATIVE_PATH}
-	for reference in sorted(references):
-		# The map's own package name is expected among its references.
-		if reference == HAN_MAP:
+	failures: list[str] = []
+	required: set[Path] = set()
+	pending = [HAN_MAP_RELATIVE_PATH]
+	osm_references: set[str] = set()
+	while pending:
+		relative = pending.pop()
+		if relative in required:
 			continue
-		relative = Path("Content") / reference.removeprefix("/Game/")
-		relative = relative.with_suffix(".uasset")
 		required.add(relative)
 		asset = root / relative
-		if not asset.is_file() or asset.stat().st_size == 0:
-			failures.append(f"missing or empty Han map dependency: {asset}")
-		else:
-			with asset.open("rb") as source:
-				if source.read(4) != bytes.fromhex("c1832a9e"):
-					failures.append(f"Han map dependency is not an Unreal package (or is an LFS pointer): {asset}")
+		try:
+			data = asset.read_bytes()
+		except OSError:
+			failures.append(f"missing Han source package: {asset}")
+			continue
+		if not data or not data.startswith(bytes.fromhex("c1832a9e")):
+			failures.append(f"Han source package is empty, not an Unreal package, or an LFS pointer: {asset}")
+			continue
+		for match in HAN_ASSET_REFERENCE.findall(data):
+			reference = match.decode("ascii")
+			if "/Meshes/Area01/OSM/" in reference and relative == HAN_MAP_RELATIVE_PATH:
+				osm_references.add(reference)
+			dependency = Path("Content") / reference.removeprefix("/Game/")
+			dependency = dependency.with_suffix(".umap" if "/Maps/" in reference else ".uasset")
+			if dependency not in required:
+				pending.append(dependency)
+	if not osm_references:
+		failures.append("runtime Han map has no Area 01 OSM mesh references")
 	if require_tracked:
 		result = subprocess.run(["git", "ls-files", "-z", "--", *(path.as_posix() for path in sorted(required))], cwd=root, capture_output=True, check=False)
 		if result.returncode:
@@ -124,6 +132,26 @@ def han_source_failures(project: Path, *, require_tracked: bool = False) -> list
 			for relative in sorted(required - {Path(path) for path in tracked}):
 				failures.append(f"Han source package is not tracked by Git: {relative}")
 	return failures
+
+
+def han_external_reference_candidates(project: Path) -> list[str]:
+	"""Report serialized project paths outside Han; only Editor can prove live dependencies."""
+	root = project.parent
+	content = root / HAN_CONTENT_RELATIVE_DIR
+	packages = [root / HAN_MAP_RELATIVE_PATH]
+	for directory in ("Materials", "Meshes", "Textures"):
+		packages.extend(sorted((content / directory).rglob("*.uasset")))
+	candidates: set[str] = set()
+	for package in packages:
+		try:
+			data = package.read_bytes()
+		except OSError:
+			continue  # Missing packages are reported by han_source_failures.
+		for match in PROJECT_ASSET_REFERENCE.findall(data):
+			path = match.decode("ascii")
+			if not path.startswith("/Game/Phase2/HanRiver/"):
+				candidates.add(f"{package.relative_to(root)}: {path}")
+	return sorted(candidates)
 
 
 def staged_app(archive_dir: Path) -> Path | None:

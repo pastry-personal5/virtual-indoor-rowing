@@ -54,6 +54,85 @@ packaging, or other non-editor work through Unreal MCP. If required editor work
 cannot use the configured server, record it as blocked or unverified rather
 than editing binary Unreal assets outside the editor.
 
+### Editor crash prevention and build failures
+
+An open Editor does not block ordinary source work. For Phase 2 Milestone 5,
+run `make water-source-check` while authoring: it checks formatting, builds and
+tests the engine-independent native targets, and validates the tracked Han
+source dependencies. Keep editing material recipes, presentation source, tests,
+and documentation while the Editor is open. Use Unreal MCP for editor-owned
+asset changes when its read-only health query succeeds. Record Unreal compile,
+automation, cook, packaged visual, and GPU gates separately; the source check
+does not pass them.
+
+For native Unreal changes, save work and close **all** Unreal Editors and
+commandlets, run `make unreal-smoke`, then reopen the project normally and run
+automation in that fresh process. Keep Editor closed through Shipping/Han builds
+too. The wrappers check executable names before native work and again immediately
+before UBT/UAT; `clean-unreal` also refuses to remove generated state while Editor
+is open. If process inspection is denied, they stop with an unknown-state error.
+They do not use the MCP port or stale `EditorRuns` files as proof of closure.
+
+The smoke build targets `VirtualRowingEditor` with `-NoHotReload` and checks
+`Binaries/Mac/UnrealEditor.modules` selects the freshly built base module. Its
+ordinary UBT log is retained at `Saved/Logs/UnrealBuildTool.log`; relocating that
+log does not relocate the engine's separate cache/trace writes. Both cook paths
+also pass `-NoHotReload` and require the pinned `make doctor` checks.
+
+`UE_ROOT` (or `unreal.installation_root`) must name an absolute, existing engine
+installation. A bad explicit path fails instead of falling back to another engine.
+Valid symlinks resolve to the canonical installation. On this host,
+`/Users/user1/ue-work/work/UE_5.8` and
+`/Volumes/Unreal_Engine_Volume/work/UE_5.8` resolve to the same directory, as do
+the project alias `/Users/user1/work/cur` and the volume worktree. The observed
+crash stacks do not establish these aliases as a crash cause. Leave old cache
+files and installed-engine paths alone; do not repair them speculatively.
+
+The 2026-09-25 investigation distinguished these failures using local crash
+contexts, macOS reports, build logs, and the installed UE 5.8.2 source:
+
+- **Material editing:** the September 24 fatal `!IsRooted()` stack runs through
+  `DeleteAllMaterialExpressions` / `DeleteMaterialExpression`. The water recipes
+  preserve existing expressions and reconnect outputs. Do not delete inspected
+  expressions or forcibly remove engine-owned roots. Disconnected expressions
+  remain in the asset; repeated recipe runs can grow its source graph.
+- **Native automation after hot reload:** the September 24 `bAllRegistered`
+  ensure names `HOTRELOAD_GrayBoxCourseActor` and a retained old automation dylib.
+  The preceding `Module Recompile VirtualRowing` loaded module 6137, then logged
+  that both `FCoursePresentationSpec` and `FWorkoutSubsystemSpec` were already
+  registered and would not be replaced. The course retry executed module 0009.
+  Save work, close the project Editor, compile with `make unreal-smoke`, and
+  reopen before native automation. CoursePresentation rejects a replaced class
+  before queuing test setup. Do not treat a hot-reloaded spec as fresh evidence.
+- **Test-world initialization:** the September 20–21 `WorldSettings` name
+  collisions came from initializing a world twice. `UWorld::CreateWorld`
+  already initializes it; the existing spec passes initialization values into
+  that call and does not call `InitializeNewWorld` again.
+- **Cook MCP contention:** both cook commands pass a process-local
+  `AdditionalCookerOptions` INI override disabling MCP auto-start. Interactive
+  Editor settings remain unchanged. Do not temporarily edit shared MCP settings to cook.
+- **Build-process abort:** UBT rotates its per-user `Trace.uba` before parsing
+  `-NoLog` or `-NoUBA`. The smoke wrapper checks write access to
+  `~/Library/Application Support/Epic/UnrealBuildTool` before starting UBT.
+  Run the target from an owner terminal if this is denied. Do not supply a fake
+  recursive `-Session=`: UE 5.8's executor still requires the standalone trace.
+- **`XmlConfigCache` permission denial:** AutomationTool's
+  `PlatformExports.Initialize` calls `XmlConfig.ReadConfigFiles(null, null)`
+  before `BuildCookRun`, ignoring its project scope at this stage. Stock installed
+  macOS engines therefore need write access to
+  `~/Library/Application Support/Epic/UnrealEngine`, including its
+  `Intermediate/Build` directory. Both cook wrappers check this before native
+  build/provenance work. Run `make unreal-shipping` or `make han-external-cook`
+  from an owner terminal with access if the managed runner denies it. This is a
+  build failure before cooking, not evidence of an Editor crash or a corrupt cache.
+  `-ubtargs=-XmlConfigCache=...` cannot redirect UAT initialization; UBT's explicit
+  cache option only loads an already-generated cache and bypasses freshness checks.
+
+The older missing-Metal-toolchain shader failures are covered by `make doctor`.
+macOS `_RegisterApplication` launch aborts and CrashReportClient's own shutdown
+crashes are separate host/engine failures; changing XML caches does not repair
+them. Keep raw crash files local and record sanitized findings in the phase log.
+
 ## Implementation workflow
 
 1. Keep reproducible commands in `Scripts/dev.py` and the root `Makefile`; do not rely on personal shell setup.

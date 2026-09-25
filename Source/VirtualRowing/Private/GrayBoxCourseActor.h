@@ -45,6 +45,8 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	FTransform GetSeatRelativeTransformForTesting() const;
 	FTransform GetTorsoRelativeTransformForTesting() const;
 	FTransform GetLeftOarRelativeTransformForTesting() const;
+	int32 GetOarWaterContactCountForTesting() const;
+	int32 GetActiveWaterEffectCountForTesting() const;
 	FTransform GetCameraTransformForTesting() const;
 	static float InterpolateOarMotion(float Current, float Target, float DeltaSeconds);
 	float GetCameraFieldOfViewForTesting() const;
@@ -53,13 +55,17 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	void ToggleRestView();
 	static void SetReduceMotionForTesting(TOptional<bool> bRequested);
 	static bool ReduceMotionRequested();
+	static bool WaterHiddenForBenchmark();
+	static bool WaterEffectsHiddenForBenchmark();
 	// Presentation-only water animation. Reduced motion freezes the water's wave phase.
 	static void ApplyWaterMotion(UMaterialInstanceDynamic &Water, bool bReduceMotion);
-	static void ApplyReducedMotionToLevelWater(ULevel &Level);
+	static void ApplyPresentationOptionsToLevelWater(ULevel &Level);
+	static void ApplyPresentationOptionsToLevelWater(ULevel &Level, bool bReduceMotion, bool bHideWater);
 	float GetWaterMotionScaleForTesting() const;
 	float GetCourseLightIntensityForTesting() const;
 	int32 GetMarkerCountForTesting() const;
 	int32 GetCourseEdgeSegmentCountForTesting() const;
+	bool AreCourseEdgesAttachedForTesting() const;
 	int32 GetHanLandmarkCountForTesting() const;
 	bool HasHanRiverEnvironmentForTesting() const;
 	bool HasInputComponentForTesting() const;
@@ -116,6 +122,8 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	UPROPERTY()
 	TObjectPtr<UStaticMesh> CylinderMesh;
 	UPROPERTY()
+	TObjectPtr<UStaticMesh> PlaneMesh;
+	UPROPERTY()
 	TObjectPtr<UStaticMesh> OarMesh;
 	UPROPERTY()
 	TObjectPtr<UStaticMesh> HullMesh;
@@ -131,6 +139,8 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	TObjectPtr<UMaterialInterface> CourseMaterial;
 	UPROPERTY()
 	TObjectPtr<UMaterialInterface> WaterMaterial;
+	UPROPERTY()
+	TObjectPtr<UMaterialInterface> WaterInteractionMaterial;
 	UPROPERTY(Transient)
 	TObjectPtr<UStaticMeshComponent> WaterSurface;
 	UPROPERTY(Transient)
@@ -141,10 +151,15 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	TArray<TObjectPtr<USplineMeshComponent>> CourseEdgeMeshes;
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UTextRenderComponent>> MarkerLabels;
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UStaticMeshComponent>> WaterEffectMeshes;
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UMaterialInstanceDynamic>> WaterEffectMaterials;
 
 	bool bInitialized = false;
 	float SmoothedCameraYaw = 0.0f;
 	bool bHasCameraHeading = false;
+	FVector PreviousCameraBoatLocation = FVector::ZeroVector;
 	bool bIsHanRiverRoute = false;
 	bool bAuthoredLevelActive = false;
 	bool bHasRowerCharacterMeshes = false;
@@ -188,8 +203,30 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	bool bRestCameraEligible = false;
 	ContentRuntime::FRouteDefinition Route = ContentRuntime::BuiltInStandardRouteDefinition();
 	bool bHasOarPresentation = false;
+	bool bHasOarPoseHistory = false;
+	bool bOarDrivePhase = false;
+	float PreviousOarPose = 0.0f;
+	bool bOarContactsArmed = false;
+	bool bLeftBladeSubmerged = false;
+	bool bRightBladeSubmerged = false;
+	int32 OarWaterContactCount = 0;
+	struct FWaterEffectState
+	{
+		uint64 StartedNs = 0;
+		bool bActive = false;
+	};
+	TArray<FWaterEffectState> WaterEffectStates;
+	bool bHasWakeAnchor = false;
+	FVector PreviousWakeAnchor = FVector::ZeroVector;
 	float SmoothedHandsX = 0.0f;
 	float SmoothedOarYaw = 0.0f;
+	static float OarBladePitch(float OarPose, bool bDrivePhase);
+	void InitializeWaterEffects();
+	void ClearWaterEffects();
+	void SpawnWaterEffect(bool bOarRipple, const FVector &Position, uint64 NowMonotonicNs);
+	void UpdateWaterEffects(uint64 NowMonotonicNs);
+	void UpdateHullWake(bool bFreshStroke, uint64 NowMonotonicNs);
+	void UpdateOarWaterContacts(bool bFreshStroke, uint64 NowMonotonicNs);
 	UStaticMeshComponent *MakeMesh(const TCHAR *Name, UStaticMesh *Mesh, USceneComponent *Parent, const FVector &Scale, const FLinearColor &Color);
 	UStaticMeshComponent *MakeHanLandmark(const TCHAR *Name, UStaticMesh *Mesh, const FVector &Scale, const FLinearColor &Color, const FVector &Location);
 	void BuildHanRiverEnvironment(UStaticMesh *Cube, UStaticMesh *Cylinder);

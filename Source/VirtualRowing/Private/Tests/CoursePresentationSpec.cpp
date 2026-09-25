@@ -5,14 +5,31 @@
 #include "GrayBoxCourseActor.h"
 #include "WorkoutHudWidget.h"
 
+#include "Components/StaticMeshComponent.h"
+#include "Engine/Level.h"
+#include "Engine/StaticMesh.h"
 #include "Engine/World.h"
+#include "Materials/Material.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "Materials/MaterialInterface.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
 BEGIN_DEFINE_SPEC(FCoursePresentationSpec, "VirtualRowing.CoursePresentation", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
 UWorld *World = nullptr;
 AGrayBoxCourseActor *Course = nullptr;
+virtual bool RunTest(const FString &Parameters) override
+{
+	// Automation can retain a spec from an old dylib after native hot reload.
+	// Reject before queuing BeforeEach/It; returning from BeforeEach alone
+	// would still execute the cases with an invalid Course pointer.
+	if (AGrayBoxCourseActor::StaticClass()->HasAnyClassFlags(CLASS_NewerVersionExists))
+	{
+		AddError(TEXT("CoursePresentation references a replaced class after hot reload. Restart Unreal Editor before running native automation."));
+		return false;
+	}
+	return FAutomationSpecBase::RunTest(Parameters);
+}
 END_DEFINE_SPEC(FCoursePresentationSpec)
 
 void FCoursePresentationSpec::Define()
@@ -50,7 +67,8 @@ void FCoursePresentationSpec::Define()
 		TestFalse(TEXT("250 m advances"), Start.GetLocation().Equals(Course->GetCourseTransform(250'000.0).GetLocation(), 1.0));
 		TestFalse(TEXT("1,000 m advances"), Start.GetLocation().Equals(Course->GetCourseTransform(1'000'000.0).GetLocation(), 1.0));
 		TestEqual(TEXT("markers every 250 m"), Course->GetMarkerCountForTesting(), 8);
-		TestEqual(TEXT("visible edge covers every spline segment"), Course->GetCourseEdgeSegmentCountForTesting(), 32); });
+		TestEqual(TEXT("visible edge covers every spline segment"), Course->GetCourseEdgeSegmentCountForTesting(), 32);
+		TestTrue(TEXT("course edges remain attached to their root"), Course->AreCourseEdgesAttachedForTesting()); });
 
 	It("builds an open, landmarked Han River presentation without route markers", [this]()
 	   {
@@ -105,6 +123,54 @@ void FCoursePresentationSpec::Define()
 		AGrayBoxCourseActor::ApplyWaterMotion(*Probe, true);
 		Probe->GetScalarParameterValue(TEXT("MotionScale"), Scale);
 		TestEqual(TEXT("reduced motion freezes the wave phase"), Scale, 0.0f); });
+
+	It("hides only Han water components for the Shipping GPU comparison", [this]()
+	   {
+		UStaticMesh *Cube = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
+		UStaticMesh *Hull = LoadObject<UStaticMesh>(nullptr, TEXT("/Game/Boat/Meshes/SM_ScullHull.SM_ScullHull"));
+		UMaterialInterface *HanWater = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Phase2/HanRiver/Materials/M_Han_Water.M_Han_Water"));
+		// A same-named material outside the Han package must remain visible.
+		UMaterial *OtherNamedWater = NewObject<UMaterial>(World, TEXT("M_Han_Water"));
+		UMaterialInterface *Other = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
+		if (!TestNotNull(TEXT("cube mesh for water visibility test"), Cube) ||
+			!TestNotNull(TEXT("multi-slot hull mesh for mixed-material visibility test"), Hull) ||
+			!TestNotNull(TEXT("authored Han water material"), HanWater) ||
+			!TestNotNull(TEXT("same-named non-Han material"), OtherNamedWater) ||
+			!TestNotNull(TEXT("non-water material for water visibility test"), Other))
+			return;
+		auto AddComponent = [this](UStaticMesh *MeshAsset, UMaterialInterface *Material)
+		{
+			AActor *Owner = World->SpawnActor<AActor>();
+			UStaticMeshComponent *Mesh = NewObject<UStaticMeshComponent>(Owner);
+			Owner->SetRootComponent(Mesh);
+			Mesh->SetStaticMesh(MeshAsset);
+			Mesh->SetMaterial(0, Material);
+			Owner->AddInstanceComponent(Mesh);
+			Mesh->RegisterComponent();
+			return Mesh;
+		};
+		UStaticMeshComponent *Water = AddComponent(Cube, HanWater);
+		UStaticMeshComponent *Impostor = AddComponent(Cube, OtherNamedWater);
+		UStaticMeshComponent *Bank = AddComponent(Cube, Other);
+		UStaticMeshComponent *Mixed = AddComponent(Hull, HanWater);
+		if (!TestTrue(TEXT("mixed geometry has multiple material slots"), Mixed->GetNumMaterials() > 1))
+			return;
+		Mixed->SetMaterial(1, Other);
+		AGrayBoxCourseActor::ApplyPresentationOptionsToLevelWater(*World->PersistentLevel, false, false);
+		TestTrue(TEXT("normal presentation keeps Han water visible"), Water->IsVisible());
+		AGrayBoxCourseActor::ApplyPresentationOptionsToLevelWater(*World->PersistentLevel, true, false);
+		UMaterialInstanceDynamic *ReducedWater = Cast<UMaterialInstanceDynamic>(Water->GetMaterial(0));
+		if (!TestNotNull(TEXT("reduced motion creates a Han water instance"), ReducedWater))
+			return;
+		float MotionScale = -1.0f;
+		ReducedWater->GetScalarParameterValue(TEXT("MotionScale"), MotionScale);
+		TestEqual(TEXT("reduced motion freezes authored Han water"), MotionScale, 0.0f);
+		TestTrue(TEXT("reduced motion keeps Han water visible"), Water->IsVisible());
+		AGrayBoxCourseActor::ApplyPresentationOptionsToLevelWater(*World->PersistentLevel, false, true);
+		TestFalse(TEXT("benchmark flag hides the Han water component"), Water->IsVisible());
+		TestTrue(TEXT("benchmark flag preserves mixed-material geometry"), Mixed->IsVisible());
+		TestTrue(TEXT("benchmark flag preserves a same-named material in another package"), Impostor->IsVisible());
+		TestTrue(TEXT("benchmark flag preserves non-water geometry"), Bank->IsVisible()); });
 
 	It("yields the kit's start-area landmarks to the authored level and restores them", [this]()
 	   {
@@ -319,6 +385,86 @@ void FCoursePresentationSpec::Define()
 		Snapshot = {};
 		Course->ApplyPresentation(Snapshot);
 		TestTrue(TEXT("return reaches catch"), Course->GetSeatRelativeTransformForTesting().Equals(CatchSeat, 0.1)); });
+
+	It("dips the visible blade only during a fresh drive and clears it for recovery or stale input", [this]()
+	   {
+		TestNotNull(TEXT("cooked-in interaction material exists"), LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Water/M_WaterInteraction.M_WaterInteraction")));
+		FCoursePresentationSnapshot Snapshot;
+		Snapshot.AnimationQuality = ECourseAnimationQuality::Primary;
+		FCourseTelemetryInput Telemetry;
+		Telemetry.bHasSession = true;
+		Telemetry.bHasValidSample = true;
+		Telemetry.bConnected = true;
+		Telemetry.SessionState = ERowingSessionState::Active;
+		Telemetry.WorkoutState = ERowingWorkoutState::Active;
+		Telemetry.RowingState = ERowingState::Active;
+		Telemetry.StrokeState = ERowingStrokeState::Drive;
+		Snapshot.OarPose = 0.0;
+		Course->ApplyPresentation(Snapshot, Telemetry, 1'000'000'000ULL);
+		const auto BladeZ = [this]()
+		{
+			return Course->GetLeftOarRelativeTransformForTesting().TransformPosition(FVector(220.0, 0.0, 0.0)).Z;
+		};
+		const double FeatheredZ = BladeZ();
+		Snapshot.OarPose = 0.5;
+		Course->ApplyPresentation(Snapshot, Telemetry, 1'300'000'000ULL);
+		TestTrue(TEXT("drive lowers the blade tip through the boat-relative waterline"), BladeZ() < -30.0);
+		TestEqual(TEXT("one entry per rendered blade"), Course->GetOarWaterContactCountForTesting(), 2);
+		TestEqual(TEXT("one visible ripple per blade entry"), Course->GetActiveWaterEffectCountForTesting(), 2);
+		Course->ApplyPresentation(Snapshot, Telemetry, 1'350'000'000ULL);
+		TestEqual(TEXT("steady submerged blade does not duplicate entry"), Course->GetOarWaterContactCountForTesting(), 2);
+		Telemetry.StrokeState = ERowingStrokeState::Recovery;
+		Course->ApplyPresentation(Snapshot, Telemetry, 2'000'000'000ULL);
+		TestTrue(TEXT("recovery lifts the blade clear"), FMath::IsNearlyEqual(BladeZ(), FeatheredZ, 0.1));
+		TestEqual(TEXT("one exit per rendered blade"), Course->GetOarWaterContactCountForTesting(), 4);
+		Telemetry.StrokeState = ERowingStrokeState::Drive;
+		Course->ApplyPresentation(Snapshot, Telemetry, 3'000'000'000ULL);
+		TestEqual(TEXT("next drive creates one new entry per blade"), Course->GetOarWaterContactCountForTesting(), 6);
+		Telemetry.bStale = true;
+		Course->ApplyPresentation(Snapshot, Telemetry, 3'100'000'000ULL);
+		TestTrue(TEXT("stale input feathers the blade without another drive"), FMath::IsNearlyEqual(BladeZ(), FeatheredZ, 0.1));
+		TestEqual(TEXT("stale feathering creates no new pulse"), Course->GetOarWaterContactCountForTesting(), 6);
+		TestTrue(TEXT("existing ripples expire during stale input"), Course->GetActiveWaterEffectCountForTesting() <= 2);
+		Telemetry.bStale = false;
+		Course->ApplyPresentation(Snapshot, Telemetry, 3'200'000'000ULL);
+		TestEqual(TEXT("reconnect does not backfill a blade entry"), Course->GetOarWaterContactCountForTesting(), 6);
+		Telemetry.StrokeState = ERowingStrokeState::Recovery;
+		Course->ApplyPresentation(Snapshot, Telemetry, 3'400'000'000ULL);
+		TestEqual(TEXT("a new visible exit is counted after reconnect"), Course->GetOarWaterContactCountForTesting(), 8);
+		AGrayBoxCourseActor::SetReduceMotionForTesting(true);
+		Telemetry.StrokeState = ERowingStrokeState::Drive;
+		Course->ApplyPresentation(Snapshot, Telemetry, 3'600'000'000ULL);
+		TestEqual(TEXT("reduced motion suppresses new water contacts"), Course->GetOarWaterContactCountForTesting(), 8);
+		TestEqual(TEXT("reduced motion clears water effects"), Course->GetActiveWaterEffectCountForTesting(), 0);
+		AGrayBoxCourseActor::SetReduceMotionForTesting({}); });
+
+	It("emits bounded hull trail samples without bridging a skipped distance or stale interval", [this]()
+	   {
+		FCoursePresentationSnapshot Snapshot;
+		Snapshot.AnimationQuality = ECourseAnimationQuality::Primary;
+		FCourseTelemetryInput Telemetry;
+		Telemetry.bHasSession = true;
+		Telemetry.bHasValidSample = true;
+		Telemetry.bConnected = true;
+		Telemetry.SessionState = ERowingSessionState::Active;
+		Telemetry.WorkoutState = ERowingWorkoutState::Active;
+		Telemetry.RowingState = ERowingState::Active;
+		Course->ApplyPresentation(Snapshot, Telemetry, 1'000'000'000ULL);
+		TestEqual(TEXT("first fresh pose only arms wake anchor"), Course->GetActiveWaterEffectCountForTesting(), 0);
+		Snapshot.WrappedCourseDistanceMm = 1'000;
+		Course->ApplyPresentation(Snapshot, Telemetry, 1'100'000'000ULL);
+		TestEqual(TEXT("short visible travel produces one hull sample"), Course->GetActiveWaterEffectCountForTesting(), 1);
+		Snapshot.WrappedCourseDistanceMm = 300'000;
+		Course->ApplyPresentation(Snapshot, Telemetry, 1'200'000'000ULL);
+		TestEqual(TEXT("skipped distance does not fill a trail"), Course->GetActiveWaterEffectCountForTesting(), 1);
+		Telemetry.bStale = true;
+		Course->ApplyPresentation(Snapshot, Telemetry, 1'300'000'000ULL);
+		Telemetry.bStale = false;
+		Snapshot.WrappedCourseDistanceMm = 300'500;
+		Course->ApplyPresentation(Snapshot, Telemetry, 1'400'000'000ULL);
+		TestEqual(TEXT("reconnect only rearms wake anchor"), Course->GetActiveWaterEffectCountForTesting(), 1);
+		Course->ApplyPresentation(Snapshot, Telemetry, 3'000'000'000ULL);
+		TestEqual(TEXT("trail expires within bounded lifetime"), Course->GetActiveWaterEffectCountForTesting(), 0); });
 
 	It("uses a rigid elevated follow camera with no input component", [this]()
 	   {

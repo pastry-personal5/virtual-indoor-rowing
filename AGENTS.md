@@ -51,6 +51,11 @@ credential-owner procedure; signing/notarization is Phase 4 work.
 
 ## Unreal MCP
 
+During project work, notify the owner promptly if Unreal Editor has crashed or
+is not open. Do not leave an Editor outage only in a task log or final handoff.
+If Unreal Editor crashes, stop using Unreal MCP immediately and notify the
+owner as soon as the crash is detected.
+
 When a task needs live Unreal Editor state or editor-owned changes, first check
 whether the configured Unreal MCP server is alive by listing its tools and
 making a read-only editor query. If that succeeds, use Unreal MCP for the
@@ -65,6 +70,24 @@ open port alone is not a health check. If an editor-dependent task needs Unreal
 MCP and the server is unavailable, report that work as blocked or unverified
 instead of silently replacing editor operations with direct `.uasset` edits.
 Unreal MCP does not replace the required `make`/`Scripts/dev.py` verification.
+
+An open Editor is not a general development blocker. Continue source and
+documentation edits, native builds/tests, source validators, and other
+Editor-independent work while it is open. For Phase 2 Milestone 5,
+`make water-source-check` runs the available source gates without compiling
+Unreal; it does not establish Editor automation, cooked content, or packaged
+visual/performance acceptance. Keep work moving on independent requirements
+when a particular Editor or build gate is unavailable.
+
+Native Unreal module changes require a closed-Editor build and a fresh Editor
+process before automation. Do not use `Module Recompile`, hot reload, or a
+different launch mechanism to work around a blocked `make` command: UE 5.8 can
+retain old automation registrations and spawn obsolete `HOTRELOAD_` classes.
+Do not hand-edit module manifests, force-load suffixed dylibs, move installations,
+rewrite home directories, or invent recursive UBT sessions to evade a permission
+denial. Report the exact blocked operation and use the normal owner-terminal
+workflow in `DEVELOPMENT.md`. A failed process query or an unavailable MCP port
+does not establish that Editor is closed.
 
 ## Change and handoff rules
 

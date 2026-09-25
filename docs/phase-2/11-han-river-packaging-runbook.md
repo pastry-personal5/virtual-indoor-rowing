@@ -523,6 +523,15 @@ with the same argument. On success, Details shows `installed: ... active`,
 `mounted: v...`, and the Han River course becomes selectable. Selecting
 Standard or viewing the level in Editor does not mount the external package.
 
+If **Content status** says `revision_rollback`, the launch URL serves a catalog
+older than the revision this app already accepted. The download button stays
+disabled because no valid current offer is available. Relaunch with the
+reviewed immutable catalog of that accepted revision or a newer signed
+revision; do not clear the local ledger or edit a catalog to lower its number.
+After the catalog reports `content.catalog_ready`, finish any active workout
+before using Download. A failed installed version can be downloaded again;
+it still requires a full quit and relaunch after verification.
+
 If Details reports `content.mount_missing_iostore` or
 `content.mount_failed`, preserve the redacted Details text as canary evidence.
 The Shipping client now records whether the PakFile platform file was missing

@@ -139,6 +139,11 @@ Han River as peer course tiles:
 
 ## Production sequence and ownership
 
+The owner completed the representative-scene view review for the 500 m
+Banpo-to-Sebit section and recorded **SUCCESS** on 2026-09-24 against commit
+`b38ff54`. This accepts the viewed scene; it does not establish a measured
+performance budget, packaged Shipping evidence, or the full 5 km route review.
+
 | Order | Owner | Deliverable / review gate |
 |---:|---|---|
 | 1 | Content lead + product | Lock this direction, the six beats, bilingual display copy, and the no-navigation/safety wording; record reviewer in provenance. |

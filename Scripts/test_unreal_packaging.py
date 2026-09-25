@@ -6,12 +6,13 @@ from __future__ import annotations
 import json
 import plistlib
 import re
+import runpy
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -31,6 +32,269 @@ class UnrealShippingPackagingTests(unittest.TestCase):
 
 	def tearDown(self) -> None:
 		self.temp.cleanup()
+
+	def test_explicit_engine_path_never_falls_back_after_a_move(self) -> None:
+		with patch.dict(common.os.environ, {"UE_ROOT": "/missing/UE"}), \
+			patch.object(Path, "is_file", lambda path: not str(path).startswith("/missing/")):
+			self.assertIsNone(common.find_unreal(self.versions))
+		with patch.dict(common.os.environ, {}, clear=True), \
+			patch.object(Path, "is_file", lambda path: not str(path).startswith("/missing/")):
+			versions = {"unreal": {"installation_root": "/missing/UE"}}
+			self.assertIsNone(common.find_unreal(versions))
+
+	def test_engine_alias_resolves_to_the_same_installation_and_relative_paths_fail(self) -> None:
+		engine = self.installed_engine()
+		(engine / "Engine/Build/Build.version").write_text("{}")
+		alias = self.root / "UE alias"
+		alias.symlink_to(engine, target_is_directory=True)
+		with patch.dict(common.os.environ, {"UE_ROOT": str(alias)}):
+			self.assertEqual(common.find_unreal(self.versions), engine.resolve())
+		with patch.dict(common.os.environ, {"UE_ROOT": "relative/UE"}), patch.object(Path, "is_file", return_value=True):
+			self.assertIsNone(common.find_unreal(self.versions))
+
+	def test_editor_process_check_recognizes_aliases_spaces_and_commandlets(self) -> None:
+		for executable in (
+			"/Volumes/Engine Volume/UE/Engine/Binaries/Mac/UnrealEditor.app/Contents/MacOS/UnrealEditor",
+			"/Users/user1/ue-alias/Engine/Binaries/Mac/UnrealEditor-Cmd",
+			"/UE/Engine/Binaries/Mac/UnrealEditor-Mac-DebugGame",
+		):
+			with self.subTest(executable=executable), patch.object(unreal.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout=f"  42 {executable}\n  43 /bin/ps\n")) as run:
+				self.assertFalse(unreal.editor_closed_preflight())
+				self.assertEqual(run.call_args.args[0], ["/bin/ps", "-axo", "pid=,comm="])
+		with patch.object(unreal.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout="  43 /bin/ps\n  44 /tmp/UnrealEditorNotes\n")):
+			self.assertTrue(unreal.editor_closed_preflight())
+
+	def test_denied_empty_or_malformed_process_listing_is_never_treated_as_closed(self) -> None:
+		for result in (
+			SimpleNamespace(returncode=1, stdout=""),
+			SimpleNamespace(returncode=0, stdout=""),
+			SimpleNamespace(returncode=0, stdout="42\n"),
+		):
+			with patch.object(unreal.subprocess, "run", return_value=result):
+				self.assertFalse(unreal.editor_closed_preflight())
+		with patch.object(unreal.subprocess, "run", side_effect=PermissionError("denied")):
+			self.assertFalse(unreal.editor_closed_preflight())
+
+	def test_open_editor_blocks_all_native_builds_and_cleanup_before_mutation(self) -> None:
+		for command in (unreal.unreal_smoke, unreal.unreal_shipping, unreal.han_external_cook, unreal.clean_unreal):
+			with self.subTest(command=command.__name__), \
+				patch.object(unreal, "editor_closed_preflight", return_value=False), \
+				patch.object(common, "load_versions") as versions, \
+				patch.object(native, "native_app") as native_app, \
+				patch.object(common, "run") as run, \
+				patch.object(unreal.shutil, "rmtree") as remove:
+				self.assertEqual(command(), 1)
+				versions.assert_not_called()
+				native_app.assert_not_called()
+				run.assert_not_called()
+				remove.assert_not_called()
+
+	def test_smoke_builds_project_target_without_hot_reload_and_checks_selected_module(self) -> None:
+		engine = self.installed_engine()
+		(engine / "Engine/Build/BatchFiles/Mac").mkdir()
+		(engine / "Engine/Build/BatchFiles/Mac/Build.sh").touch()
+		(self.root / "VirtualRowing.uproject").write_text("{}")
+		with patch.object(common, "ROOT", self.root), \
+			patch.object(common, "find_unreal", return_value=engine), \
+			patch.object(common, "tool_env", return_value={}), \
+			patch.object(unreal, "editor_closed_preflight", return_value=True), \
+			patch.object(unreal, "unreal_build_preflight", return_value=True), \
+			patch.object(unreal.doctor, "check_doctor", return_value=0), \
+			patch.object(native, "native_app", return_value=0), \
+			patch.object(common, "run", return_value=SimpleNamespace(returncode=0)) as run, \
+			patch.object(unreal, "verify_editor_module", return_value=False) as verify:
+			self.assertEqual(unreal.unreal_smoke(), 1)
+			command = run.call_args.args[0]
+			self.assertEqual(command[1:4], ["VirtualRowingEditor", "Mac", "Development"])
+			self.assertIn("-NoHotReload", command)
+			self.assertIn(f"-Log={self.root / 'Saved/Logs/UnrealBuildTool.log'}", command)
+			self.assertNotIn("-NoLog", command)
+			self.assertFalse(any(arg.startswith(("-Session=", "-XmlConfigCache=")) for arg in command))
+			verify.assert_called_once()
+
+	def test_smoke_verification_rejects_missing_or_stale_manifest_even_with_old_base_dylib(self) -> None:
+		binaries = self.root / "Binaries/Mac"
+		binaries.mkdir(parents=True)
+		name = "libUnrealEditor-VirtualRowing.dylib"
+		(binaries / name).write_bytes(b"old binary")
+		manifest = binaries / "UnrealEditor.modules"
+		with patch.object(common, "ROOT", self.root), patch.object(packaging, "homebrew_load_commands", return_value=[]):
+			self.assertFalse(unreal.verify_editor_module())
+			manifest.write_text(json.dumps({"Modules": {"VirtualRowing": "libUnrealEditor-VirtualRowing-0009.dylib"}}))
+			self.assertFalse(unreal.verify_editor_module())
+			manifest.write_text(json.dumps({"Modules": {"VirtualRowing": name}}))
+			self.assertTrue(unreal.verify_editor_module())
+			(binaries / name).unlink()
+			self.assertFalse(unreal.verify_editor_module())
+
+	def test_editor_opened_during_native_build_stops_before_ubt_or_uat(self) -> None:
+		engine = self.installed_engine()
+		(engine / "Engine/Build/BatchFiles/Mac").mkdir()
+		(engine / "Engine/Build/BatchFiles/Mac/Build.sh").touch()
+		(self.root / "VirtualRowing.uproject").write_text("{}")
+		for command in (unreal.unreal_smoke, unreal.unreal_shipping, unreal.han_external_cook):
+			with self.subTest(command=command.__name__), \
+				patch.object(common, "ROOT", self.root), \
+				patch.object(common, "find_unreal", return_value=engine), \
+				patch.object(unreal, "han_source_verify", return_value=0), \
+				patch.object(packaging, "han_external_reference_candidates", return_value=[]), \
+				patch.object(unreal, "editor_closed_preflight", side_effect=[True, False]), \
+				patch.object(unreal, "unreal_build_preflight", return_value=True), \
+				patch.object(unreal.doctor, "check_doctor", return_value=0), \
+				patch.object(native, "native_app", return_value=0), \
+				patch.object(common, "run") as run, \
+				patch.object(packaging, "write_shipping_provenance") as provenance:
+				self.assertEqual(command(), 1)
+				run.assert_not_called()
+				provenance.assert_not_called()
+
+	def test_cooks_disable_mcp_only_in_the_child_commandlet(self) -> None:
+		for builder in (packaging.unreal_shipping_command, packaging.han_cook_command):
+			with self.subTest(builder=builder.__name__):
+				command = builder(Path("/UE"), Path("/repo with spaces/VirtualRowing.uproject"), Path("/out"))
+				options = [arg.split("=", 1)[1] for arg in command if arg.startswith("-AdditionalCookerOptions=")]
+				self.assertEqual(options, ["-ini:EditorPerProjectUserSettings:[/Script/ModelContextProtocolEngine.ModelContextProtocolSettings]:bAutoStartServer=False"])
+				self.assertNotIn("-ModelContextProtocolStartServer", " ".join(command))
+				self.assertIn("-ubtargs=-NoUBA -NoHotReload", command)
+
+	def installed_engine(self) -> Path:
+		engine = self.root / "UE_5.8"
+		(engine / "Engine/Build/BatchFiles").mkdir(parents=True)
+		(engine / "Engine/Build/InstalledBuild.txt").touch()
+		(engine / "Engine/Build/BatchFiles/RunUAT.sh").touch()
+		return engine
+
+	def test_uat_preflight_preserves_existing_cache_bytes(self) -> None:
+		engine = self.installed_engine()
+		settings = self.root / "Library/Application Support/Epic/UnrealEngine"
+		settings.mkdir(parents=True)
+		cache = settings / f"XmlConfigCache-{str(engine.resolve()).replace('/', '+')}.bin"
+		cache.write_bytes(b"existing cache")
+		before = cache.stat().st_mtime_ns
+		with patch.object(unreal.sys, "platform", "darwin"), patch.object(Path, "home", return_value=self.root):
+			self.assertTrue(unreal.unreal_build_preflight(engine))
+		self.assertEqual(cache.read_bytes(), b"existing cache")
+		self.assertEqual(cache.stat().st_mtime_ns, before)
+		self.assertEqual(list(settings.rglob("vir-uat-preflight-*")), [])
+
+	def test_denied_uat_cache_blocks_both_cooks_before_native_build_or_uat(self) -> None:
+		engine = self.installed_engine()
+		(self.root / "VirtualRowing.uproject").write_text("{}")
+		for cook in (unreal.unreal_shipping, unreal.han_external_cook):
+			with self.subTest(cook=cook.__name__), \
+				patch.object(unreal, "editor_closed_preflight", return_value=True), \
+				patch.object(unreal.sys, "platform", "darwin"), \
+				patch.object(Path, "home", return_value=self.root), \
+				patch.object(common, "ROOT", self.root), \
+				patch.object(common, "find_unreal", return_value=engine), \
+				patch.object(unreal, "han_source_verify", return_value=0), \
+				patch.object(packaging, "han_external_reference_candidates", return_value=[]), \
+				patch.object(unreal.tempfile, "TemporaryFile", side_effect=PermissionError("sandbox denied")), \
+				patch.object(native, "native_app") as native_app, \
+				patch.object(common, "run") as run:
+				self.assertEqual(cook(), 1)
+				native_app.assert_not_called()
+				run.assert_not_called()
+
+	def test_denied_trace_directory_blocks_smoke_before_ubt_can_abort(self) -> None:
+		engine = self.installed_engine()
+		(engine / "Engine/Build/BatchFiles/Mac").mkdir()
+		(engine / "Engine/Build/BatchFiles/Mac/Build.sh").touch()
+		(self.root / "VirtualRowing.uproject").write_text("{}")
+		with patch.object(unreal.sys, "platform", "darwin"), \
+			patch.object(unreal, "editor_closed_preflight", return_value=True), \
+			patch.object(Path, "home", return_value=self.root), \
+			patch.object(common, "ROOT", self.root), \
+			patch.object(common, "find_unreal", return_value=engine), \
+			patch.object(unreal.doctor, "check_doctor", return_value=0), \
+			patch.object(unreal.tempfile, "TemporaryFile", side_effect=PermissionError("sandbox denied")), \
+			patch.object(native, "native_app") as native_app, \
+			patch.object(common, "run") as run:
+			self.assertEqual(unreal.unreal_smoke(), 1)
+			native_app.assert_not_called()
+			run.assert_not_called()
+
+	def test_water_recipes_can_rewire_existing_materials_without_deleting_rooted_nodes(self) -> None:
+		# Emulate the observed engine assertion: any destructive expression edit
+		# fails. Execute the actual recipes twice against an existing material.
+		for recipe in ("build_water_material.py", "build_water_interaction_material.py"):
+			with self.subTest(recipe=recipe):
+				api = MagicMock()
+				api.MaterialEditingLibrary.delete_all_material_expressions.side_effect = AssertionError("!IsRooted()")
+				api.MaterialEditingLibrary.delete_material_expression.side_effect = AssertionError("!IsRooted()")
+				with patch.dict(sys.modules, {"unreal": api}), patch.object(sys, "argv", [recipe]):
+					for _ in range(2):
+						runpy.run_path(str(common.ROOT / "Scripts" / recipe), run_name="__main__")
+				self.assertEqual(api.EditorAssetLibrary.save_loaded_asset.call_count, 2)
+			self.assertEqual(api.MaterialEditingLibrary.recompile_material.call_count, 2)
+			self.assertTrue(api.MaterialEditingLibrary.connect_material_property.called)
+
+	def test_water_bitmap_trial_recipe_builds_its_optional_detail_graph(self) -> None:
+		class Texture2D:
+			pass
+		class Expression:
+			def __init__(self, kind):
+				self.kind = kind
+				self.properties = {}
+
+			def set_editor_property(self, name, value):
+				self.properties[name] = value
+
+		for count in (1, 2):
+			with self.subTest(sample_count=count):
+				api = MagicMock()
+				api.Texture2D = Texture2D
+				api.LinearColor.side_effect = lambda *channels: channels
+				api.load_asset.side_effect = [MagicMock(), Texture2D()]
+				expressions = []
+				inputs = {}
+				outputs = {}
+
+				def create(_material, kind, _x, _y):
+					expression = Expression(kind)
+					expressions.append(expression)
+					return expression
+
+				def connect(source, _output, destination, _input):
+					inputs.setdefault(destination, []).append(source)
+
+				def connect_property(source, _output, property_name):
+					outputs[property_name] = source
+
+				def ancestors(expression):
+					visited = set()
+					pending = [expression]
+					while pending:
+						current = pending.pop()
+						if current in visited:
+							continue
+						visited.add(current)
+						pending.extend(inputs.get(current, []))
+					return visited
+
+				api.MaterialEditingLibrary.create_material_expression.side_effect = create
+				api.MaterialEditingLibrary.connect_material_expressions.side_effect = connect
+				api.MaterialEditingLibrary.connect_material_property.side_effect = connect_property
+				with patch.dict(sys.modules, {"unreal": api}), patch.object(sys, "argv", [
+					"build_water_material.py",
+					"/Game/Water/Trial/M_CourseWater_DetailTrial",
+					"/Game/Water/Trial/T_Water002_Normal_Trial",
+					str(count),
+				]):
+					runpy.run_path(str(common.ROOT / "Scripts/build_water_material.py"), run_name="__main__")
+				samples = [expression for expression in expressions
+					if expression.kind is api.MaterialExpressionTextureSampleParameter2D]
+				self.assertEqual(len(samples), count)
+				variance = next(expression for expression in expressions
+					if expression.properties.get("parameter_name") == "DetailSlopeVarianceTrial")
+				self.assertIn(variance, ancestors(outputs[api.MaterialProperty.MP_ROUGHNESS]))
+				deep_color = next(expression for expression in expressions
+					if expression.properties.get("parameter_name") == "DeepColor")
+				self.assertEqual(deep_color.properties["default_value"], (.03, .20, .35, 1))
+				for sample in samples:
+					self.assertIn(sample, ancestors(outputs[api.MaterialProperty.MP_NORMAL]))
+				api.MaterialEditingLibrary.recompile_material.assert_called_once()
+				api.EditorAssetLibrary.save_loaded_asset.assert_called_once()
 
 	def make_app(self, name: str = "VirtualRowing.app") -> Path:
 		app = self.root / name
@@ -57,7 +321,7 @@ class UnrealShippingPackagingTests(unittest.TestCase):
 		self.assertIn(f"-map={packaging.HAN_MAP}", command)
 		for flag in ("-cook", "-pak", "-iostore", "-stage", "-stagingdirectory=/stage"):
 			self.assertIn(flag, command)
-		self.assertIn("-cookdir=/repo/Content/Phase2/HanRiver/Materials+/repo/Content/Phase2/HanRiver/Meshes", command)
+		self.assertIn("-cookdir=/repo/Content/Phase2/HanRiver/Materials+/repo/Content/Phase2/HanRiver/Meshes+/repo/Content/Phase2/HanRiver/Textures", command)
 		self.assertNotIn("-cookdir=/repo/Content/Phase2/HanRiver", command)
 		self.assertNotIn("-archive", command)
 
@@ -73,7 +337,65 @@ class UnrealShippingPackagingTests(unittest.TestCase):
 		level.write_bytes(bytes.fromhex("c1832a9e") + b"/Game/Phase2/HanRiver/Meshes/Area01/OSM/SM_Han_A01_OSM_BuildingTile_E+0000_N+0000")
 		failures = packaging.han_source_failures(self.root / "VirtualRowing.uproject")
 		self.assertEqual(len(failures), 1)
-		self.assertIn("missing or empty Han map dependency", failures[0])
+		self.assertIn("missing Han source package", failures[0])
+
+	def test_han_source_preflight_follows_material_texture_dependencies(self) -> None:
+		level = self.root / packaging.HAN_MAP_RELATIVE_PATH
+		level.parent.mkdir(parents=True)
+		level.write_bytes(bytes.fromhex("c1832a9e") +
+			b"/Game/Phase2/HanRiver/Meshes/Area01/OSM/SM_Tile " +
+			b"/Game/Phase2/HanRiver/Materials/M_Han_Water")
+		mesh = self.root / "Content/Phase2/HanRiver/Meshes/Area01/OSM/SM_Tile.uasset"
+		mesh.parent.mkdir(parents=True)
+		mesh.write_bytes(bytes.fromhex("c1832a9e") + b"mesh")
+		material = self.root / "Content/Phase2/HanRiver/Materials/M_Han_Water.uasset"
+		material.parent.mkdir(parents=True)
+		material.write_bytes(bytes.fromhex("c1832a9e") +
+			b"/Game/Phase2/HanRiver/Textures/T_WaterNormal")
+		failures = packaging.han_source_failures(self.root / "VirtualRowing.uproject")
+		self.assertEqual(failures, [f"missing Han source package: {self.root / 'Content/Phase2/HanRiver/Textures/T_WaterNormal.uasset'}"])
+		texture = self.root / "Content/Phase2/HanRiver/Textures/T_WaterNormal.uasset"
+		texture.parent.mkdir(parents=True)
+		texture.write_bytes(bytes.fromhex("c1832a9e") + b"texture")
+		self.assertEqual(packaging.han_source_failures(self.root / "VirtualRowing.uproject"), [])
+		tracked = b"\0".join(path.as_posix().encode("utf-8") for path in (
+			packaging.HAN_MAP_RELATIVE_PATH,
+			mesh.relative_to(self.root),
+			material.relative_to(self.root),
+		)) + b"\0"
+		with patch.object(packaging.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout=tracked)):
+			failures = packaging.han_source_failures(self.root / "VirtualRowing.uproject", require_tracked=True)
+		self.assertEqual(failures, [f"Han source package is not tracked by Git: {texture.relative_to(self.root)}"])
+
+	def test_han_external_path_diagnostic_covers_runtime_map_and_cook_directories(self) -> None:
+		level = self.root / packaging.HAN_MAP_RELATIVE_PATH
+		level.parent.mkdir(parents=True)
+		level.write_bytes(bytes.fromhex("c1832a9e") +
+			b"/Game/Phase2/HanRiver/Materials/M_Han_Water " +
+			b"/Game/Water/Trial/MI_Han_Water_RoughnessTrial")
+		material = self.root / "Content/Phase2/HanRiver/Materials/M_Han_Water.uasset"
+		material.parent.mkdir(parents=True)
+		material.write_bytes(bytes.fromhex("c1832a9e") +
+			b"/Game/Water/Trial/T_Water002_Normal_Trial")
+		review = level.with_name("L_HanRiver_Area01_Review.umap")
+		review.write_bytes(bytes.fromhex("c1832a9e") + b"/Game/Water/Trial/ReviewOnly")
+		self.assertEqual(packaging.han_external_reference_candidates(self.root / "VirtualRowing.uproject"), [
+			f"{level.relative_to(self.root)}: /Game/Water/Trial/MI_Han_Water_RoughnessTrial",
+			f"{material.relative_to(self.root)}: /Game/Water/Trial/T_Water002_Normal_Trial",
+		])
+
+	def test_han_cook_stops_before_build_when_external_project_paths_need_editor_review(self) -> None:
+		candidate = "Content/Phase2/HanRiver/Maps/L_HanRiver_BlueHour.umap: /Game/Water/Trial/MI_Han_Water_RoughnessTrial"
+		with patch.object(unreal, "editor_closed_preflight", return_value=True), \
+			patch.object(unreal, "han_source_verify", return_value=0), \
+			patch.object(packaging, "han_external_reference_candidates", return_value=[candidate]), \
+			patch.object(common, "load_versions") as versions, \
+			patch.object(native, "native_app") as native_app, \
+			patch.object(common, "run") as run:
+			self.assertEqual(unreal.han_external_cook(), 1)
+			versions.assert_not_called()
+			native_app.assert_not_called()
+			run.assert_not_called()
 
 	def test_han_source_preflight_rejects_untracked_mesh(self) -> None:
 		level = self.root / packaging.HAN_MAP_RELATIVE_PATH
@@ -144,6 +466,8 @@ class UnrealShippingPackagingTests(unittest.TestCase):
 			return SimpleNamespace(returncode=0, args=args)
 
 		with patch.object(common, "ROOT", self.root), \
+			patch.object(unreal, "editor_closed_preflight", return_value=True), \
+			patch.object(unreal.doctor, "check_doctor", return_value=0), \
 			patch.object(common, "UNREAL_ARCHIVE_DIR", archive_dir), \
 			patch.object(common, "load_versions", return_value=self.versions), \
 			patch.object(common, "find_unreal", return_value=ue_root), \

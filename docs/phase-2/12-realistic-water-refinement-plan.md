@@ -1,8 +1,8 @@
 # Phase 2 Milestone 5: photorealistic water refinement
 
-Status: In progress — boat and rower meshes applied; water interaction and acceptance evidence remain open  
+Status: In progress — Standard and Han water plus interaction materials saved in Editor; scene and Shipping acceptance evidence remain open
 Owner: Client/content and technical art  
-Last reviewed: 2026-09-24
+Last reviewed: 2026-09-25
 
 ## Purpose and decision
 
@@ -56,8 +56,11 @@ change to that default without a separate owner decision.
 The project targets Unreal Engine 5.8 on the reference Apple-silicon Mac.
 Keep conventional deferred shading. [ADR-0013](../adr/0013-increase-reference-gpu-frame-budget.md)
 sets the whole-scene GPU budget to 16.5 ms p95 while QA-001's 16.7 ms p95
-frame-time and thermal objectives remain unchanged. Prototype costs may exceed
-the budget, but acceptance requires both the GPU and QA-001 gates. Lumen,
+frame-time and thermal objectives remain unchanged. [ADR-0014](../adr/0014-six-minute-milestone-5-thermal-gate.md)
+sets a six-minute Milestone 5 thermal gate; that shorter result does not
+certify QA-001 over its product-level 60-minute interval. Prototype costs may
+exceed the budget, but Milestone 5 acceptance requires the whole-scene GPU
+budget and the QA-001 timing and thermal thresholds over its six-minute window. Lumen,
 Nanite, hardware ray tracing, and preview rendering features are not water
 dependencies.
 
@@ -161,10 +164,11 @@ Editor imported `/Game/Boat/Meshes/SM_ScullOar` with four original-color
 materials, no Nanite, and no collision. The cooked-in course actor now holds a
 constructor reference to that mesh and uses it for port and starboard oars on
 both routes, mirrored about the hull while retaining the existing smoothed
-stroke sweep. A cube remains the asset-missing fallback. `make unreal-smoke`
-compiled the revised actor; the mesh has not been visually checked in a
-packaged Shipping app. Blade pitch/depth, waterline contact, ripples, and
-splashes remain implementation work.
+stroke sweep. A cube remains the asset-missing fallback. The later Milestone 5
+source pass adds drive-dependent pitch, rendered-tip waterline crossings, and
+pooled ripple timing; `make unreal-smoke` compiled the actor and spec. The
+interaction material recipe has been applied and saved in Editor. Neither the
+  blade nor its ripple has been checked in a packaged Shipping chase view.
 
 ### Hull geometry applied on 2026-09-24
 
@@ -249,7 +253,8 @@ establish that either saved material matches it.
 1. Capture a baseline on the reference Mac from a packaged Shipping build:
    identical chase-camera views near the boat, under a bridge, and toward the
    horizon on Standard and mounted Han. Record normal and `-ReduceMotion`
-   footage, material statistics, GPU p95, and a warm 60-minute thermal run.
+   footage, material statistics, GPU p95, and a warm six-minute thermal run
+   per route using the [run worksheet](14-milestone-5-six-minute-thermal-run.md).
    Verify that Han animates on an ordinary launch and freezes only on a
    separate explicit `-ReduceMotion` launch.
    Record the app/content versions and camera locations without private workout
@@ -276,16 +281,32 @@ establish that either saved material matches it.
    release and packaged-app canary; a source asset save alone does not update
    installed content. Do not advance `catalog-current.pb` without the normal
    publication checks.
-5. Repeat the reference-Mac captures and 60-minute Shipping run. Record
+5. Repeat the reference-Mac captures and six-minute Shipping run per route,
+   after shader warm-up. Record
    full-scene p95 frame/GPU time, thermal behavior, and the water-on versus
    water-hidden GPU delta, with the hull/oar effect cost identified. Accept only
    when the full scene stays at or below
-   16.5 ms GPU p95 and passes QA-001: sustained 60 fps at 2560×1600 High,
-   p95 frame time at most 16.7 ms, and no sustained thermal throttling.
+   16.5 ms GPU p95 and meets QA-001's timing and thermal thresholds during
+   each six-minute window: sustained 60 fps at 2560×1600 High, p95 frame time
+   at most 16.7 ms, and no sustained thermal throttling. This is a Milestone 5
+   proxy result, not a product-level QA-001 certification.
    Require owner review for no visible tiling, horizon shimmer, distracting
    bright band, HUD-obscuring highlight, oversized wake, or mistimed oar
    splash. Record and explain any miss before
    retuning or selecting a cheaper reflection treatment.
+
+For the GPU delta, use the same Shipping build, route, camera, resolution,
+High preset, warm-up, and capture interval in three launches: normal water and
+effects; `-HideWaterEffectsForBenchmark` (water visible, hull/oar effects
+absent); and `-HideWaterForBenchmark` (both the built-in and streamed Han
+water surfaces and the effects absent). In the streamed Han level, the last
+flag hides a component only when all its material slots resolve to
+`M_Han_Water`; mixed-material geometry, banks, boats, and lights stay visible.
+Compare the first two for the interaction cost and the latter two for the
+water-surface cost. These are diagnostic launch flags, not user settings or a
+visual acceptance mode. Record
+the exact flags with each capture and verify both routes visually before
+using their timings as evidence.
 
 Record results, unresolved defects, exact build/content identifiers, and the
 owner's visual decision in the Milestone 5 evidence and Phase 2 changelog.
