@@ -19,12 +19,26 @@ SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
 
 import han_area
+import han_5k_bbox
+import add_han_5k_review_landmarks
+import add_han_5k_riverside_roads
 import osm_han_area
 import unreal_osm_area
 import add_han_5k_legacy_banks
 
 
 class HanAreaTests(unittest.TestCase):
+	def test_full_5k_landmarks_cover_the_two_non_bridge_beats_and_name_bridge_beats(self) -> None:
+		plan = add_han_5k_review_landmarks.plan(str(SCRIPTS.parent / "Saved/OSM/route5k-unreal-review.json"), str(SCRIPTS.parent / "Content/Phase2/HanRiver/route-beats.json"))
+		self.assertEqual(set(plan["landmark_labels"]), {"sebit-lookback", "nodeulseom"})
+		self.assertEqual(len(plan["bridge_landmark_labels"]), 4)
+		self.assertTrue(all(len(location) == 3 for location in plan["locations_cm"].values()))
+
+	def test_full_5k_owner_bbox_preserves_supplied_cardinal_values_and_pipeline_order(self) -> None:
+		self.assertEqual(han_5k_bbox.FULL_5K_BBOX_WESN, {"west": 126.93634, "east": 127.00000, "north": 37.53100, "south": 37.50300})
+		self.assertEqual(han_5k_bbox.FULL_5K_BBOX_WSEN, (126.93634, 37.50300, 127.00000, 37.53100))
+		self.assertEqual(osm_han_area.area_spec({"area_id": "han-river-5k", "bbox_wsen": han_5k_bbox.FULL_5K_BBOX_WSEN, "asset_prefix": "SM_Han_5K_OSM"})[1], han_5k_bbox.FULL_5K_BBOX_WSEN)
+
 	def test_full_5k_legacy_banks_cover_every_route_segment_and_keep_channel_clear(self) -> None:
 		review = {
 			"origin_lon_lat": [126.993885, 37.51381],
@@ -37,11 +51,20 @@ class HanAreaTests(unittest.TestCase):
 		route_path = SCRIPTS.parent / "Content/Phase2/HanRiver/han-river-5k.geojson"
 		transforms = add_han_5k_legacy_banks._bank_transforms(add_han_5k_legacy_banks._route_points(str(route_path), review))
 		self.assertEqual(set(transforms), set(add_han_5k_legacy_banks.BANK_LABELS))
-		self.assertEqual({label: len(instances) for label, instances in transforms.items()}, {label: 8 for label in add_han_5k_legacy_banks.BANK_LABELS})
+		self.assertTrue(all(len(instances) > 8 for instances in transforms.values()))
+		self.assertEqual(len(transforms[add_han_5k_legacy_banks.BANK_LABELS[0]]), len(transforms[add_han_5k_legacy_banks.BANK_LABELS[1]]))
+		self.assertEqual({label: len(instances) for label, instances in add_han_5k_legacy_banks._tree_transforms(add_han_5k_legacy_banks._route_points(str(route_path), review)).items()}, {label: 16 for label in add_han_5k_legacy_banks.BANK_LABELS})
+		self.assertEqual({label: len(instances) for label, instances in add_han_5k_legacy_banks._stair_transforms(add_han_5k_legacy_banks._route_points(str(route_path), review)).items()}, {label: 24 for label in add_han_5k_legacy_banks.BANK_LABELS})
 		for port, starboard in zip(transforms[add_han_5k_legacy_banks.BANK_LABELS[0]], transforms[add_han_5k_legacy_banks.BANK_LABELS[1]]):
 			self.assertAlmostEqual(math.dist(port[0][:2], starboard[0][:2]), 2 * add_han_5k_legacy_banks.BANK_OFFSET_CM, places=5)
 			self.assertEqual(port[2][1], add_han_5k_legacy_banks.BANK_HALF_WIDTH_CM / 100.0)
+			self.assertGreaterEqual(port[2][0] * 100.0, 2 * add_han_5k_legacy_banks.BANK_SEGMENT_OVERLAP_CM)
 		self.assertEqual(add_han_5k_legacy_banks.BRIDGE_BEATS, ("banpo-start", "dongjak-span", "hangang-bridge", "wonhyo-finish"))
+
+	def test_riverside_road_filter_uses_the_requested_bank_distance(self) -> None:
+		self.assertEqual(add_han_5k_riverside_roads.ROAD_BANK_DISTANCE_CM, 20_000.0)
+		self.assertNotIn("footway", add_han_5k_riverside_roads.ROAD_HIGHWAYS)
+		self.assertEqual(add_han_5k_riverside_roads._distance_to_segment((50.0, 30.0), (0.0, 0.0), (100.0, 0.0)), (30.0, 0.5))
 	def test_projection_round_trip_and_true_north(self) -> None:
 		origin = (126.993885, 37.51381)
 		coordinate = (126.998, 37.514)

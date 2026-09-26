@@ -46,6 +46,25 @@ Use `make han-area-osm-preflight` with `HAN_OSM_MANIFEST` and
 registration control, material mapping, and review-map target before opening
 the Editor. A successful preflight is not an import, save, cook, or approval.
 
+### Full 5 km import boundary — 2026-09-26 owner directive
+
+The full-course OSM refresh boundary is recorded as supplied:
+
+| Direction | Coordinate |
+|---|---:|
+| West | `126.93634` |
+| East | `127.00000` |
+| North | `37.53100` |
+| South | `37.50300` |
+
+The acquisition pipeline's required `bbox_wsen` ordering is therefore
+`[126.93634, 37.50300, 127.00000, 37.53100]`. The matching executable record
+is `Scripts/han_5k_bbox.py`. This boundary scopes OSM buildings, road source
+ways, and riverbank/water source geometry; it neither changes the authored
+5,000 m waterline nor promotes review content to the runtime level. Road
+staging is additionally limited to source segments within 200 m of an authored
+riverbank edge.
+
 ## Supported geometry and boundaries
 
 The generator accepts closed OSM `way` footprints and `type=multipolygon`
@@ -61,6 +80,7 @@ agree on whether the feature is a building or water.
 |---|---|---|
 | Buildings | `building=*` or `building:part=*` on a way or multipolygon relation, except `roof` | Static wall + flat-roof OBJ tile; inner rings make open courtyards |
 | Water | `natural=water`, `water=*`, `waterway=riverbank`, `landuse=basin`, `landuse=reservoir` on a way or multipolygon relation | Separate, flat, visual water OBJ tile; inner rings remain dry |
+| Roads | `highway=*` ways except paths, footways, steps, cycleways, bridleways, and tracks | Review-only, non-colliding strips only where the source segment is within 200 m of an authored riverbank edge |
 
 Building vertical extent uses `min_height` or `building:min_level`, then
 explicit `height`, then `building:levels × reviewed default level height`, then

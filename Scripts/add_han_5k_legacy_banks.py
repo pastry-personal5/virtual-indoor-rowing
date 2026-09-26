@@ -23,10 +23,19 @@ BANK_MESH = "/Engine/BasicShapes/Cube"
 BANK_MATERIAL = "/Game/Phase2/HanRiver/Materials/M_Han_Bank"
 # Preserve the representative map's bank silhouette while keeping a 210 m
 # visual rowing channel clear of every non-colliding bank primitive.
-BANK_OFFSET_CM = 25_500.0
-BANK_HALF_WIDTH_CM = 9_000.0
-BANK_HEIGHT_CM = 200.0
-BANK_CENTER_Z_CM = 90.0
+BANK_OFFSET_CM = 24_000.0
+BANK_HALF_WIDTH_CM = 3_000.0
+BANK_HEIGHT_CM = 30.0
+BANK_CENTER_Z_CM = 10.0
+# Smooth 25 m course pieces overlap by 5 m, eliminating both daylight seams
+# and the exaggerated wedges that the former eight long rectangular spans made
+# at each route turn.
+BANK_SEGMENT_OVERLAP_CM = 500.0
+BANK_MAX_PIECE_CM = 2_500.0
+TREE_OFFSET_CM = BANK_OFFSET_CM + BANK_HALF_WIDTH_CM + 4_500.0
+TREE_CANOPY_Z_CM = 1_100.0
+STAIR_INNER_OFFSET_CM = BANK_OFFSET_CM - BANK_HALF_WIDTH_CM
+STAIR_WIDTH_CM = 700.0
 
 
 def _current_map(unreal) -> str:
@@ -42,9 +51,37 @@ def _route_points(route_path: str, review: dict) -> list[tuple[float, float]]:
 	return [apply_registration((100 * east, -100 * north), fit) for east, north in (project(point, review["origin_lon_lat"]) for point in route)]
 
 
+def _smooth_route_points(route_points: list[tuple[float, float]]) -> list[tuple[float, float]]:
+	"""Round each authored polyline turn, then emit pieces short enough for banks."""
+	if len(route_points) < 2:
+		raise ValueError("The Han 5 km waterline needs at least two points")
+	path = [route_points[0]]
+	for previous, current, following in zip(route_points, route_points[1:], route_points[2:]):
+		previous_length = math.dist(previous, current)
+		next_length = math.dist(current, following)
+		if previous_length <= 0 or next_length <= 0:
+			raise ValueError("The Han 5 km waterline contains duplicate route coordinates")
+		trim = min(10_000.0, previous_length * 0.18, next_length * 0.18)
+		entry = (current[0] + (previous[0] - current[0]) * trim / previous_length, current[1] + (previous[1] - current[1]) * trim / previous_length)
+		exit = (current[0] + (following[0] - current[0]) * trim / next_length, current[1] + (following[1] - current[1]) * trim / next_length)
+		path.append(entry)
+		for numerator in range(1, 5):
+			t = numerator / 5
+			path.append(((1 - t) ** 2 * entry[0] + 2 * (1 - t) * t * current[0] + t**2 * exit[0], (1 - t) ** 2 * entry[1] + 2 * (1 - t) * t * current[1] + t**2 * exit[1]))
+		path.append(exit)
+	path.append(route_points[-1])
+	smoothed = [path[0]]
+	for start, end in zip(path, path[1:]):
+		pieces = max(1, math.ceil(math.dist(start, end) / BANK_MAX_PIECE_CM))
+		for index in range(1, pieces + 1):
+			fraction = index / pieces
+			smoothed.append((start[0] + (end[0] - start[0]) * fraction, start[1] + (end[1] - start[1]) * fraction))
+	return smoothed
+
+
 def _bank_transforms(route_points: list[tuple[float, float]]) -> dict[str, list[tuple[tuple[float, float, float], float, tuple[float, float, float]]]]:
 	groups = {label: [] for label in BANK_LABELS}
-	for start, end in zip(route_points, route_points[1:]):
+	for start, end in zip(_smooth_route_points(route_points), _smooth_route_points(route_points)[1:]):
 		delta_x, delta_y = end[0] - start[0], end[1] - start[1]
 		length_cm = math.hypot(delta_x, delta_y)
 		if length_cm <= 0:
@@ -54,7 +91,35 @@ def _bank_transforms(route_points: list[tuple[float, float]]) -> dict[str, list[
 		mid_x, mid_y = (start[0] + end[0]) / 2, (start[1] + end[1]) / 2
 		yaw_deg = math.degrees(math.atan2(delta_y, delta_x))
 		for label, side in zip(BANK_LABELS, (-1.0, 1.0)):
-			groups[label].append(((mid_x + side * normal_x * BANK_OFFSET_CM, mid_y + side * normal_y * BANK_OFFSET_CM, BANK_CENTER_Z_CM), yaw_deg, (length_cm / 100.0, BANK_HALF_WIDTH_CM / 100.0, BANK_HEIGHT_CM / 100.0)))
+			groups[label].append(((mid_x + side * normal_x * BANK_OFFSET_CM, mid_y + side * normal_y * BANK_OFFSET_CM, BANK_CENTER_Z_CM), yaw_deg, ((length_cm + BANK_SEGMENT_OVERLAP_CM) / 100.0, BANK_HALF_WIDTH_CM / 100.0, BANK_HEIGHT_CM / 100.0)))
+	return groups
+
+
+def _tree_transforms(route_points: list[tuple[float, float]]) -> dict[str, list[tuple[tuple[float, float, float], float, tuple[float, float, float]]]]:
+	groups = {label: [] for label in BANK_LABELS}
+	for start, end in zip(route_points, route_points[1:]):
+		delta_x, delta_y = end[0] - start[0], end[1] - start[1]
+		length_cm = math.hypot(delta_x, delta_y)
+		direction_x, direction_y = delta_x / length_cm, delta_y / length_cm
+		normal_x, normal_y = -direction_y, direction_x
+		for label, side in zip(BANK_LABELS, (-1.0, 1.0)):
+			for fraction in (0.25, 0.75):
+				groups[label].append(((start[0] + fraction * delta_x + side * normal_x * TREE_OFFSET_CM, start[1] + fraction * delta_y + side * normal_y * TREE_OFFSET_CM, TREE_CANOPY_Z_CM), 0.0, (7.0, 6.0, 9.0)))
+	return groups
+
+
+def _stair_transforms(route_points: list[tuple[float, float]]) -> dict[str, list[tuple[tuple[float, float, float], float, tuple[float, float, float]]]]:
+	groups = {label: [] for label in BANK_LABELS}
+	for start, end in zip(route_points, route_points[1:]):
+		delta_x, delta_y = end[0] - start[0], end[1] - start[1]
+		length_cm = math.hypot(delta_x, delta_y)
+		direction_x, direction_y = delta_x / length_cm, delta_y / length_cm
+		normal_x, normal_y = -direction_y, direction_x
+		yaw_deg = math.degrees(math.atan2(delta_y, delta_x))
+		for label, side in zip(BANK_LABELS, (-1.0, 1.0)):
+			for step in range(3):
+				offset = STAIR_INNER_OFFSET_CM + step * STAIR_WIDTH_CM
+				groups[label].append((((start[0] + end[0]) / 2 + side * normal_x * offset, (start[1] + end[1]) / 2 + side * normal_y * offset, 20.0 + step * 55.0), yaw_deg, ((length_cm + BANK_SEGMENT_OVERLAP_CM) / 100.0, STAIR_WIDTH_CM / 100.0, 0.55)))
 	return groups
 
 
@@ -86,6 +151,8 @@ def plan(review_path: str, route_path: str) -> dict:
 	return {
 		"review_map": REVIEW_MAP,
 		"bank_groups": {label: len(transforms) for label, transforms in groups.items()},
+		"tree_groups": {label: len(transforms) for label, transforms in _tree_transforms(_route_points(route_path, review)).items()},
+		"stair_groups": {label: len(transforms) for label, transforms in _stair_transforms(_route_points(route_path, review)).items()},
 		"existing_bank_groups": [label for label, matching in bank_actors.items() if matching],
 		"missing_bridge_actors": missing_bridges,
 		"saved": False,
@@ -120,7 +187,7 @@ def run(review_path: str, route_path: str, beats_path: str, apply: bool = False)
 			component.set_material(0, material)
 			component.set_collision_enabled(unreal.CollisionEnabled.NO_COLLISION)
 			component.set_mobility(unreal.ComponentMobility.STATIC)
-			component.add_instances([unreal.Transform(unreal.Vector(*location), unreal.Rotator(0, yaw, 0), unreal.Vector(*scale)) for location, yaw, scale in transforms], False)
+			component.add_instances([unreal.Transform(unreal.Vector(*location), unreal.Rotator(pitch=0.0, yaw=yaw, roll=0.0), unreal.Vector(*scale)) for location, yaw, scale in transforms], False)
 		bridge_result = place(review_path, beats_path, route_path)
 	except Exception:
 		for actor in reversed(created):

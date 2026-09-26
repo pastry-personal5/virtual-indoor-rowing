@@ -2,6 +2,75 @@
 
 ## Unreleased
 
+- Full 5 km bank rotation-axis repair (2026-09-26): corrected the Unreal
+  Python `Rotator` calls in the bank HISM and dressing passes to use named
+  `yaw` rather than a positional field that mapped course yaw into pitch.
+  The rebuilt bank instance matrices now keep their X/Y axes in the water
+  plane and reserve Z only for the 30 cm bank height. Saved the repaired
+  review map after viewport and property read-back; all primitives remain
+  static and non-colliding.
+
+- Full 5 km bank/lawn corrective update (2026-09-26): removed the remaining
+  RiversideLawns primitives after inspection found their source-to-building
+  widths were 418–470 m, too broad for cosmetic near-bank dressing. The lawn
+  eligibility cap is now 120 m beyond the bank edge; no source building meets
+  that bounded criterion. Rebuilt both bank HISMs as 217 25 m pieces per side,
+  30 m wide and 30 cm high with 5 m overlaps. The repaired review map is
+  saved; all retained primitives remain static and non-colliding.
+
+- Full 5 km legacy-bank primitive repair (2026-09-26): replaced the visibly
+  oversized, eight-span port/starboard bank slabs with 113 narrow, low-profile
+  HISM pieces per side. The pieces follow rounded course turns and overlap by
+  10 m, removing the prior wedge-shaped joins without closing the rowing
+  channel. Repositioned the review-only trees and stepped quay primitives to
+  the repaired bank envelope and saved `L_HanRiver_5K_Review` through Unreal
+  MCP. All bank and dressing primitives remain static and non-colliding; no
+  runtime/cook/package promotion occurred.
+
+- Full 5 km near-bank road removal (2026-09-26): removed all 963 staged
+  `Han/Route5K/OSMRoads` review actors at owner direction and saved
+  `L_HanRiver_5K_Review`. The three separately authored RiversideLawns fields
+  remain. This changes neither the local OSM snapshot nor the bounded source
+  filter and makes no runtime/cook/package promotion.
+
+- Full 5 km near-bank OSM roads and lawn fallbacks (2026-09-26): expanded the
+  owner-bounded OSM acquisition query to include `highway=*` ways. From the
+  pinned, local road-inclusive snapshot
+  (`69e72d9ff8516c3a4f2b58455bea1fe59fa80f8f6f80e391a3ef5cf2d07391db`),
+  staged 963 non-colliding review road strips whose segment midpoints are
+  within 200 m of an authored riverbank outer edge. Three bank-side segments
+  without a retained road but with a nearby source building received flat,
+  cosmetic lawn fields toward that building. This is review-only map dressing;
+  it does not add traffic, navigation, terrain, collision, runtime content,
+  or a cook/package promotion.
+
+- Full 5 km continuous legacy-bank review dressing (2026-09-26): expanded
+  each of the eight port and starboard bank HISM spans by 40 m, creating a
+  20 m continuation at each segment end so bends have no primitive seam.
+  Added 32 non-colliding canopy-tree primitives and 48 non-colliding,
+  three-tier concrete quay/stair primitives in the dedicated BankDressing
+  folder while retaining the central rowing channel. The review map was
+  saved through Unreal MCP; this remains review-only dressing and is not a
+  runtime, cook, or packaged-content promotion.
+
+- Full 5 km landmark completion (2026-09-26): added non-colliding, original
+  primitive landmark assemblies for the two non-bridge beats (Some Sevit and
+  Nodeulseom) to the Route5K review map. Together with the four named bridge
+  actors, the review level now represents all six geographic course beats.
+  This is review-only dressing; it is neither an exact landmark replica nor a
+  runtime promotion.
+
+- Full 5 km owner-boundary OSM refresh (2026-09-26): recorded the supplied
+  W/E/N/S extent (`126.93634`, `127.00000`, `37.53100`, `37.50300`) in the
+  Phase 2 runbook and the executable `Scripts/han_5k_bbox.py`; its required
+  pipeline order is `[126.93634, 37.50300, 127.00000, 37.53100]`. Acquired
+  and pinned an ignored local OSM snapshot with SHA-256
+  `c780178b5911aff6f1200bdec732ea7bab6f0026d89e7c01b1253fed98d990e3`,
+  regenerated 1,566 Route5K building/water tiles, passed deterministic
+  preflight, and replaced/saved the matching review-only OSM mesh assets and
+  actors in `L_HanRiver_5K_Review` through Unreal MCP. This does not promote
+  content to the runtime map or satisfy Phase 2 review/cook acceptance.
+
 - Full 5 km OSM import preparation (2026-09-25): generalized the reviewed OSM
   acquisition/generation and Unreal staging preflight so `han-river-5k` uses a
   bounded, separately named source extent, `SM_Han_5K_OSM` tile names,

@@ -499,6 +499,7 @@ def overpass_query(bbox_wsen: tuple[float, float, float, float] = BBOX) -> str:
 (
   way[\"building\"]({south},{west},{north},{east});
   way[\"building:part\"]({south},{west},{north},{east});
+  way[\"highway\"]({south},{west},{north},{east});
   way[\"natural\"=\"water\"]({south},{west},{north},{east});
   way[\"water\"]({south},{west},{north},{east});
   way[\"waterway\"=\"riverbank\"]({south},{west},{north},{east});
