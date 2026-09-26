@@ -55,7 +55,11 @@ def place(review_path: str, beats_path: str, route_path: str) -> dict:
 		location = apply_registration((100 * easting, -100 * northing), fit)
 		route_index = min(range(len(route_coordinates)), key=lambda index: sum((route_coordinates[index][axis] - beat["coordinate_wgs84"][axis]) ** 2 for axis in range(2)))
 		yaw_deg = _route_yaw_deg(route_coordinates, route_index, review["origin_lon_lat"])
-		actor = actors.spawn_actor_from_class(unreal.StaticMeshActor, unreal.Vector(location[0], location[1], 0), unreal.Rotator(0, yaw_deg, 0))
+		actor = actors.spawn_actor_from_class(
+			unreal.StaticMeshActor,
+			unreal.Vector(location[0], location[1], 0),
+			unreal.Rotator(pitch=0.0, yaw=yaw_deg, roll=0.0),
+		)
 		if actor is None:
 			for created_actor in reversed(created):
 				actors.destroy_actor(created_actor)

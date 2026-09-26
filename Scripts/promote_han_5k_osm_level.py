@@ -63,7 +63,11 @@ def run(manifest_path: str, review_path: str, apply: bool = False) -> dict:
 	created = []
 	try:
 		for item in prepared["assets"]:
-			actor = actors.spawn_actor_from_class(unreal.StaticMeshActor, unreal.Vector(*item["location_cm"]), unreal.Rotator(0, item["yaw_deg"], 0))
+			actor = actors.spawn_actor_from_class(
+				unreal.StaticMeshActor,
+				unreal.Vector(*item["location_cm"]),
+				unreal.Rotator(pitch=0.0, yaw=item["yaw_deg"], roll=0.0),
+			)
 			if actor is None:
 				raise RuntimeError("Could not create Route5K OSM runtime actor")
 			created.append(actor)

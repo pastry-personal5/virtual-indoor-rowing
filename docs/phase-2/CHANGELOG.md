@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Promoted the owner-approved full 5 km review level to the runtime
+  `L_HanRiver_BlueHour` map (2026-09-26). The preceding BlueHour level is
+  retained as `L_HanRiver_BlueHour_PreReviewedBackup_20260926`; the accepted
+  review source remains `L_HanRiver_5K_Review`. The promoted level contains
+  the two repaired, horizontal legacy-bank HISMs, four bridge beats, ten
+  landmark assemblies, 80 bank-dressing primitives, and 1,566 bounded OSM
+  building/water actors. This is an editor-level promotion only: cook,
+  packaged visual/performance, and Phase 2 acceptance gates remain open.
+  The bridge authoring and OSM promotion helpers now also use named `yaw`
+  rotation fields so the corrected bank-axis error cannot be repeated there.
+
 - Full 5 km bank rotation-axis repair (2026-09-26): corrected the Unreal
   Python `Rotator` calls in the bank HISM and dressing passes to use named
   `yaw` rather than a positional field that mapped course yaw into pitch.
