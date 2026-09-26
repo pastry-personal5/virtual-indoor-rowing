@@ -52,13 +52,14 @@ class ContentReleasePackagerTests(unittest.TestCase):
 		self.temp.cleanup()
 
 	def write_previous_catalog(self, revision: int) -> Path:
-		route = content._release_route(json.loads((content.SOURCE_CANDIDATE_ROOT / "route-beats.json").read_text(encoding="utf-8"))["beats"])
+		version = "1.0.1"
+		route = content._release_route(json.loads((content.SOURCE_CANDIDATE_ROOT / "route-beats.json").read_text(encoding="utf-8"))["beats"], version)
 		notice = (content.SOURCE_CANDIDATE_ROOT / "licenses" / "NOTICE.txt").read_bytes()
 		inventory = content._release_inventory(route, notice)
 		package = self.root / "previous.vircontent"
 		package.write_bytes(b"previous-immutable-package")
 		catalog = self.root / "previous-catalog.pb"
-		catalog.write_bytes(content._release_manifest(route, inventory, package, revision, "https://origin.example.invalid/content", self.signing_key))
+		catalog.write_bytes(content._release_manifest(route, inventory, package, revision, "https://origin.example.invalid/content", self.signing_key, version))
 		return catalog
 
 	def environment(self, previous_catalog: Path, revision: int) -> dict[str, str]:
@@ -67,6 +68,7 @@ class ContentReleasePackagerTests(unittest.TestCase):
 			"VIR_CONTENT_SIGNING_KEY": str(self.signing_key),
 			"VIR_CONTENT_ORIGIN_BASE_URL": "https://origin.example.invalid/content",
 			"VIR_CONTENT_CATALOG_REVISION": str(revision),
+			"VIR_CONTENT_VERSION": "1.0.1",
 			"VIR_CONTENT_PREVIOUS_CATALOG": str(previous_catalog),
 			"VIR_CONTENT_OUTPUT_DIR": str(self.root / "release"),
 		}
@@ -96,6 +98,46 @@ class ContentReleasePackagerTests(unittest.TestCase):
 		self.assertEqual(metadata["catalog_file"], catalogs[0].name)
 		self.assertEqual(metadata["package_sha256"], release.name)
 		self.assertIn(f"/{release.name}/HanRiver.vircontent", metadata["package_url"])
+		self.assertEqual(metadata["semantic_version"], "1.0.1")
+
+	def test_uses_required_release_version_in_signed_route_and_package_url(self) -> None:
+		with patch.object(content, "CURRENT_PUBLIC_KEY", content.FIXTURE_TEST_PUBLIC_KEY):
+			previous_catalog = self.write_previous_catalog(7)
+			environment = self.environment(previous_catalog, 8)
+			environment["VIR_CONTENT_VERSION"] = "1.0.3"
+			with patch.dict(os.environ, environment, clear=False), \
+				patch.object(content, "_validate_source_candidate") as validate_source:
+				self.assertEqual(content.release_package(), 0)
+
+		validate_source.assert_called_once_with("1.0.3")
+		release = next((self.root / "release").iterdir())
+		metadata = json.loads((release / "release.json").read_text(encoding="utf-8"))
+		self.assertEqual(metadata["semantic_version"], "1.0.3")
+		self.assertIn("/han-river-alpha-1/1.0.3/", metadata["package_url"])
+		catalog = next(release.glob("catalog-*.pb"))
+		fields = content._verify_signed_envelope(catalog.read_bytes(), content.FIXTURE_TEST_PUBLIC_KEY, "content-current")
+		unsigned = content._envelope_fields(fields[2])
+		# Route definitions contain repeated checkpoint fields, so inspect the
+		# canonical semantic-version field rather than use the envelope-only
+		# duplicate-field parser.
+		self.assertIn(content._string(3, "1.0.3"), unsigned[6])
+
+	def test_refuses_missing_invalid_or_source_mismatched_release_version(self) -> None:
+		with patch.object(content, "CURRENT_PUBLIC_KEY", content.FIXTURE_TEST_PUBLIC_KEY):
+			previous_catalog = self.write_previous_catalog(7)
+			environment = self.environment(previous_catalog, 8)
+			del environment["VIR_CONTENT_VERSION"]
+			with patch.dict(os.environ, environment, clear=False):
+				with self.assertRaisesRegex(ValueError, "VIR_CONTENT_VERSION is required"):
+					content.release_package()
+			environment["VIR_CONTENT_VERSION"] = "1.03"
+			with patch.dict(os.environ, environment, clear=False):
+				with self.assertRaisesRegex(ValueError, "Semantic Version"):
+					content.release_package()
+			environment["VIR_CONTENT_VERSION"] = "1.0.3"
+			with patch.dict(os.environ, environment, clear=False):
+				with self.assertRaisesRegex(AssertionError, "does not match VIR_CONTENT_VERSION"):
+					content.release_package()
 
 	def test_first_publication_needs_no_previous_catalog_but_only_at_revision_one(self) -> None:
 		with patch.object(content, "CURRENT_PUBLIC_KEY", content.FIXTURE_TEST_PUBLIC_KEY):

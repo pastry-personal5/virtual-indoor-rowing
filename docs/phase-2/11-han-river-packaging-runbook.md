@@ -215,8 +215,20 @@ export VIR_CONTENT_ORIGIN_BASE_URL="${VIR_CONTENT_ORIGIN_BASE_URL%/}"
 export VIR_CONTENT_SIGNING_KEY="$VIR_TOOLS/keys/content-current.pem"
 export VIR_CONTENT_OUTPUT_DIR="$VIR_TOOLS/releases"
 export VIR_CATALOG_URL="$VIR_CONTENT_ORIGIN_BASE_URL/catalog-current.pb"
+# This must be the new SemVer recorded in both reviewed source files:
+# route-beats.json semantic_version and han-river-5k.geojson route_version.
+export VIR_CONTENT_VERSION="1.0.3"
 test -f "$VIR_CONTENT_SIGNING_KEY"
 ```
+
+`VIR_CONTENT_VERSION` is a required SemVer input to
+`make content-release-package`; it is not merely an origin-directory label.
+The packager rejects a value that differs from either reviewed source version,
+then writes that exact value into the signed `route.pb`, signed catalog package
+URL, `release.json`, and printed upload URL. For a replacement of retained
+content, use a new semantic version (for example, `1.0.3` after `1.0.1`), not
+only a higher catalog revision. Review and commit the matching source metadata
+change before cooking; do not edit it after the cook or alter a signed output.
 
 For the first publication, there is no previous catalog and the revision must
 be `1`. Confirm the origin really has no current catalog; a network error or
@@ -273,7 +285,8 @@ release. It performs no upload. The output directory contains:
 
 Compare the two calculated digests with `package_sha256` and `catalog_sha256`
 in `release.json`. Confirm the catalog revision, `content-current` key ID,
-semantic version, content set, and `package_url`. The URL must begin with the
+semantic version, content set, and `package_url`. The semantic version must
+equal `VIR_CONTENT_VERSION` and both reviewed source metadata values. The URL must begin with the
 approved `VIR_CONTENT_ORIGIN_BASE_URL` and end with
 `/$VIR_PACKAGE_SHA256/HanRiver.vircontent`. If a field is wrong, stop and fix
 the input; do not edit the signed catalog, release JSON, or archive after
@@ -288,9 +301,9 @@ copies of the **public** release artifacts; it does not need the signing key.
 This is a loopback smoke server, not a production origin and not a way around
 the packager's HTTPS requirement.
 
-Stage the release under the exact path encoded by `package_url`. The current
-content constants give
-`han-river-alpha-1/1.0.1/<package-sha256>/HanRiver.vircontent` below `/vir`.
+Stage the release under the exact path encoded by `release.json`'s
+`package_url`: `han-river-alpha-1/<semantic-version>/<package-sha256>/HanRiver.vircontent`
+below `/vir`.
 Use the `VIR_RELEASE_DIR` from the inspection step. If this is another host,
 point it at the copied public release directory. Recalculate the names from
 the copied bytes:
@@ -305,9 +318,12 @@ export VIR_PACKAGE_SHA256="$(shasum -a 256 "$VIR_RELEASE_DIR/HanRiver.vircontent
 test "$(basename "$VIR_RELEASE_DIR")" = "$VIR_PACKAGE_SHA256"
 export VIR_CATALOG_FILE="$(find "$VIR_RELEASE_DIR" -maxdepth 1 -type f -name 'catalog-*.pb' -print -quit)"
 export VIR_CONTENT_SET="han-river-alpha-1"
-export VIR_CONTENT_VERSION="1.0.1"
+# Derive the version from the reviewed release output; do not hand-type it.
+export VIR_CONTENT_VERSION="$(sed -n 's/^  "semantic_version": "\(.*\)",$/\1/p' "$VIR_RELEASE_DIR/release.json")"
 test -s "$VIR_RELEASE_DIR/HanRiver.vircontent"
 test -s "$VIR_CATALOG_FILE"
+test -n "$VIR_CONTENT_VERSION"
+rg '"semantic_version": "'"$VIR_CONTENT_VERSION"'"' "$VIR_RELEASE_DIR/release.json"
 mkdir -p "$VIR_ORIGIN_ROOT/vir/$VIR_CONTENT_SET/$VIR_CONTENT_VERSION/$VIR_PACKAGE_SHA256"
 cp "$VIR_RELEASE_DIR/HanRiver.vircontent" \
   "$VIR_ORIGIN_ROOT/vir/$VIR_CONTENT_SET/$VIR_CONTENT_VERSION/$VIR_PACKAGE_SHA256/HanRiver.vircontent"
@@ -390,7 +406,10 @@ test -s "$VIR_CATALOG_FILE"
 export VIR_CATALOG_SHA256="$(shasum -a 256 "$VIR_CATALOG_FILE" | awk '{print $1}')"
 test "$(basename "$VIR_RELEASE_DIR")" = "$VIR_PACKAGE_SHA256"
 test "$(basename "$VIR_CATALOG_FILE")" = "catalog-$VIR_CATALOG_SHA256.pb"
-export VIR_PACKAGE_URL="$VIR_CONTENT_ORIGIN_BASE_URL/han-river-alpha-1/1.0.1/$VIR_PACKAGE_SHA256/HanRiver.vircontent"
+# Derive the version from the reviewed release output; do not hand-type it.
+export VIR_CONTENT_VERSION="$(sed -n 's/^  "semantic_version": "\(.*\)",$/\1/p' "$VIR_RELEASE_DIR/release.json")"
+test -n "$VIR_CONTENT_VERSION"
+export VIR_PACKAGE_URL="$VIR_CONTENT_ORIGIN_BASE_URL/han-river-alpha-1/$VIR_CONTENT_VERSION/$VIR_PACKAGE_SHA256/HanRiver.vircontent"
 export VIR_IMMUTABLE_CATALOG_URL="$VIR_CONTENT_ORIGIN_BASE_URL/$(basename "$VIR_CATALOG_FILE")"
 export VIR_CURRENT_CATALOG_URL="$VIR_CONTENT_ORIGIN_BASE_URL/catalog-current.pb"
 cat "$VIR_RELEASE_DIR/release.json"
@@ -401,7 +420,7 @@ origin's immutable object keys are the URL paths after its host name:
 
 | Local file | Public key below the approved `/vir` base |
 |---|---|
-| `HanRiver.vircontent` | `han-river-alpha-1/1.0.1/<package-sha256>/HanRiver.vircontent` |
+| `HanRiver.vircontent` | `han-river-alpha-1/<semantic-version>/<package-sha256>/HanRiver.vircontent` |
 | `catalog-<catalog-sha256>.pb` | `catalog-<catalog-sha256>.pb` |
 
 The repository has no provider-specific origin upload command or bucket name.

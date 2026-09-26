@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Content release packaging now requires `VIR_CONTENT_VERSION` as a SemVer
+  input and binds it to the reviewed Han route-beats and waterline metadata.
+  The packager emits that same version into the signed route, immutable package
+  URL, and `release.json`; the packaging and origin runbooks now require a
+  matching new version for replacement content (2026-09-26).
+
 - Promoted the owner-approved full 5 km review level to the runtime
   `L_HanRiver_BlueHour` map (2026-09-26). The preceding BlueHour level is
   retained as `L_HanRiver_BlueHour_PreReviewedBackup_20260926`; the accepted
