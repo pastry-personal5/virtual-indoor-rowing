@@ -2,6 +2,45 @@
 
 ## Unreleased
 
+- Full 5 km OSM import preparation (2026-09-25): generalized the reviewed OSM
+  acquisition/generation and Unreal staging preflight so `han-river-5k` uses a
+  bounded, separately named source extent, `SM_Han_5K_OSM` tile names,
+  `Route5K/OSM` assets, and `L_HanRiver_5K_Review` rather than being mislabeled
+  as Area01. An owner-directed Overpass snapshot is stored only in ignored
+  local evidence; it hashes to `30336ad2f4ece6eb026601ff00c63e7712f3c4eb411352e8d318844e408d6f74`
+  and generated 631 source tiles / 328 Unreal import assets. The Editor is
+  currently closed and Unreal MCP is unavailable, so no `.umap` or `.uasset`
+  has been imported, promoted, or saved.
+
+- Han Area01 OSM-only cleanup preparation (2026-09-25): added the
+  Unreal-MCP-only cleanup utility for `L_HanRiver_BlueHour`. It removes the
+  legacy primitive `Han/Instanced` actors, retains reviewed Area01 OSM actors,
+  and replaces the old bridge instances with `SM_SM_Han_BridgeSpan`; the tool
+  deliberately leaves the level unsaved for owner inspection. The required
+  Unreal MCP server is not available in this session, so no editor-owned map
+  asset has been mutated or verified yet. `make han-source-verify` and
+  `make format-check` pass.
+
+- Phase 2 Milestone 5 Shipping archive seal repair (2026-09-25): found that
+  `make unreal-shipping` copied `BuildVersions.json` and the embedded
+  `.uproject` after UAT's ad-hoc signing pass, invalidating the archive seal
+  before macOS could start Unreal. The wrapper now re-seals and strictly
+  verifies the final staged tree; package verification also rejects a stale
+  existing seal. `make test` passed 33/33, `make format-check` passed, and a
+  rebuilt archive passed `make unreal-package-verify` with SHA-256
+  `319c732d1b4405259c7385144a9e888a74ffd0383bcd40b54a46a003802086fe`.
+  This managed host's LaunchServices still aborts the direct archive launch
+  before Unreal initializes, so the r12 mounted-Han canary, visual review, and
+  thermal evidence remain open.
+
+- Phase 2 Milestone 5 plan review (2026-09-25): added ordered source/editor,
+  mounted-Han canary, comparison, and production-selection gates. The revised
+  sequence prevents a Standard fallback or an unmounted external cook from
+  being represented as Han visual/thermal evidence, and names the exact
+  `APlanarReflection` / `UPlanarReflectionComponent` allowlist work required
+  before any planar reflector can ship in signed Han content. No acceptance
+  result changed; mounted Han and reference-Mac Shipping evidence remain open.
+
 - Phase 2 Milestone 5 packaged Han diagnostic (2026-09-25): the owner-provided
   app Details views show failed v1.0.0/v1.0.1 installs with
   `content.mount_failed`. One launch verified catalog revision 11; a later

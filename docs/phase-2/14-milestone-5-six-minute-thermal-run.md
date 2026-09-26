@@ -1,6 +1,6 @@
 # Milestone 5: six-minute Shipping thermal run
 
-Status: Blocked at mounted-Han prerequisite; no run recorded
+Status: Blocked at mounted-Han canary prerequisite; no run recorded
 Owner: Client/content and technical art
 Date: 2026-09-25
 
@@ -22,10 +22,12 @@ before collecting a Han timing result.
    comparison. Disable any adaptive setting that would silently lower the
    measured resolution; record the setting actually used.
 2. Run `make unreal-package-verify` from the repository root and record the
-   app SHA-256. The current packaged app is
+   app SHA-256. The packaged app path is
    `Build/unreal-shipping/archive/Mac/VirtualRowing-Mac-Shipping.app`.
-   Record the Han trio's three SHA-256 values and the exact activated
-   content/catalog revision. The 2026-09-25 candidate app digest is
+   Record the Han trio's three SHA-256 values and the exact signed catalog URL
+   identity/revision, offered version, and activated content revision. The
+   following 2026-09-25 values are an unmounted candidate only, not reusable
+   acceptance identifiers: app digest
    `e9fc85252e718060c38a8f18c380bb8aad917994e1ec3ec118c174a9c0603f6a`;
    the candidate external cook is `Build/han-cook/HanRiver-m5-20260925/`.
    Its pak/utoc/ucas digests, respectively, are
@@ -33,11 +35,15 @@ before collecting a Han timing result.
    `b0a1b74114e6edc579f02a35cee28f6a1360d62490cc799ca32fc7290f382bcc`,
    and `5abf60e56b3185f69a8cd3b7bc50fe82a90fca4fb4999f42c025e85d6386ffa6`.
    Rebuild or recook if water source or content changes before the run.
-3. Launch the packaged Shipping app through the normal owner workflow. Mount
-   the reviewed Han package using the content pipeline, then verify the app
-   presents Han rather than its Standard fallback. Record the visible route
-   identity and app/content versions. Do not claim a Han result if mounting or
-   activation fails.
+3. Launch the packaged Shipping app through the normal owner workflow while
+   idle. Use the normal content pipeline to download, activate on the next
+   launch, and mount the reviewed Han package. Record the signed catalog URL
+   identity/revision, offered and activated versions, visible route identity,
+   app/content versions, and the `mounted` status. Do not claim a Han result
+   if download, activation, mounting, or catalog-revision validation fails.
+   A fresh cook does not install or activate content. Confirm separately that
+   Standard starts with Han unavailable before treating this prerequisite as
+   complete.
 4. Set up Unreal Insights frame/game/render timing and Metal GPU timing for
    this packaged process. Capture the macOS thermal state on a timeline. Use
    one timing source and collection method consistently across matched runs;

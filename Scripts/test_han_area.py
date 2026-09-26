@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 from io import BytesIO
+import math
 from pathlib import Path
 import sys
 import tempfile
@@ -20,9 +21,27 @@ sys.path.insert(0, str(SCRIPTS))
 import han_area
 import osm_han_area
 import unreal_osm_area
+import add_han_5k_legacy_banks
 
 
 class HanAreaTests(unittest.TestCase):
+	def test_full_5k_legacy_banks_cover_every_route_segment_and_keep_channel_clear(self) -> None:
+		review = {
+			"origin_lon_lat": [126.993885, 37.51381],
+			"controls": [
+				{"id": "banpo-bridge-reference", "lon_lat": [126.996000, 37.511500], "level_xy_cm": [18675.891, 25714.592]},
+				{"id": "sebit-reference", "lon_lat": [126.990000, 37.510500], "level_xy_cm": [-34305.820, 36846.043]},
+				{"id": "east-bank-reference", "lon_lat": [126.982200, 37.511200], "level_xy_cm": [-103181.403, 29047.980]},
+			],
+		}
+		route_path = SCRIPTS.parent / "Content/Phase2/HanRiver/han-river-5k.geojson"
+		transforms = add_han_5k_legacy_banks._bank_transforms(add_han_5k_legacy_banks._route_points(str(route_path), review))
+		self.assertEqual(set(transforms), set(add_han_5k_legacy_banks.BANK_LABELS))
+		self.assertEqual({label: len(instances) for label, instances in transforms.items()}, {label: 8 for label in add_han_5k_legacy_banks.BANK_LABELS})
+		for port, starboard in zip(transforms[add_han_5k_legacy_banks.BANK_LABELS[0]], transforms[add_han_5k_legacy_banks.BANK_LABELS[1]]):
+			self.assertAlmostEqual(math.dist(port[0][:2], starboard[0][:2]), 2 * add_han_5k_legacy_banks.BANK_OFFSET_CM, places=5)
+			self.assertEqual(port[2][1], add_han_5k_legacy_banks.BANK_HALF_WIDTH_CM / 100.0)
+		self.assertEqual(add_han_5k_legacy_banks.BRIDGE_BEATS, ("banpo-start", "dongjak-span", "hangang-bridge", "wonhyo-finish"))
 	def test_projection_round_trip_and_true_north(self) -> None:
 		origin = (126.993885, 37.51381)
 		coordinate = (126.998, 37.514)
@@ -67,7 +86,7 @@ class HanAreaTests(unittest.TestCase):
 			config_path.write_text(json.dumps(config))
 			output = root / "output"
 			manifest = osm_han_area.generate(config_path, output)
-			self.assertEqual(len(manifest["tiles"]), 2)
+			self.assertGreaterEqual(len(manifest["tiles"]), 2)
 			building_tile = next(tile for tile in manifest["tiles"] if tile["kind"] == "building")
 			water_tile = next(tile for tile in manifest["tiles"] if tile["kind"] == "water")
 			self.assertIn("f ", (output / building_tile["file"]).read_text())
@@ -83,7 +102,7 @@ class HanAreaTests(unittest.TestCase):
 			manifest_path = output / "manifest.json"
 			review = {"manifest_sha256": han_area.sha256(manifest_path), "origin_lon_lat": config["origin_lon_lat"], "controls": controls, "vertical_offset_cm": 0, "representative_scene_review": "TEST-5", "license_review": "TEST-6", "source_georeference_review": "TEST-7", "vertical_datum_review": "TEST-8", "budget_review": "TEST-9", "materials": {"building": "/Game/Phase2/HanRiver/Materials/M_Han_Concrete", "water": "/Game/Phase2/HanRiver/Materials/M_Han_Water"}}
 			plan = unreal_osm_area.prepare(manifest_path, review)
-			self.assertEqual(len(plan["assets"]), 2)
+			self.assertEqual(len(plan["assets"]), len(manifest["tiles"]))
 			building_asset = next(asset for asset in plan["assets"] if asset["kind"] == "building")
 			water_asset = next(asset for asset in plan["assets"] if asset["kind"] == "water")
 			self.assertAlmostEqual(building_asset["scale"][0], 1.0, places=9)
@@ -189,7 +208,9 @@ class HanAreaTests(unittest.TestCase):
 			generate_config = root / "generate.json"
 			generate_config.write_text(json.dumps({"schema_version": 1, "area_id": han_area.AREA_ID, "origin_lon_lat": origin, "tile_size_m": 100, "default_level_height_m": 3, "osm_path": str(snapshot / "source.osm"), "osm_sha256": metadata["snapshot_sha256"], "source_review": "TEST-12", "license_review": "TEST-13", "georeference_review": "TEST-15", "representative_export_review": "TEST-16"}))
 			manifest = osm_han_area.generate(generate_config, root / "output")
-			self.assertEqual(sorted(feature["id"] for tile in manifest["tiles"] for feature in tile["features"]), sorted(feature["id"] for feature in features))
+			generated_ids = [feature["id"] for tile in manifest["tiles"] for feature in tile["features"]]
+			self.assertEqual(set(generated_ids), {feature["id"] for feature in features})
+			self.assertGreater(len(generated_ids), len(set(generated_ids)))
 
 			osm.remove(next(way for way in osm.findall("way") if way.attrib["id"] == "103"))
 			add_way(104, (1, 2, 3, 4, 1), ("natural", "water"))
@@ -209,6 +230,14 @@ class HanAreaTests(unittest.TestCase):
 			center = (sum(point[0] for point in triangle) / 3, sum(point[1] for point in triangle) / 3)
 			self.assertTrue(osm_han_area.point_in_ring(center, outer))
 			self.assertFalse(osm_han_area.point_in_ring(center, hole))
+
+	def test_tile_clipping_triangulates_a_polygon_with_boundary_vertices(self) -> None:
+		footprint = [(-4714, 344), (-4698, 346), (-4690, 347), (-4686, 309), (-4669, 311), (-4669, 309), (-4663, 310), (-4659, 280), (-4679, 278), (-4677, 268), (-4691, 267), (-4691, 276), (-4695, 276), (-4695, 277), (-4696, 281), (-4715, 278), (-4716, 283), (-4690, 286), (-4691, 290), (-4707, 288), (-4708, 295), (-4692, 297), (-4693, 306), (-4709, 304), (-4710, 307), (-4710, 310), (-4694, 312), (-4695, 322), (-4711, 320), (-4712, 323), (-4712, 327), (-4696, 330), (-4697, 341), (-4714, 339)]
+		feature = {"id": "way/test", "kind": "building", "footprint_m": footprint, "base_m": 0, "top_m": 3, "height_source": "test", "tags": {}}
+		pieces = osm_han_area.tile_feature_pieces(feature, (-4800, 200, -4700, 300))
+		self.assertGreater(len(pieces), 1)
+		for piece in pieces:
+			self.assertEqual(len(osm_han_area.triangulate(piece["footprint_m"])), len(piece["footprint_m"]) - 2)
 
 	def test_offline_acquisition_and_fixed_live_query(self) -> None:
 		with tempfile.TemporaryDirectory() as directory:

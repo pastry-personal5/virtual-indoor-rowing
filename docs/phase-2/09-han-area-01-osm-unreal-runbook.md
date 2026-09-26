@@ -30,6 +30,22 @@ local frame**. A guessed true-north yaw is not acceptable.
 This runbook supplements [Milestone 4](08-milestone-4-blender-building-import.md).
 It does not complete that milestone or pass a Phase 2 gate.
 
+## Full 5 km route extension
+
+The same deterministic acquisition and OBJ pipeline also supports the approved
+`han-river-5k` extent. Its source config must explicitly supply a bounded
+`bbox_wsen` and the `SM_Han_5K_OSM` asset prefix; it produces assets under
+`/Game/Phase2/HanRiver/Meshes/Route5K/OSM` and stages only into
+`/Game/Phase2/HanRiver/Maps/L_HanRiver_5K_Review`. The staging target is
+deliberately separate from the runtime level. After the full-route review,
+the owner must approve an Unreal-MCP-only promotion that removes the legacy
+primitive dressing and retains the authored bridge.
+
+Use `make han-area-osm-preflight` with `HAN_OSM_MANIFEST` and
+`HAN_OSM_REVIEW` to validate every generated asset path, source hash,
+registration control, material mapping, and review-map target before opening
+the Editor. A successful preflight is not an import, save, cook, or approval.
+
 ## Supported geometry and boundaries
 
 The generator accepts closed OSM `way` footprints and `type=multipolygon`
@@ -328,6 +344,32 @@ mappings, disables collision, places actors under
 `Han/Area01/OSMReview/Building` or `Han/Area01/OSMReview/Water`, refuses
 overwrite/wrong-map staging, and rolls back actors/assets it created if any
 tile fails. It does **not** save the map or assets.
+
+### OSM-only runtime-scene cleanup
+
+When the owner has approved replacing the legacy primitive dressing with the
+reviewed OSM scene, use the cleanup script only through Unreal MCP with
+`L_HanRiver_BlueHour` open. It removes the old `Han/Instanced` HISM actors,
+preserves `Han/Area01/OSMReview` actors, and retains the bridge using
+`SM_SM_Han_BridgeSpan`. It does not save the level:
+
+```python
+import sys
+
+repo_root = "/path/to/virtual-indoor-rowing"
+scripts_path = repo_root + "/Scripts"
+if scripts_path not in sys.path:
+    sys.path.insert(0, scripts_path)
+
+import cleanup_han_osm_level
+
+print(cleanup_han_osm_level.run())             # dry run
+print(cleanup_han_osm_level.run(apply=True))   # mutate, still unsaved
+```
+
+Inspect the OSM placement, bridge transform, rowing channel, and water
+coverage before an explicit MCP save. Do not apply this cleanup to a review
+level or by editing the binary `.umap` outside Unreal.
 
 ### Troubleshooting the review-map error
 

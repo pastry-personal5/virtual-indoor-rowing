@@ -29,6 +29,23 @@ MAX_LIVE_SNAPSHOT_BYTES = 50 * 1024 * 1024
 MAX_RELATION_VERTICES = 5000
 
 
+def area_spec(config: dict) -> tuple[str, tuple[float, float, float, float], str]:
+	"""Read a bounded, review-named OSM import extent from a config file."""
+	area_id = config.get("area_id")
+	if not isinstance(area_id, str) or not re.fullmatch(r"[a-z0-9-]{3,64}", area_id):
+		raise ValueError("area_id must be a stable lowercase identifier")
+	bbox_values = config.get("bbox_wsen", BBOX if area_id == AREA_ID else None)
+	if not isinstance(bbox_values, (list, tuple)):
+		raise ValueError("A non-Area01 OSM import requires bbox_wsen")
+	west, south, east, north = finite_values(bbox_values, 4)
+	if not -180 <= west < east <= 180 or not -80 < south < north < 80:
+		raise ValueError("bbox_wsen is invalid")
+	prefix = config.get("asset_prefix", "SM_Han_A01_OSM" if area_id == AREA_ID else None)
+	if not isinstance(prefix, str) or not re.fullmatch(r"SM_Han_[A-Z0-9]+_OSM", prefix):
+		raise ValueError("asset_prefix must be a stable SM_Han_*_OSM prefix")
+	return area_id, (west, south, east, north), prefix
+
+
 def tags(element: ET.Element) -> dict[str, str]:
 	return {tag.attrib["k"]: tag.attrib["v"] for tag in element.findall("tag")}
 
@@ -76,6 +93,14 @@ def point_in_triangle(point, first, second, third) -> bool:
 	return (first_cross >= -EPSILON and second_cross >= -EPSILON and third_cross >= -EPSILON) or (first_cross <= EPSILON and second_cross <= EPSILON and third_cross <= EPSILON)
 
 
+def point_strictly_in_triangle(point, first, second, third) -> bool:
+	"""Return whether a point is inside an ear, excluding its boundary."""
+	first_cross = cross(first, second, point)
+	second_cross = cross(second, third, point)
+	third_cross = cross(third, first, point)
+	return (first_cross > EPSILON and second_cross > EPSILON and third_cross > EPSILON) or (first_cross < -EPSILON and second_cross < -EPSILON and third_cross < -EPSILON)
+
+
 def triangulate(points: list[tuple[float, float]]) -> list[tuple[int, int, int]]:
 	if len(points) < 3 or abs(signed_area(points)) < EPSILON:
 		raise ValueError("Footprint is degenerate")
@@ -89,7 +114,7 @@ def triangulate(points: list[tuple[float, float]]) -> list[tuple[int, int, int]]
 			next_index = indices[(index + 1) % len(indices)]
 			if cross(points[previous], points[current], points[next_index]) <= EPSILON:
 				continue
-			if any(point_in_triangle(points[candidate], points[previous], points[current], points[next_index]) for candidate in indices if candidate not in (previous, current, next_index)):
+			if any(point_strictly_in_triangle(points[candidate], points[previous], points[current], points[next_index]) for candidate in indices if candidate not in (previous, current, next_index)):
 				continue
 			triangles.append((previous, current, next_index))
 			del indices[index]
@@ -102,6 +127,110 @@ def triangulate(points: list[tuple[float, float]]) -> list[tuple[int, int, int]]
 
 def tile_key(point: tuple[float, float], size_m: float) -> tuple[int, int]:
 	return (math.floor(point[0] / size_m), math.floor(point[1] / size_m))
+
+
+def clip_polygon(points: list[tuple[float, float]], bounds: tuple[float, float, float, float]) -> list[tuple[float, float]]:
+	"""Clip one simple polygon to an axis-aligned reviewed extent."""
+	minimum_x, minimum_y, maximum_x, maximum_y = bounds
+
+	def clip(subject, inside, intersection):
+		if not subject:
+			return []
+		result = []
+		previous = subject[-1]
+		previous_inside = inside(previous)
+		for current in subject:
+			current_inside = inside(current)
+			if current_inside != previous_inside:
+				result.append(intersection(previous, current))
+			if current_inside:
+				result.append(current)
+			previous, previous_inside = current, current_inside
+		return result
+
+	def at_x(value):
+		return lambda first, second: (value, first[1] + (second[1] - first[1]) * (value - first[0]) / (second[0] - first[0]))
+
+	def at_y(value):
+		return lambda first, second: (first[0] + (second[0] - first[0]) * (value - first[1]) / (second[1] - first[1]), value)
+
+	result = points
+	for inside, intersection in (
+		(lambda point: point[0] >= minimum_x - EPSILON, at_x(minimum_x)),
+		(lambda point: point[0] <= maximum_x + EPSILON, at_x(maximum_x)),
+		(lambda point: point[1] >= minimum_y - EPSILON, at_y(minimum_y)),
+		(lambda point: point[1] <= maximum_y + EPSILON, at_y(maximum_y)),
+	):
+		result = clip(result, inside, intersection)
+	unique = []
+	for point in result:
+		if not unique or math.dist(point, unique[-1]) > EPSILON:
+			unique.append(point)
+	if len(unique) > 1 and math.dist(unique[0], unique[-1]) <= EPSILON:
+		unique.pop()
+	changed = True
+	while changed and len(unique) >= 3:
+		changed = False
+		for index, point in enumerate(unique):
+			if abs(cross(unique[index - 1], point, unique[(index + 1) % len(unique)])) <= EPSILON:
+				del unique[index]
+				changed = True
+				break
+	return unique
+
+
+def clipped_feature(feature: dict, bounds: tuple[float, float, float, float]) -> dict | None:
+	footprint = clip_polygon(feature["footprint_m"], bounds)
+	if len(footprint) < 3 or abs(signed_area(footprint)) <= EPSILON:
+		return None
+	result = {**feature, "footprint_m": footprint}
+	holes = []
+	for hole in feature.get("holes_m", []):
+		clipped_hole = clip_polygon(hole, bounds)
+		if len(clipped_hole) >= 3 and abs(signed_area(clipped_hole)) > EPSILON and point_in_ring(clipped_hole[0], footprint):
+			holes.append(clipped_hole)
+	if holes:
+		result["holes_m"] = holes
+	else:
+		result.pop("holes_m", None)
+	result["centroid_m"] = (sum(point[0] for point in footprint) / len(footprint), sum(point[1] for point in footprint) / len(footprint))
+	return result
+
+
+def tile_feature_pieces(feature: dict, bounds: tuple[float, float, float, float]) -> list[dict]:
+	"""Return valid pieces of one feature inside a tile.
+
+	A concave footprint can enter a rectangular tile more than once.  A direct polygon
+	clip then produces a self-touching ring, so retain the simple result when possible
+	and otherwise clip the feature's reviewed top triangles independently.  The latter
+	preserves the exact covered area; the extra internal building side faces remain
+	inside the closed solid and are never externally visible.
+	"""
+	clipped = clipped_feature(feature, bounds)
+	if clipped is None:
+		return []
+	try:
+		if "holes_m" in clipped:
+			triangulate_with_holes(clipped["footprint_m"], clipped["holes_m"])
+		else:
+			triangulate(clipped["footprint_m"])
+		return [clipped]
+	except ValueError:
+		pass
+	if "holes_m" in feature:
+		triangles = triangulate_with_holes(feature["footprint_m"], feature["holes_m"])
+	else:
+		triangles = [tuple(feature["footprint_m"][index] for index in triangle) for triangle in triangulate(feature["footprint_m"])]
+	pieces = []
+	for index, triangle in enumerate(triangles):
+		footprint = clip_polygon(list(triangle), bounds)
+		if len(footprint) < 3 or abs(signed_area(footprint)) <= EPSILON:
+			continue
+		piece = {**feature, "id": f"{feature['id']}/piece/{index}", "footprint_m": footprint}
+		piece.pop("holes_m", None)
+		piece["centroid_m"] = (sum(point[0] for point in footprint) / len(footprint), sum(point[1] for point in footprint) / len(footprint))
+		pieces.append(piece)
+	return pieces
 
 
 def water_polygon(properties: dict[str, str]) -> bool:
@@ -364,8 +493,8 @@ def read_features(osm_path: Path, origin_lon_lat, default_level_height_m: float)
 	return features, skipped
 
 
-def overpass_query() -> str:
-	west, south, east, north = BBOX
+def overpass_query(bbox_wsen: tuple[float, float, float, float] = BBOX) -> str:
+	west, south, east, north = bbox_wsen
 	return f"""[out:xml][timeout:60];
 (
   way[\"building\"]({south},{west},{north},{east});
@@ -397,8 +526,9 @@ def read_limited(response, max_bytes: int) -> bytes:
 
 def acquire(config_path: Path, output_directory: Path) -> dict:
 	config = json.loads(config_path.read_text())
-	if config.get("schema_version") != OBJ_SCHEMA_VERSION or config.get("area_id") != AREA_ID:
+	if config.get("schema_version") != OBJ_SCHEMA_VERSION:
 		raise ValueError("Wrong OSM acquisition configuration")
+	area_id, bbox_wsen, _ = area_spec(config)
 	mode = config.get("source_mode")
 	if mode not in ("offline", "overpass"):
 		raise ValueError("source_mode must be offline or overpass")
@@ -426,7 +556,7 @@ def acquire(config_path: Path, output_directory: Path) -> dict:
 			raise ValueError("Live acquisition requires a safe, identifying user_agent")
 		if not isinstance(source.get("query_review"), str) or not source["query_review"].strip():
 			raise ValueError("Live acquisition requires a reviewed fixed-query reference")
-		query = overpass_query()
+		query = overpass_query(bbox_wsen)
 		request = Request(OVERPASS_ENDPOINT, data=urlencode({"data": query}).encode(), method="POST", headers={"Accept": "application/xml", "Content-Type": "application/x-www-form-urlencoded", "User-Agent": user_agent.strip()})
 		with urlopen(request, timeout=90) as response:
 			if response.status != 200:
@@ -440,7 +570,7 @@ def acquire(config_path: Path, output_directory: Path) -> dict:
 	output_directory.mkdir(parents=True)
 	snapshot = output_directory / "source.osm"
 	snapshot.write_bytes(payload)
-	metadata.update({"area_id": AREA_ID, "bbox_wsen": BBOX, "snapshot_file": snapshot.name, "snapshot_sha256": sha256(snapshot), "license": "ODbL-1.0", "attribution": "© OpenStreetMap contributors", "reviews": {key: config[key] for key in ("source_review", "license_review")}})
+	metadata.update({"area_id": area_id, "bbox_wsen": bbox_wsen, "snapshot_file": snapshot.name, "snapshot_sha256": sha256(snapshot), "license": "ODbL-1.0", "attribution": "© OpenStreetMap contributors", "reviews": {key: config[key] for key in ("source_review", "license_review")}})
 	(output_directory / "acquisition.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n")
 	return metadata
 
@@ -512,8 +642,9 @@ def obj_lines(features: list[dict], pivot_m: tuple[float, float]) -> tuple[str, 
 
 def generate(config_path: Path, output_directory: Path) -> dict:
 	config = json.loads(config_path.read_text())
-	if config.get("schema_version") != OBJ_SCHEMA_VERSION or config.get("area_id") != AREA_ID:
+	if config.get("schema_version") != OBJ_SCHEMA_VERSION:
 		raise ValueError("Wrong OSM generation configuration")
+	area_id, bbox_wsen, asset_prefix = area_spec(config)
 	for evidence in ("source_review", "license_review", "georeference_review", "representative_export_review"):
 		if not isinstance(config.get(evidence), str) or not config[evidence].strip():
 			raise ValueError(f"Missing review evidence: {evidence}")
@@ -530,16 +661,39 @@ def generate(config_path: Path, output_directory: Path) -> dict:
 	features, skipped = read_features(osm_path, origin, default_level_height_m)
 	if not features:
 		raise ValueError("No usable closed building or water ways in the reviewed snapshot")
+	projected_corners = [project((bbox_wsen[0], bbox_wsen[1]), origin), project((bbox_wsen[2], bbox_wsen[3]), origin)]
+	extent = (min(point[0] for point in projected_corners), min(point[1] for point in projected_corners), max(point[0] for point in projected_corners), max(point[1] for point in projected_corners))
 	tiles: dict[tuple[str, int, int], list[dict]] = {}
+	represented_feature_ids = set()
 	for feature in features:
-		tile_east, tile_north = tile_key(feature["centroid_m"], size_m)
-		tiles.setdefault((feature["kind"], tile_east, tile_north), []).append(feature)
+		minimum_east_m = max(min(point[0] for point in feature["footprint_m"]), extent[0])
+		maximum_east_m = min(max(point[0] for point in feature["footprint_m"]), extent[2])
+		minimum_north_m = max(min(point[1] for point in feature["footprint_m"]), extent[1])
+		maximum_north_m = min(max(point[1] for point in feature["footprint_m"]), extent[3])
+		if minimum_east_m >= maximum_east_m or minimum_north_m >= maximum_north_m:
+			continue
+		minimum_east = math.floor(minimum_east_m / size_m)
+		maximum_east = math.floor((maximum_east_m - EPSILON) / size_m)
+		minimum_north = math.floor(minimum_north_m / size_m)
+		maximum_north = math.floor((maximum_north_m - EPSILON) / size_m)
+		for tile_east in range(minimum_east, maximum_east + 1):
+			for tile_north in range(minimum_north, maximum_north + 1):
+				tile_bounds = (max(tile_east * size_m, extent[0]), max(tile_north * size_m, extent[1]), min((tile_east + 1) * size_m, extent[2]), min((tile_north + 1) * size_m, extent[3]))
+				for tile_feature in tile_feature_pieces(feature, tile_bounds):
+					tiles.setdefault((tile_feature["kind"], tile_east, tile_north), []).append(tile_feature)
+					represented_feature_ids.add(feature["id"])
+	if not tiles:
+		raise ValueError("No reviewed OSM geometry intersects the approved extent")
 	output_directory.mkdir(parents=True)
-	manifest = {"schema_version": OBJ_SCHEMA_VERSION, "area_id": AREA_ID, "format": "obj", "coordinate_system": "source X=east, Y=south, Z=up, units=centimeters; per-tile pivots are WGS84 origins", "source": {"osm_file": osm_path.name, "osm_sha256": sha256(osm_path), "license": "ODbL-1.0", "attribution": "© OpenStreetMap contributors"}, "generator": {"script": Path(__file__).name, "sha256": sha256(Path(__file__))}, "origin_lon_lat": origin, "generation": {"tile_size_m": size_m, "default_level_height_m": default_level_height_m, "skipped": skipped}, "reviews": {key: config[key] for key in ("source_review", "license_review", "georeference_review", "representative_export_review")}, "tiles": []}
+	manifest = {"schema_version": OBJ_SCHEMA_VERSION, "area_id": area_id, "format": "obj", "coordinate_system": "source X=east, Y=south, Z=up, units=centimeters; per-tile pivots are WGS84 origins", "source": {"osm_file": osm_path.name, "osm_sha256": sha256(osm_path), "license": "ODbL-1.0", "attribution": "© OpenStreetMap contributors"}, "generator": {"script": Path(__file__).name, "sha256": sha256(Path(__file__))}, "origin_lon_lat": origin, "generation": {"bbox_wsen": bbox_wsen, "tile_size_m": size_m, "default_level_height_m": default_level_height_m, "source_feature_count": len(features), "represented_feature_count": len(represented_feature_ids), "skipped": skipped}, "reviews": {key: config[key] for key in ("source_review", "license_review", "georeference_review", "representative_export_review")}, "tiles": []}
 	for (kind, tile_east, tile_north), tile_features in sorted(tiles.items()):
 		pivot = ((tile_east + 0.5) * size_m, (tile_north + 0.5) * size_m)
-		name = f"SM_Han_A01_OSM_{kind.title()}Tile_E{tile_east:+05d}_N{tile_north:+05d}"
-		contents, vertex_count, triangle_count = obj_lines(tile_features, pivot)
+		name = f"{asset_prefix}_{kind.title()}Tile_E{tile_east:+05d}_N{tile_north:+05d}"
+		try:
+			contents, vertex_count, triangle_count = obj_lines(tile_features, pivot)
+		except ValueError as error:
+			feature_ids = ", ".join(feature["id"] for feature in tile_features)
+			raise ValueError(f"Could not triangulate reviewed {kind} tile {name}; features: {feature_ids}") from error
 		path = output_directory / f"{name}.obj"
 		path.write_text(contents)
 		manifest["tiles"].append({"name": name, "kind": kind, "file": path.name, "sha256": sha256(path), "pivot_east_north_m": pivot, "pivot_lon_lat": unproject(pivot, origin), "features": [{key: feature[key] for key in ("id", "kind", "base_m", "top_m", "height_source", "tags")} for feature in tile_features], "vertices": vertex_count, "triangles": triangle_count})

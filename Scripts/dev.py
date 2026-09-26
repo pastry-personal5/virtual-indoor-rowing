@@ -15,7 +15,7 @@ from vir_dev import content, doctor, native, release, tui, unreal  # noqa: E402
 
 def main() -> int:
 	parser = argparse.ArgumentParser(description=__doc__)
-	parser.add_argument("command", choices=("doctor", "configure", "build", "test", "format-check", "format", "pm5-tui", "unreal-smoke", "unreal-shipping", "han-source-verify", "han-external-cook", "unreal-package-verify", "unreal-bluetooth-probe", "release-sign-notarize", "pm5-tui-hil", "pm5-tui-journal", "unreal-native-app", "content-canary", "content-fixture", "content-release-package", "han-area-audit", "han-area-register", "han-area-osm-acquire", "han-area-osm-generate", "han-area-test", "clean", "clean-unreal"))
+	parser.add_argument("command", choices=("doctor", "configure", "build", "test", "format-check", "format", "pm5-tui", "unreal-smoke", "unreal-shipping", "han-source-verify", "han-external-cook", "unreal-package-verify", "unreal-bluetooth-probe", "release-sign-notarize", "pm5-tui-hil", "pm5-tui-journal", "unreal-native-app", "content-canary", "content-fixture", "content-release-package", "han-area-audit", "han-area-register", "han-area-osm-acquire", "han-area-osm-generate", "han-area-osm-preflight", "han-area-test", "clean", "clean-unreal"))
 	args = parser.parse_args()
 	if args.command in ("han-area-audit", "han-area-register"):
 		import han_area
@@ -44,6 +44,13 @@ def main() -> int:
 		import osm_han_area
 		import os
 		print(json.dumps(osm_han_area.acquire(Path(os.environ["HAN_OSM_ACQUIRE_CONFIG"]), Path(os.environ["HAN_OSM_ACQUIRE_OUTPUT"])), ensure_ascii=False, indent=2))
+		return 0
+	if args.command == "han-area-osm-preflight":
+		import os
+		import unreal_osm_area
+		manifest = Path(os.environ["HAN_OSM_MANIFEST"])
+		review = json.loads(Path(os.environ["HAN_OSM_REVIEW"]).read_text())
+		print(json.dumps(unreal_osm_area.prepare(manifest, review), ensure_ascii=False, indent=2))
 		return 0
 	if args.command == "doctor":
 		return doctor.check_doctor()

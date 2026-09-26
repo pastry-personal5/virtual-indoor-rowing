@@ -83,12 +83,14 @@ dependencies.
    included in the application build, not a Han package-only change; account
    for its cost on Standard too. Reject a route-wide plane if its capture cost
    or visual transition is unacceptable.
-4. If a planar actor is chosen for downloaded Han content, extend the source
-   validator and the exact native actor/component allowlist before cooking.
-   `ContentRuntime::IsCourseLevelActorClassAllowed` does not currently admit
-   planar or reflection-capture actors. Preserve the signed, data-only package
-   policy and negative validation cases; never bypass the allowlist to make a
-   visually successful editor prototype load at runtime.
+4. If a planar reflector is chosen for downloaded Han content, extend the
+   source validator and the exact native actor/component allowlist before
+   cooking. The engine type is `APlanarReflection` with its
+   `UPlanarReflectionComponent`; neither is admitted by the current
+   `ContentRuntime` allowlists. Add only those exact native types, make the
+   component check explicit, and add positive and negative validation cases.
+   Preserve the signed, data-only package policy; never bypass the allowlist to
+   make a visually successful editor prototype load at runtime.
 5. Select the least costly method that passes the owner photo/reference review
    and packaged Shipping checks. Only then decide whether Single Layer Water
    deserves a separate prototype; do not assume its refraction or scattering
@@ -248,19 +250,60 @@ it unverified; do not directly edit `.uasset` or `.umap` bytes. The source
 recipe may be reviewed and changed independently, but that alone does not
 establish that either saved material matches it.
 
+## Readiness and decision gates
+
+Run the following gates in order. A failed or incomplete gate is evidence to
+record, not permission to substitute Standard for Han or to continue with an
+unidentified content revision.
+
+1. **Source and editor gate.** Before a cook, the tracked runtime map must
+   resolve only reviewed Han dependencies, use `M_Han_Water` rather than a
+   trial override, and pass `make han-source-verify`. Any changed native
+   presentation behavior must have a closed-Editor build and a fresh Editor
+   automation run. The source checks and editor automation prove contracts;
+   they do not prove a mounted Shipping scene or visual quality.
+2. **Mounted-Han canary gate.** Cook the exact reviewed source, make the
+   signed release/catalog candidate available through the normal content
+   pipeline, and launch the packaged app while idle. Record the app hash,
+   three IoStore hashes, signed catalog revision/URL identity, offered content
+   version, activated version, and visible route identity. Only a next-launch
+   result that reports Han mounted and selects Han rather than Standard clears
+   this gate. A `content.mount_failed`, `revision_rollback`, download, or
+   activation failure blocks all Han visual and timing claims; diagnose it via
+   the packaging runbook first. Separately confirm that Standard starts and
+   rows with Han unavailable.
+3. **Comparison gate.** Freeze the candidate build/content pair, High preset,
+   2560x1600 display, camera coordinates/path, warm-up procedure, light/time
+   settings, and primary normal launch flags before capturing any comparison.
+   Use that same matrix for Standard and mounted Han. Do not compare an
+   Editor still, a fallback route, or a different catalog/content revision to
+   a mounted-Han Shipping capture.
+4. **Selection gate.** A reflection capture, planar-reflection, bitmap, or
+   Single Layer Water experiment remains trial-only until it has a recorded
+   visual comparison, cost result, provenance review where applicable, and
+   owner decision. The selected treatment must be the least costly candidate
+   that meets the visual criteria; a failed candidate is removed or retained
+   only as a clearly unselected trial. No selected bitmap may enter Han until
+   its source hash and license/provenance record are complete, and no selected
+   planar actor may enter Han until its allowlist change and negative checks
+   pass.
+
 ## Implementation sequence and evidence
 
-1. Capture a baseline on the reference Mac from a packaged Shipping build:
-   identical chase-camera views near the boat, under a bridge, and toward the
-   horizon on Standard and mounted Han. Record normal and `-ReduceMotion`
-   footage, material statistics, GPU p95, and a warm six-minute thermal run
-   per route using the [run worksheet](14-milestone-5-six-minute-thermal-run.md).
-   Verify that Han animates on an ordinary launch and freezes only on a
-   separate explicit `-ReduceMotion` launch.
-   Record the app/content versions and camera locations without private workout
-   data. If Han is not mounted, diagnose that separately before claiming a Han
-   comparison.
-2. Run the reflection comparison and bitmap trial above. Edit the recipe for
+1. Pass the source/editor and mounted-Han canary gates above. This is a
+   prerequisite, not a sub-step of the baseline capture. If the canary is
+   blocked, record the Standard-only diagnostic separately and leave all Han
+   comparison and acceptance rows open.
+2. Capture the versioned baseline on the reference Mac from the packaged
+   Shipping build: identical chase-camera views near the boat, under a bridge,
+   and toward the horizon on Standard and mounted Han. Record normal and
+   `-ReduceMotion` footage, material statistics, GPU p95, and a warm
+   six-minute thermal run per route using the
+   [run worksheet](14-milestone-5-six-minute-thermal-run.md). Verify that Han
+   animates on an ordinary launch and freezes only on a separate explicit
+   `-ReduceMotion` launch. Record app/content versions and camera locations
+   without private workout data.
+3. Run the reflection comparison and bitmap trial above. Edit the recipe for
    the selected reflection treatment, filtered normals, and approved textures;
    add the shared hull and oar presentation effect, then rebuild both material
    assets through Unreal Editor. Visually compare the same views. Review the
@@ -268,28 +311,33 @@ establish that either saved material matches it.
    stability during a stationary
    camera and steady rowing motion, especially horizon pixels, screen edges,
    bridge highlights, and reflection transitions.
-3. Run `make format-check`, `make build && make test`, and
+4. Run `make format-check`, `make build && make test`, and
    `make unreal-smoke` for any changed source or test behavior. Run the Unreal
    course presentation spec for normal/reduced motion, one contact per visible
    oar transition, no new effect on stale input, and no reconnect backfill.
    Add a focused test or editor validation for the revised material parameters
    and Han reference. Visual quality itself requires the reference-Mac review.
-4. Run `make han-source-verify`, `make han-external-cook`, and
+5. Run `make han-source-verify`, `make han-external-cook`, and
    `make unreal-package-verify`. Confirm the external IoStore trio contains the
    revised Han material and tracked runtime map. Follow the
    [packaging runbook](11-han-river-packaging-runbook.md) for any signed test
    release and packaged-app canary; a source asset save alone does not update
    installed content. Do not advance `catalog-current.pb` without the normal
    publication checks.
-5. Repeat the reference-Mac captures and six-minute Shipping run per route,
-   after shader warm-up. Record
+6. Publish/install the exact signed candidate through the normal pipeline,
+   repeat the mounted-Han canary gate, and then repeat the reference-Mac
+   captures and six-minute Shipping run per route. A fresh cook or app build
+   alone is insufficient: the measured app must have activated the exact
+   version whose IoStore hashes are recorded.
+
+   Record
    full-scene p95 frame/GPU time, thermal behavior, and the water-on versus
-   water-hidden GPU delta, with the hull/oar effect cost identified. Accept only
-   when the full scene stays at or below
-   16.5 ms GPU p95 and meets QA-001's timing and thermal thresholds during
-   each six-minute window: sustained 60 fps at 2560×1600 High, p95 frame time
-   at most 16.7 ms, and no sustained thermal throttling. This is a Milestone 5
-   proxy result, not a product-level QA-001 certification.
+   water-hidden GPU delta, with the hull/oar effect cost identified. Accept
+   only when the full scene stays at or below 16.5 ms GPU p95 and meets
+   QA-001's timing and thermal thresholds during each six-minute window:
+   sustained 60 fps at 2560×1600 High, p95 frame time at most 16.7 ms, and no
+   sustained thermal throttling. This is a Milestone 5 proxy result, not a
+   product-level QA-001 certification.
    Require owner review for no visible tiling, horizon shimmer, distracting
    bright band, HUD-obscuring highlight, oversized wake, or mistimed oar
    splash. Record and explain any miss before

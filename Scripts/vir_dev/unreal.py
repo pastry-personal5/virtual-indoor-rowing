@@ -203,6 +203,16 @@ def unreal_shipping() -> int:
 	embedded_project = app / "Contents" / "UE" / project.stem / project.name
 	embedded_project.parent.mkdir(parents=True, exist_ok=True)
 	shutil.copy2(project, embedded_project)
+	# The two copies above are intentionally after UAT's staging pass.  They
+	# invalidate UAT's ad-hoc bundle seal unless we sign the final staged tree.
+	# This remains the explicitly permitted unsigned/ad-hoc internal workflow;
+	# Developer ID signing and notarization remain Phase 4 work.
+	if not packaging.ad_hoc_sign_bundle(app):
+		print("ERROR: unable to ad-hoc sign the final staged Shipping app", file=sys.stderr)
+		return 1
+	if not packaging.has_valid_code_signature(app):
+		print("ERROR: final staged Shipping app has an invalid code signature", file=sys.stderr)
+		return 1
 	print(app)
 	return 0
 

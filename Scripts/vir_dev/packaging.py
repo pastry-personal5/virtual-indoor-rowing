@@ -182,6 +182,34 @@ def package_binary_paths(app: Path) -> list[Path]:
 	return [app / "Contents" / "MacOS" / app.stem]
 
 
+def ad_hoc_sign_bundle(app: Path) -> bool:
+	"""Seal an internal Phase 0–3 app after local staging adds runtime files.
+
+	UAT signs the bundle it packages, but the diagnostic provenance and embedded
+	project descriptor are deliberately added afterwards.  Re-seal only after all
+	post-stage files are present so macOS does not reject the otherwise unsigned,
+	ad-hoc internal bundle before its game module can start.
+	"""
+	return common.run(["codesign", "--force", "--sign", "-", str(app)]).returncode == 0
+
+
+def has_valid_code_signature(app: Path) -> bool:
+	"""Return whether an existing bundle seal still covers all staged files."""
+	if not (app / "Contents" / "_CodeSignature").is_dir():
+		return False
+	try:
+		result = subprocess.run(
+			["codesign", "--verify", "--deep", "--strict", "--verbose=2", str(app)],
+			cwd=common.ROOT,
+			check=False,
+			text=True,
+			capture_output=True,
+		)
+	except OSError:
+		return False
+	return result.returncode == 0
+
+
 HOMEBREW_LOAD_PREFIXES = ("/opt/homebrew/", "/usr/local/")
 
 
@@ -260,6 +288,11 @@ def verify_package(app: Path, versions: dict) -> list[str]:
 			failures.append("staged BuildVersions.json does not match Config/BuildVersions.json")
 	except (OSError, json.JSONDecodeError):
 		failures.append("missing or unreadable staged BuildVersions.json")
+	# Fixture bundles used by the source-level verifier intentionally have no
+	# signature. A real UAT archive does, and its seal must still be valid after
+	# the wrapper stages diagnostic runtime files.
+	if (app / "Contents" / "_CodeSignature").exists() and not has_valid_code_signature(app):
+		failures.append("staged app code signature is invalid")
 	binaries = package_binary_paths(app)
 	main = binaries[0]
 	if not main.is_file():

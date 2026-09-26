@@ -475,13 +475,25 @@ class UnrealShippingPackagingTests(unittest.TestCase):
 			patch.object(common, "source_revision", return_value="deadbeef"), \
 			patch.object(packaging, "write_shipping_provenance"), \
 			patch.object(native, "native_app", return_value=0) as native_app, \
+			patch.object(packaging, "ad_hoc_sign_bundle", return_value=True) as sign_bundle, \
+			patch.object(packaging, "has_valid_code_signature", return_value=True) as verify_signature, \
 			patch.object(common, "run", side_effect=fake_run):
 			self.assertEqual(unreal.unreal_shipping(), 0)
 			native_app.assert_called_once()
+			sign_bundle.assert_called_once_with(app)
+			verify_signature.assert_called_once_with(app)
 
 		embedded = app / "Contents" / "UE" / "VirtualRowing" / "VirtualRowing.uproject"
 		self.assertTrue(embedded.is_file())
 		self.assertEqual(embedded.read_text(encoding="utf-8"), project.read_text(encoding="utf-8"))
+
+	def test_package_verifier_rejects_invalid_existing_code_signature(self) -> None:
+		app = self.make_app()
+		(app / "Contents" / "_CodeSignature").mkdir()
+		with patch.object(packaging, "binary_architectures", return_value={"arm64"}), \
+			patch.object(packaging, "plugin_module_linked", return_value=True), \
+			patch.object(packaging, "has_valid_code_signature", return_value=False):
+			self.assertIn("staged app code signature is invalid", packaging.verify_package(app, self.versions))
 
 	def test_package_verifier_rejects_missing_app(self) -> None:
 		self.assertEqual(packaging.verify_package(self.root / "missing.app", self.versions), [f"missing staged app: {self.root / 'missing.app'}"])

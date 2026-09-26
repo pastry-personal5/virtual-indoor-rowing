@@ -45,7 +45,7 @@ phase1-check: ## Validate Phase 1 milestone numbering, links, and evidence statu
 development-sync-test: ## Run the development-sync Go test suite.
 	cd Services/development-sync && GOCACHE="$(VIR_GO_CACHE)" GOMODCACHE="$(VIR_GO_MOD_CACHE)" go test ./...
 
-.PHONY: han-area-audit han-area-register han-area-osm-acquire han-area-osm-generate han-area-test
+.PHONY: han-area-audit han-area-register han-area-osm-acquire han-area-osm-generate han-area-osm-preflight han-area-test
 han-area-audit: ## Inspect local OSM batches; set HAN_OSM_DIR. Writes only Saved/HanArea/.
 	$(DEV) han-area-audit
 
@@ -57,6 +57,9 @@ han-area-osm-acquire: ## Acquire an offline or reviewed Overpass OSM snapshot; s
 
 han-area-osm-generate: ## Generate reviewed OSM OBJ tiles; set HAN_OSM_GENERATE_CONFIG and HAN_OSM_GENERATE_OUTPUT.
 	$(DEV) han-area-osm-generate
+
+han-area-osm-preflight: ## Validate reviewed OSM tiles for an approved Unreal review map; set HAN_OSM_MANIFEST and HAN_OSM_REVIEW.
+	$(DEV) han-area-osm-preflight
 
 han-area-test: ## Test Han area projection, registration, and import preflight without editors.
 	$(DEV) han-area-test

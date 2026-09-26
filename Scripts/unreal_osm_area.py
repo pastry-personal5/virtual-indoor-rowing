@@ -10,7 +10,20 @@ from han_area import AREA_ID, apply_registration, finite_values, register, sha25
 from unreal_han_area import REVIEW_MAP
 
 
-DESTINATION = "/Game/Phase2/HanRiver/Meshes/Area01/OSM"
+AREA_SPECS = {
+	"banpo-sevit-01": {
+		"destination": "/Game/Phase2/HanRiver/Meshes/Area01/OSM",
+		"review_map": "/Game/Phase2/HanRiver/Maps/L_HanRiver_Area01_Review",
+		"folder": "Han/Area01/OSMReview",
+		"asset_prefix": "SM_Han_A01_OSM",
+	},
+	"han-river-5k": {
+		"destination": "/Game/Phase2/HanRiver/Meshes/Route5K/OSM",
+		"review_map": "/Game/Phase2/HanRiver/Maps/L_HanRiver_5K_Review",
+		"folder": "Han/Route5K/OSMReview",
+		"asset_prefix": "SM_Han_5K_OSM",
+	},
+}
 IMPORT_SETTINGS = {
 	"convert_scene": False, "convert_scene_unit": False, "force_front_x_axis": False,
 	"import_uniform_scale": 1.0, "combine_meshes": True, "auto_generate_collision": False,
@@ -18,17 +31,25 @@ IMPORT_SETTINGS = {
 }
 
 
-def approved_review_map(review: dict) -> str:
-	path = review.get("review_map", REVIEW_MAP)
-	if not isinstance(path, str) or not re.fullmatch(r"/Game/Phase2/HanRiver/Maps/[A-Za-z0-9_]+_Review", path):
-		raise ValueError("review_map must be an approved /Game/Phase2/HanRiver/Maps/*_Review level")
+def area_spec(manifest: dict) -> dict:
+	area_id = manifest.get("area_id")
+	if area_id not in AREA_SPECS:
+		raise ValueError("OSM manifest does not name an approved Han import area")
+	return AREA_SPECS[area_id]
+
+
+def approved_review_map(review: dict, spec: dict) -> str:
+	path = review.get("review_map", spec["review_map"])
+	if path != spec["review_map"]:
+		raise ValueError("review_map does not match the approved import area")
 	return path
 
 
 def prepare(manifest_path: Path, review: dict) -> dict:
 	manifest = json.loads(manifest_path.read_text())
-	review_map = approved_review_map(review)
-	if manifest.get("schema_version") != 1 or manifest.get("area_id") != AREA_ID or manifest.get("format") != "obj":
+	spec = area_spec(manifest)
+	review_map = approved_review_map(review, spec)
+	if manifest.get("schema_version") != 1 or manifest.get("format") != "obj":
 		raise ValueError("Wrong OSM OBJ manifest")
 	source = manifest.get("source")
 	if not isinstance(source, dict) or source.get("license") != "ODbL-1.0" or not isinstance(source.get("attribution"), str) or not source["attribution"].strip():
@@ -51,7 +72,7 @@ def prepare(manifest_path: Path, review: dict) -> dict:
 	for tile in manifest["tiles"]:
 		name = tile["name"]
 		kind = tile.get("kind")
-		if kind not in ("building", "water") or not re.fullmatch(rf"SM_Han_A01_OSM_{kind.title()}Tile_E[+-][0-9]{{4}}_N[+-][0-9]{{4}}", name):
+		if kind not in ("building", "water") or not re.fullmatch(rf"{re.escape(spec['asset_prefix'])}_{kind.title()}Tile_E[+-][0-9]{{4}}_N[+-][0-9]{{4}}", name):
 			raise ValueError("Invalid stable OSM tile name")
 		material = materials.get(kind)
 		if not isinstance(material, str) or not re.fullmatch(r"/Game/Phase2/HanRiver/Materials/[A-Za-z0-9_]+", material):
@@ -63,14 +84,18 @@ def prepare(manifest_path: Path, review: dict) -> dict:
 			raise ValueError("OSM tile is missing valid mesh metrics")
 		easting, northing = finite_values(tile["pivot_east_north_m"], 2)
 		location = apply_registration((100 * easting, -100 * northing), fit)
-		assets.append({"name": name, "kind": kind, "source": str(file.resolve()), "path": DESTINATION + "/" + name, "location_cm": [*location, vertical_offset], "yaw_deg": fit["yaw_deg"], "scale": [fit["scale"], fit["scale"], 1.0], "material": material, "triangles": tile["triangles"]})
+		assets.append({"name": name, "kind": kind, "source": str(file.resolve()), "path": spec["destination"] + "/" + name, "location_cm": [*location, vertical_offset], "yaw_deg": fit["yaw_deg"], "scale": [fit["scale"], fit["scale"], 1.0], "material": material, "triangles": tile["triangles"]})
 	if not assets:
 		raise ValueError("No OSM tile assets were approved")
-	return {"area_id": AREA_ID, "review_map": review_map, "registration": fit, "assets": assets, "source_attribution": source["attribution"]}
+	return {"area_id": manifest["area_id"], "review_map": review_map, "destination": spec["destination"], "folder": spec["folder"], "registration": fit, "assets": assets, "source_attribution": source["attribution"]}
 
 
-def run(manifest_path: str, review_path: str, apply: bool = False) -> dict:
+def run(manifest_path: str, review_path: str, apply: bool = False, kinds: set[str] | None = None) -> dict:
 	plan = prepare(Path(manifest_path), json.loads(Path(review_path).read_text()))
+	if kinds is not None:
+		if not kinds or not kinds <= {"building", "water"}:
+			raise ValueError("kinds must be a non-empty subset of building and water")
+		plan = {**plan, "assets": [item for item in plan["assets"] if item["kind"] in kinds]}
 	if not apply:
 		return plan
 	import unreal
@@ -98,7 +123,7 @@ def run(manifest_path: str, review_path: str, apply: bool = False) -> dict:
 			for key, value in IMPORT_SETTINGS.items():
 				options.static_mesh_import_data.set_editor_property(key, value)
 			task = unreal.AssetImportTask()
-			for key, value in {"filename": item["source"], "destination_path": DESTINATION, "destination_name": item["name"], "automated": True, "replace_existing": False, "save": False, "options": options, "factory": unreal.FbxFactory()}.items():
+			for key, value in {"filename": item["source"], "destination_path": plan["destination"], "destination_name": item["name"], "automated": True, "replace_existing": False, "save": False, "options": options, "factory": unreal.FbxFactory()}.items():
 				task.set_editor_property(key, value)
 			unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks([task])
 			imported = task.get_editor_property("imported_object_paths")
@@ -114,7 +139,7 @@ def run(manifest_path: str, review_path: str, apply: bool = False) -> dict:
 				raise RuntimeError("Could not create OSM review actor")
 			created_actors.append(actor)
 			actor.set_actor_label(item["name"])
-			actor.set_folder_path(f"Han/Area01/OSMReview/{item['kind'].title()}")
+			actor.set_folder_path(f"{plan['folder']}/{item['kind'].title()}")
 			actor.set_actor_scale3d(unreal.Vector(*item["scale"]))
 			actor.static_mesh_component.set_static_mesh(mesh)
 			actor.static_mesh_component.set_collision_enabled(unreal.CollisionEnabled.NO_COLLISION)
