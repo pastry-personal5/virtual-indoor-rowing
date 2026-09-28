@@ -1,8 +1,8 @@
 # Delivery Phase 2: solo alpha and content pipeline
 
-Status: In progress — Milestones 1, 3, and 4 are owner-complete; Milestone 2 is in progress; the Phase 2 exit gate is not passed
+Status: In progress — Milestones 1, 3, 4, and 5 are owner-complete; Milestone 2 is in progress; the Phase 2 exit gate is not passed
 Owner: CTO / product
-Last reviewed: 2026-09-23
+Last reviewed: 2026-09-27
 
 ## Outcome
 
@@ -20,7 +20,7 @@ gate has passed.
 | Area | Phase 2 decision |
 |---|---|---|
 | Alpha | CEO on the reference Model D/PM5 for four weeks; at least four completed rows and a recorded willingness-to-pay judgment |
-| Route | A downloadable 5 km Han River vertical slice plus a cooked-in 2 km Standard fallback route; both are peer course choices when Han River is usable |
+| Route | A downloadable 5 km Han River vertical slice, plus a cooked-in 2 km Standard fallback route; both are peer course choices when Han River is usable |
 | Training | One beginner-friendly, fixed-time, app-guided plan; no PM-managed programming |
 | Local value | Chronological history, pace trend, private personal-best ghost, and user-selected FIT export |
 | Product UX | Skippable safety/setup, Settings, exertion HUD polish, text scaling, high contrast, and safe-mode boot |
@@ -44,7 +44,11 @@ network failure must leave the local menu, safe route, and local workout usable.
 
 | [Phase 2 Milestone 4](08-milestone-4-blender-building-import.md) — Import Blender buildings into the Han River course | Complete — owner decision | The Blender building-import milestone is closed; importing several additional OSM maps remains separately tracked follow-up content work. |
 
-| [Phase 2 Milestone 5](12-realistic-water-refinement-plan.md) — Photorealistic water refinement | In progress — boat and rower geometry applied | Compare scene reflections, filtered water normals, approved bitmap detail, and restrained hull and oar interaction on Standard and mounted Han, with packaged visual, six-minute thermal/performance, and reduced-motion evidence. |
+| [Phase 2 Milestone 5](12-realistic-water-refinement-plan.md) — Photorealistic water refinement | Complete — owner-directed scope reduction (2026-09-26) | Completed bounded water source/editor/cook hardening. Deferred treatment selection and visual acceptance remain outside Milestone 6. |
+
+| [Phase 2 Milestone 6](16-milestone-6-boat-movement-and-camera.md) — Deterministic boat movement and camera presentation | In progress — native/runtime/tooling implementation complete; editor evidence pending | Common Standard/Han deterministic paths, bounded cosmetic motion, persistent starboard cameras, fresh-PM stop reveal, v2 Han compatibility, and wake/ripple regression only. |
+
+| [Phase 2 Milestone 9](15-milestone-9-six-minute-shipping-thermal-run.md) — Six-minute Shipping thermal run | Planned — blocked at mounted-Han canary prerequisite | Measure warm six-minute Shipping performance and thermal behavior on Standard and mounted Han, including matched water and hull/oar cost captures. |
 
 | [Phase 2 Milestone 10](06-milestone-10-development-loop.md) — Shorten the development and content-iteration loops | Planned — not started | Editor-safe Shipping builds, an uncooked Development run, a loose-level course reload, and a one-command local Han publish, without touching the Shipping trust boundary. |
 
@@ -67,7 +71,7 @@ does not pass the Phase 2 exit gate.
   the external IoStore cook and signed `HanRiver.vircontent` release.
 - [Han Area 01 OSM-to-Unreal runbook](09-han-area-01-osm-unreal-runbook.md)
 - [Han Area 01 OSM-to-Blender-to-Unreal runbook](10-han-area-01-osm-blender-unreal-runbook.md)
-- [Milestone 5 six-minute thermal run](14-milestone-5-six-minute-thermal-run.md)
+- [Milestone 9 six-minute Shipping thermal run](15-milestone-9-six-minute-shipping-thermal-run.md)
   — reference-Mac Shipping measurement worksheet.
 
 ## Exit gate

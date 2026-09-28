@@ -1,8 +1,8 @@
 # Phase 2 Milestone 5: photorealistic water refinement
 
-Status: In progress — Standard and Han water plus interaction materials saved in Editor; scene and Shipping acceptance evidence remain open
+Status: Complete — owner-directed scope reduction; deferred visual, reduced-motion, and interaction review is not Milestone 5 acceptance
 Owner: Client/content and technical art  
-Last reviewed: 2026-09-25
+Last reviewed: 2026-09-27
 
 ## Purpose and decision
 
@@ -40,6 +40,19 @@ existing explicit `-ReduceMotion` launch-argument behavior for both water
 assets. Do not plan an automatic Han reduced-motion mode, a new setting, or a
 change to that default without a separate owner decision.
 
+## Completion decision
+
+On 2026-09-26, the owner closed this milestone after the bounded source,
+editor, and Han external-cook hardening work. The water-treatment comparison
+and selection, remaining packaged visual and reduced-motion review, and hull/oar
+interaction implementation and review are deferred because the boat will be
+modified. The later work is now owned by the separately scoped
+[Milestone 6 boat-movement plan](16-milestone-6-boat-movement-and-camera.md);
+this Milestone 5 completion still selects no new water treatment. The owner
+reported a normal-mode Han River BlueHour review, but it is not a
+treatment-selection or full visual-acceptance record. This completion does not
+pass the Phase 2 exit gate or any QA requirement.
+
 ## Research and technical choice
 
 | Finding | Application here |
@@ -56,13 +69,15 @@ change to that default without a separate owner decision.
 The project targets Unreal Engine 5.8 on the reference Apple-silicon Mac.
 Keep conventional deferred shading. [ADR-0013](../adr/0013-increase-reference-gpu-frame-budget.md)
 sets the whole-scene GPU budget to 16.5 ms p95 while QA-001's 16.7 ms p95
-frame-time and thermal objectives remain unchanged. [ADR-0014](../adr/0014-six-minute-milestone-5-thermal-gate.md)
-sets a six-minute Milestone 5 thermal gate; that shorter result does not
-certify QA-001 over its product-level 60-minute interval. Prototype costs may
-exceed the budget, but Milestone 5 acceptance requires the whole-scene GPU
-budget and the QA-001 timing and thermal thresholds over its six-minute window. Lumen,
-Nanite, hardware ray tracing, and preview rendering features are not water
-dependencies.
+frame-time and thermal objectives remain unchanged. The separate
+[Milestone 9 Shipping thermal run](15-milestone-9-six-minute-shipping-thermal-run.md),
+under [ADR-0015](../adr/0015-move-six-minute-shipping-thermal-run-to-milestone-9.md),
+measures the warm six-minute performance and thermal proxy. Its result does
+not certify QA-001 over its product-level 60-minute interval. Prototype costs
+may exceed the budget, but Milestone 5 selection still uses the whole-scene
+GPU budget and the matched Shipping cost evidence recorded by Milestone 9.
+Lumen, Nanite, hardware ray tracing, and preview rendering features are not
+water dependencies.
 
 ## Reflection comparison and selection
 
@@ -252,6 +267,11 @@ establish that either saved material matches it.
 
 ## Readiness and decision gates
 
+The remaining gates below are retained as implementation evidence for
+[Milestone 6](16-milestone-6-boat-movement-and-camera.md), the scoped
+boat-modification milestone. They are no longer Milestone 5 gates under the
+2026-09-26 owner decision above.
+
 Run the following gates in order. A failed or incomplete gate is evidence to
 record, not permission to substitute Standard for Han or to continue with an
 unidentified content revision.
@@ -297,9 +317,10 @@ unidentified content revision.
 2. Capture the versioned baseline on the reference Mac from the packaged
    Shipping build: identical chase-camera views near the boat, under a bridge,
    and toward the horizon on Standard and mounted Han. Record normal and
-   `-ReduceMotion` footage, material statistics, GPU p95, and a warm
-   six-minute thermal run per route using the
-   [run worksheet](14-milestone-5-six-minute-thermal-run.md). Verify that Han
+   `-ReduceMotion` footage and material statistics. Schedule the matched
+   Shipping GPU, frame-time, and thermal captures through the
+   [Milestone 9 run worksheet](15-milestone-9-six-minute-shipping-thermal-run.md).
+   Verify that Han
    animates on an ordinary launch and freezes only on a separate explicit
    `-ReduceMotion` launch. Record app/content versions and camera locations
    without private workout data.
@@ -326,18 +347,12 @@ unidentified content revision.
    publication checks.
 6. Publish/install the exact signed candidate through the normal pipeline,
    repeat the mounted-Han canary gate, and then repeat the reference-Mac
-   captures and six-minute Shipping run per route. A fresh cook or app build
-   alone is insufficient: the measured app must have activated the exact
-   version whose IoStore hashes are recorded.
+   captures. A fresh cook or app build alone is insufficient: the measured
+   app must have activated the exact version whose IoStore hashes are
+   recorded. Milestone 9 owns the paired six-minute Shipping run, its timing
+   and thermal thresholds, and the water-on versus water-hidden GPU delta
+   with the hull/oar effect cost identified.
 
-   Record
-   full-scene p95 frame/GPU time, thermal behavior, and the water-on versus
-   water-hidden GPU delta, with the hull/oar effect cost identified. Accept
-   only when the full scene stays at or below 16.5 ms GPU p95 and meets
-   QA-001's timing and thermal thresholds during each six-minute window:
-   sustained 60 fps at 2560×1600 High, p95 frame time at most 16.7 ms, and no
-   sustained thermal throttling. This is a Milestone 5 proxy result, not a
-   product-level QA-001 certification.
    Require owner review for no visible tiling, horizon shimmer, distracting
    bright band, HUD-obscuring highlight, oversized wake, or mistimed oar
    splash. Record and explain any miss before
@@ -358,5 +373,6 @@ using their timings as evidence.
 
 Record results, unresolved defects, exact build/content identifiers, and the
 owner's visual decision in the Milestone 5 evidence and Phase 2 changelog.
-No simulator-only result substitutes for the reference-Mac visual and thermal
-checks. This refinement does not by itself pass the Phase 2 exit gate.
+No simulator-only result substitutes for the reference-Mac visual checks or
+the separate Milestone 9 Shipping thermal evidence. This refinement does not
+by itself pass the Phase 2 exit gate.

@@ -62,7 +62,7 @@ replace a real UE 5.8 cook.
    export VIR_CONTENT_SIGNING_KEY="$VIR_TOOLS/keys/content-current.pem"
    export VIR_CONTENT_PREVIOUS_CATALOG="$VIR_TOOLS/catalogs/catalog-current.pb"  # omit for the first publication
    export VIR_CONTENT_CATALOG_REVISION=42                                        # must be 1 for the first publication
-   export VIR_CONTENT_VERSION="1.0.3"                                           # must match both reviewed route metadata files
+   : "${VIR_CONTENT_VERSION:?Set the release package Semantic Version in the signing environment}"
    export VIR_CONTENT_ORIGIN_BASE_URL="https://content.example.invalid/vir"
    export VIR_CONTENT_OUTPUT_DIR="$VIR_TOOLS/releases"
    make han-external-cook
@@ -90,12 +90,12 @@ replace a real UE 5.8 cook.
    For rotation, `content-next` may be generated the same way and embedded in
    `TrustedKeys()`, but rotation is a separately reviewed procedure.
 
-   `VIR_CONTENT_VERSION` must be a SemVer value and must exactly match
-   `route-beats.json`'s `semantic_version` and `han-river-5k.geojson`'s
-   `route_version` in the reviewed release commit. It is embedded in the
-   signed route and package URL; changing only the origin directory name does
-   not change the release version. Use a new semantic version for a repaired
-   retained package, then verify `release.json` before upload.
+   `VIR_CONTENT_VERSION` is the sole release-package SemVer input. It is
+   embedded in the signed route and package URL; changing only the origin
+   directory name does not change the release version. The reviewed route,
+   waterline, and path-source JSON intentionally contain no package version.
+   Use a new environment value for a repaired retained package, then verify
+   `release.json` before upload.
 
    `content-current.pem` must be owner-only (for example, `chmod 600` on the
    restricted signer). The command rejects missing/empty/symlinked cook

@@ -28,6 +28,8 @@
 
 #include "WorkoutRuntime/WorkoutDisplay.h"
 
+#include <chrono>
+
 namespace
 {
 	constexpr int32 MetricFontSize = 30;
@@ -45,6 +47,13 @@ namespace
 	// Stale values are dimmed, but the banner and connection label carry the same
 	// information in text: no essential state relies on color alone.
 	const FLinearColor StaleColor(0.55f, 0.55f, 0.55f, 1.0f);
+
+	uint64 HudClockNs()
+	{
+		return static_cast<uint64>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+									   std::chrono::steady_clock::now().time_since_epoch())
+									   .count());
+	}
 
 } // namespace
 
@@ -64,11 +73,17 @@ class FHudEscapeProcessor final : public IInputProcessor
 
 	virtual bool HandleKeyDownEvent(FSlateApplication &, const FKeyEvent &InKeyEvent) override
 	{
-		if (InKeyEvent.GetKey() != EKeys::Escape || InKeyEvent.IsRepeat() || !Owner.IsValid())
+		if (InKeyEvent.IsRepeat() || !Owner.IsValid())
 			return false;
-		Owner->FocusAction();
-		VirDebugLog(TEXT("HUD: Escape moved focus to the applicable action"));
-		return true;
+		if (InKeyEvent.GetKey() == EKeys::Escape)
+		{
+			Owner->FocusAction();
+			VirDebugLog(TEXT("HUD: Escape moved focus to the applicable action"));
+			return true;
+		}
+		if (InKeyEvent.GetKey() == EKeys::C)
+			return Owner->HandleCameraShortcut();
+		return false;
 	}
 
 	virtual const TCHAR *GetDebugName() const override
@@ -156,16 +171,12 @@ void UWorkoutHudWidget::NativeOnInitialized()
 	UHorizontalBox *Actions = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
 	MakeButton(TEXT("End Session"), EndButton);
 	MakeButton(TEXT("Start New"), StartNewButton);
-	MakeButton(TEXT("View surroundings"), ViewSurroundingsButton, &ViewSurroundingsLabel);
 	Actions->AddChildToHorizontalBox(EndButton)->SetPadding(FMargin(0.0f, 0.0f, 12.0f, 0.0f));
-	Actions->AddChildToHorizontalBox(StartNewButton)->SetPadding(FMargin(0.0f, 0.0f, 12.0f, 0.0f));
-	Actions->AddChildToHorizontalBox(ViewSurroundingsButton);
-	ViewSurroundingsButton->SetVisibility(ESlateVisibility::Hidden);
+	Actions->AddChildToHorizontalBox(StartNewButton);
 	Column->AddChildToVerticalBox(Actions)->SetPadding(FMargin(0.0f, 12.0f, 0.0f, 0.0f));
 
 	EndButton->OnClicked.AddDynamic(this, &UWorkoutHudWidget::HandleEndClicked);
 	StartNewButton->OnClicked.AddDynamic(this, &UWorkoutHudWidget::HandleStartNewClicked);
-	ViewSurroundingsButton->OnClicked.AddDynamic(this, &UWorkoutHudWidget::HandleViewSurroundingsClicked);
 
 	UBorder *Root = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
 	// The root fills the viewport. It must remain transparent so the gray-box world
@@ -192,6 +203,17 @@ void UWorkoutHudWidget::NativeOnInitialized()
 	// Docked bottom-left and compact so the river and skyline stay clear.
 	MetricSlot->SetVerticalAlignment(VAlign_Bottom);
 	MetricSlot->SetPadding(FMargin(16.0f, 0.0f, 0.0f, 16.0f));
+	BoatPositionText = MakeText(TEXT("BOAT HULL (m)  X --  Y --  Z --"), LabelFontSize, ETextJustify::Left, "Bold");
+	UOverlaySlot *BoatPositionSlot = Layout->AddChildToOverlay(BoatPositionText);
+	BoatPositionSlot->SetHorizontalAlignment(HAlign_Left);
+	BoatPositionSlot->SetVerticalAlignment(VAlign_Top);
+	BoatPositionSlot->SetPadding(FMargin(16.0f, 16.0f, 0.0f, 0.0f));
+	CameraToastText = MakeText(TEXT(""), BannerFontSize, ETextJustify::Center, "Bold");
+	CameraToastText->SetVisibility(ESlateVisibility::Hidden);
+	UOverlaySlot *ToastSlot = Layout->AddChildToOverlay(CameraToastText);
+	ToastSlot->SetHorizontalAlignment(HAlign_Center);
+	ToastSlot->SetVerticalAlignment(VAlign_Top);
+	ToastSlot->SetPadding(FMargin(0.0f, 28.0f, 0.0f, 0.0f));
 
 	Root->AddChild(Layout);
 	WidgetTree->RootWidget = Root;
@@ -217,9 +239,37 @@ void UWorkoutHudWidget::NativeTick(const FGeometry &MyGeometry, float InDeltaTim
 	const UWorkoutSubsystem *Subsystem = GetWorkoutSubsystem();
 	if (!Subsystem)
 		return;
-	if (const UCourseSubsystem *Course = GetCourseSubsystem())
+	const UCourseSubsystem *Course = GetCourseSubsystem();
+	if (Course)
 		EstimatedStrokeText->SetVisibility(AnimationLabelVisibility(Course->GetAnimationQuality()));
-	UpdateRestViewAction();
+	if (Course)
+	{
+		const std::string &Toast = Course->GetPresentation().CameraToast;
+		CameraToastText->SetText(ToText(Toast));
+		CameraToastText->SetVisibility(Toast.empty() ? ESlateVisibility::Hidden : ESlateVisibility::HitTestInvisible);
+	}
+
+	FVector Boat;
+	const bool bHasVisibleBoat = Course && Course->TryGetVisibleBoatWorldLocation(Boat);
+	const FIntVector BoatPositionMetres(
+		bHasVisibleBoat ? FMath::RoundToInt(Boat.X / 100.0) : 0,
+		bHasVisibleBoat ? FMath::RoundToInt(Boat.Y / 100.0) : 0,
+		bHasVisibleBoat ? FMath::RoundToInt(Boat.Z / 100.0) : 0);
+	if (bHasBoatPositionText != bHasVisibleBoat || (bHasVisibleBoat && BoatPositionMetres != LastBoatPositionMetres))
+	{
+		bHasBoatPositionText = bHasVisibleBoat;
+		LastBoatPositionMetres = BoatPositionMetres;
+		if (bHasVisibleBoat)
+		{
+			BoatPositionText->SetText(FText::FromString(FString::Printf(
+				TEXT("BOAT HULL (m)  X %+d  Y %+d  Z %+d"),
+				BoatPositionMetres.X,
+				BoatPositionMetres.Y,
+				BoatPositionMetres.Z)));
+		}
+		else
+			BoatPositionText->SetText(FText::FromString(TEXT("BOAT HULL (m)  X --  Y --  Z --")));
+	}
 	if (!bHasApplied || Subsystem->GetDisplayGeneration() != AppliedGeneration)
 	{
 		ApplyDisplay(*Subsystem);
@@ -267,7 +317,7 @@ const TCHAR *UWorkoutHudWidget::MetricAccuracyNotice()
 
 bool UWorkoutHudWidget::IsActionFocused() const
 {
-	return EndButton->HasKeyboardFocus() || StartNewButton->HasKeyboardFocus() || ViewSurroundingsButton->HasKeyboardFocus();
+	return EndButton->HasKeyboardFocus() || StartNewButton->HasKeyboardFocus();
 }
 
 void UWorkoutHudWidget::NativeConstruct()
@@ -294,32 +344,31 @@ void UWorkoutHudWidget::ApplyFocusCue()
 	// contrasting fill, others are dark. Restyled only when focus actually changes.
 	const bool bEndFocused = EndButton->HasKeyboardFocus();
 	const bool bStartNewFocused = StartNewButton->HasKeyboardFocus();
-	const bool bViewSurroundingsFocused = ViewSurroundingsButton->HasKeyboardFocus();
-	if (bFocusCueApplied && bEndFocused == bEndFocusedApplied && bStartNewFocused == bStartNewFocusedApplied && bViewSurroundingsFocused == bViewSurroundingsFocusedApplied)
+	if (bFocusCueApplied && bEndFocused == bEndFocusedApplied && bStartNewFocused == bStartNewFocusedApplied)
 		return;
 	bFocusCueApplied = true;
 	bEndFocusedApplied = bEndFocused;
 	bStartNewFocusedApplied = bStartNewFocused;
-	bViewSurroundingsFocusedApplied = bViewSurroundingsFocused;
 	const FLinearColor FocusedFill(0.10f, 0.45f, 0.95f, 1.0f);
 	const FLinearColor RestingFill(0.16f, 0.18f, 0.22f, 1.0f);
 	EndButton->SetBackgroundColor(bEndFocused ? FocusedFill : RestingFill);
 	StartNewButton->SetBackgroundColor(bStartNewFocused ? FocusedFill : RestingFill);
-	ViewSurroundingsButton->SetBackgroundColor(bViewSurroundingsFocused ? FocusedFill : RestingFill);
 }
 
-void UWorkoutHudWidget::UpdateRestViewAction()
+bool UWorkoutHudWidget::HandleCameraShortcut()
 {
-	UCourseSubsystem *Course = GetCourseSubsystem();
-	const bool bCanView = Course && Course->CanToggleRestView();
-	const ESlateVisibility Visibility = bCanView ? ESlateVisibility::Visible : ESlateVisibility::Hidden;
-	if (ViewSurroundingsButton->GetVisibility() != Visibility)
-		ViewSurroundingsButton->SetVisibility(Visibility);
-	ViewSurroundingsButton->SetIsEnabled(bCanView);
-	if (bCanView && ViewSurroundingsLabel)
-		ViewSurroundingsLabel->SetText(FText::FromString(Course->IsRestViewEnabled() ? TEXT("Return to chase") : TEXT("View surroundings")));
-	if (!bCanView && ViewSurroundingsButton->HasKeyboardFocus())
-		FocusAction();
+	if (!FSlateApplication::IsInitialized() || !(HasAnyUserFocus() || HasFocusedDescendants()) ||
+		FSlateApplication::Get().GetActiveModalWindow().IsValid())
+		return false;
+	const TSharedPtr<SWidget> Focused = FSlateApplication::Get().GetKeyboardFocusedWidget();
+	if (Focused.IsValid() && Focused->GetTypeAsString().Contains(TEXT("Editable")))
+		return false;
+	if (UCourseSubsystem *Course = GetCourseSubsystem())
+	{
+		Course->CycleCameraPreset(HudClockNs());
+		return true;
+	}
+	return false;
 }
 
 void UWorkoutHudWidget::ApplyDisplay(const UWorkoutSubsystem &Subsystem)
@@ -394,10 +443,4 @@ void UWorkoutHudWidget::HandleStartNewClicked()
 {
 	if (UWorkoutSubsystem *Subsystem = GetWorkoutSubsystem())
 		Subsystem->StartNewSession();
-}
-
-void UWorkoutHudWidget::HandleViewSurroundingsClicked()
-{
-	if (UCourseSubsystem *Course = GetCourseSubsystem())
-		Course->ToggleRestView();
 }

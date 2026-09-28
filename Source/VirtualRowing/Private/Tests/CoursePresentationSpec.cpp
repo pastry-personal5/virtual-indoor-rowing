@@ -15,6 +15,44 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
+namespace
+{
+	ContentRuntime::FRouteDefinition MakeTestHanRoute()
+	{
+		ContentRuntime::FRouteDefinition Route = ContentRuntime::BuiltInStandardRouteDefinition();
+		Route.SchemaVersion = ContentRuntime::RouteDefinitionSchemaV2;
+		Route.RouteId = "route.han-river.5k";
+		Route.SemanticVersion = "2.0.0";
+		Route.ContentSetId = "han-river-alpha-2";
+		Route.LengthMm = 5'000'000;
+		Route.bClosed = false;
+		Route.Checkpoints = {
+			{"sebit-lookback", 650'000},
+			{"dongjak-span", 1'450'000},
+			{"nodeulseom", 3'000'000},
+			{"hangang-bridge", 3'650'000},
+			{"wonhyo-finish", 5'000'000},
+		};
+		Route.PresentationPath = ContentRuntime::FRoutePresentationPath{};
+		auto &Path = *Route.PresentationPath;
+		Path.PathFormatVersion = ContentRuntime::PresentationPathFormatV1;
+		Path.OwningRouteId = Route.RouteId;
+		for (std::uint32_t Index = 0; Index < 40; ++Index)
+		{
+			const std::uint64_t DistanceMm = Route.LengthMm * Index / 39ULL;
+			ContentRuntime::FRouteHermiteControlPoint Point;
+			Point.PointId = "han-test-" + std::to_string(Index);
+			Point.RouteDistanceMm = DistanceMm;
+			Point.PositionMm = {static_cast<std::int64_t>(DistanceMm), 0, 0};
+			Point.ArriveTangentMm = {static_cast<std::int64_t>(Route.LengthMm / 39), 0, 0};
+			Point.LeaveTangentMm = Point.ArriveTangentMm;
+			Path.ControlPoints.push_back(Point);
+			Path.ArcLengthLookup.push_back({DistanceMm, FMath::Min(Index, 38U), Index == 39 ? 1'000'000U : 0U});
+		}
+		return Route;
+	}
+} // namespace
+
 BEGIN_DEFINE_SPEC(FCoursePresentationSpec, "VirtualRowing.CoursePresentation", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
 UWorld *World = nullptr;
 AGrayBoxCourseActor *Course = nullptr;
@@ -70,21 +108,134 @@ void FCoursePresentationSpec::Define()
 		TestEqual(TEXT("visible edge covers every spline segment"), Course->GetCourseEdgeSegmentCountForTesting(), 32);
 		TestTrue(TEXT("course edges remain attached to their root"), Course->AreCourseEdgesAttachedForTesting()); });
 
-	It("builds an open, landmarked Han River presentation without route markers", [this]()
+	It("builds an open, landmarked Han River presentation with visible checkpoints", [this]()
 	   {
 		AGrayBoxCourseActor *HanCourse = World->SpawnActor<AGrayBoxCourseActor>();
-		ContentRuntime::FRouteDefinition HanRoute = ContentRuntime::BuiltInStandardRouteDefinition();
-		HanRoute.RouteId = "route.han-river.5k";
-		HanRoute.SemanticVersion = "1.0.0";
-		HanRoute.ContentSetId = "han-river-alpha-1";
-		HanRoute.LengthMm = 5'000'000;
-		HanRoute.bClosed = false;
+		ContentRuntime::FRouteDefinition HanRoute = MakeTestHanRoute();
 		HanCourse->ConfigureRoute(HanRoute);
 		HanCourse->InitializeCourse();
 		TestTrue(TEXT("Han route receives dedicated presentation"), HanCourse->HasHanRiverEnvironmentForTesting());
 		TestTrue(TEXT("Han route has bridges, banks, skyline, and sparse buoys"), HanCourse->GetHanLandmarkCountForTesting() >= 50);
-		TestEqual(TEXT("Han route avoids intrusive distance-marker labels"), HanCourse->GetMarkerCountForTesting(), 0);
+		TestEqual(TEXT("Han route shows one label for every signed checkpoint"), HanCourse->GetMarkerCountForTesting(), static_cast<int32>(HanRoute.Checkpoints.size()));
+		TestEqual(TEXT("every checkpoint has two distinct river buoys"), HanCourse->GetBuoyCountForTesting(), static_cast<int32>(HanRoute.Checkpoints.size() * 2));
+		TestTrue(TEXT("orange and white checkpoint buoys remain visible"), HanCourse->AreRouteBuoysVisibleForTesting());
+		TestEqual(TEXT("every signed Han control point has a visible beacon gate"), HanCourse->GetControlPointMarkerCountForTesting(), static_cast<int32>(HanRoute.PresentationPath->ControlPoints.size() * 2));
+		TestTrue(TEXT("cyan Han control-point beacon gates remain visible"), HanCourse->AreControlPointMarkersVisibleForTesting());
+		TestTrue(TEXT("bright directional arrow is attached at the boat bow"), !HanCourse->GetCheckpointArrowForwardForTesting().IsNearlyZero());
 		TestFalse(TEXT("Han endpoint stays open rather than wrapping"), HanCourse->GetCourseTransform(0.0).GetLocation().Equals(HanCourse->GetCourseTransform(5'000'000.0).GetLocation(), 1.0));
+		HanCourse->Destroy(); });
+
+	It("keeps the boat anchor on every signed route checkpoint", [this]()
+	   {
+		auto VerifyCheckpoints = [this](AGrayBoxCourseActor &Actor,
+									 const ContentRuntime::FRouteDefinition &Route,
+									 const TCHAR *RouteName)
+		{
+			TestTrue(FString::Printf(TEXT("%s defines checkpoints"), RouteName), !Route.Checkpoints.empty());
+			for (const ContentRuntime::FRouteCheckpoint &Checkpoint : Route.Checkpoints)
+			{
+				FCoursePresentationRuntime Runtime;
+				Runtime.SelectRoute(Route);
+				FCourseTelemetryInput Telemetry;
+				Telemetry.bHasSession = true;
+				Telemetry.bHasValidSample = true;
+				Telemetry.AcceptedSampleGeneration = 1;
+				Telemetry.MeasuredDistanceMm = Checkpoint.DistanceMm;
+				Telemetry.SpeedMmPerS = 0;
+				Telemetry.SampleMonotonicNs = 1'000'000'000ULL;
+				Telemetry.bConnected = true;
+				Telemetry.SessionState = ERowingSessionState::Active;
+				Telemetry.WorkoutState = ERowingWorkoutState::Active;
+				Telemetry.RowingState = ERowingState::Active;
+				const FCoursePresentationSnapshot Snapshot = Runtime.Update(Telemetry, Telemetry.SampleMonotonicNs);
+				Actor.ApplyPresentation(Snapshot);
+
+				const FTransform Expected = Actor.GetCourseTransform(static_cast<double>(Checkpoint.DistanceMm));
+				TestTrue(FString::Printf(TEXT("%s checkpoint %s keeps the boat on the path"),
+					RouteName, UTF8_TO_TCHAR(Checkpoint.CheckpointId.c_str())),
+					Actor.GetBoatTransformForTesting().GetLocation().Equals(Expected.GetLocation(), 0.01));
+				TestTrue(FString::Printf(TEXT("%s checkpoint %s points the boat along the course"),
+					RouteName, UTF8_TO_TCHAR(Checkpoint.CheckpointId.c_str())),
+					Actor.GetBoatTransformForTesting().GetUnitAxis(EAxis::X).Equals(Expected.GetUnitAxis(EAxis::X), 0.0001));
+			}
+		};
+
+		const ContentRuntime::FRouteDefinition StandardRoute = ContentRuntime::BuiltInStandardRouteDefinition();
+		VerifyCheckpoints(*Course, StandardRoute, TEXT("Standard"));
+		AGrayBoxCourseActor *HanCourse = World->SpawnActor<AGrayBoxCourseActor>();
+		const ContentRuntime::FRouteDefinition HanRoute = MakeTestHanRoute();
+		HanCourse->ConfigureRoute(HanRoute);
+		HanCourse->InitializeCourse();
+		VerifyCheckpoints(*HanCourse, HanRoute, TEXT("Han"));
+		TestEqual(TEXT("each Han checkpoint has a visible marker"), HanCourse->GetMarkerCountForTesting(), static_cast<int32>(HanRoute.Checkpoints.size()));
+		TestEqual(TEXT("two buoy objects are created for each Han checkpoint"), HanCourse->GetBuoyCountForTesting(), static_cast<int32>(HanRoute.Checkpoints.size() * 2));
+		TestTrue(TEXT("both sides of every checkpoint gate remain visible"), HanCourse->AreRouteBuoysVisibleForTesting());
+		TestEqual(TEXT("two beacon objects are created for each signed Han control point"), HanCourse->GetControlPointMarkerCountForTesting(), static_cast<int32>(HanRoute.PresentationPath->ControlPoints.size() * 2));
+		TestTrue(TEXT("both sides of every control-point beacon gate remain visible"), HanCourse->AreControlPointMarkersVisibleForTesting());
+		for (int32 CheckpointIndex = 0; CheckpointIndex < static_cast<int32>(HanRoute.Checkpoints.size()); ++CheckpointIndex)
+		{
+			const ContentRuntime::FRouteCheckpoint &Checkpoint = HanRoute.Checkpoints[CheckpointIndex];
+			const FTransform PathTransform = HanCourse->GetCourseTransform(static_cast<double>(Checkpoint.DistanceMm));
+			for (int32 SideIndex = 0; SideIndex < 2; ++SideIndex)
+			{
+				const int32 Side = SideIndex == 0 ? -1 : 1;
+				const FVector ExpectedBuoy = PathTransform.GetLocation() + PathTransform.GetUnitAxis(EAxis::Y) * (Side * 900.0) + FVector(0.0, 0.0, 140.0);
+				TestTrue(FString::Printf(TEXT("checkpoint buoy %s side %d is separate and path-aligned"), UTF8_TO_TCHAR(Checkpoint.CheckpointId.c_str()), Side),
+					HanCourse->GetMarkerLocationForTesting(CheckpointIndex * 2 + SideIndex).Equals(ExpectedBuoy, 0.01));
+			}
+
+			FCoursePresentationRuntime ArrowRuntime;
+			ArrowRuntime.SelectRoute(HanRoute);
+			FCourseTelemetryInput ArrowInput;
+			ArrowInput.bHasSession = true;
+			ArrowInput.bHasValidSample = true;
+			ArrowInput.AcceptedSampleGeneration = CheckpointIndex + 1;
+			ArrowInput.MeasuredDistanceMm = Checkpoint.DistanceMm;
+			ArrowInput.SpeedMmPerS = 0;
+			ArrowInput.SampleMonotonicNs = 1'000'000'000ULL;
+			ArrowInput.bConnected = true;
+			ArrowInput.SessionState = ERowingSessionState::Active;
+			ArrowInput.WorkoutState = ERowingWorkoutState::Active;
+			ArrowInput.RowingState = ERowingState::Active;
+			const FCoursePresentationSnapshot ArrowSnapshot = ArrowRuntime.Update(ArrowInput, ArrowInput.SampleMonotonicNs);
+			HanCourse->ApplyPresentation(ArrowSnapshot);
+			const uint64 NextDistanceMm = CheckpointIndex + 1 < static_cast<int32>(HanRoute.Checkpoints.size())
+										  ? HanRoute.Checkpoints[CheckpointIndex + 1].DistanceMm
+										  : HanRoute.LengthMm;
+			const FCoursePathSample NextPoint = EvaluateCoursePath(HanRoute, static_cast<double>(NextDistanceMm));
+			const FVector Direction(NextPoint.PositionMm.X - ArrowSnapshot.PathPositionMm.X,
+									 NextPoint.PositionMm.Y - ArrowSnapshot.PathPositionMm.Y,
+									 NextPoint.PositionMm.Z - ArrowSnapshot.PathPositionMm.Z);
+			TestTrue(FString::Printf(TEXT("bow arrow points from %s to the next checkpoint"), UTF8_TO_TCHAR(Checkpoint.CheckpointId.c_str())),
+				HanCourse->GetCheckpointArrowForwardForTesting().Equals(Direction.GetSafeNormal(), 0.001));
+		}
+		for (int32 ControlPointIndex = 0; ControlPointIndex < static_cast<int32>(HanRoute.PresentationPath->ControlPoints.size()); ++ControlPointIndex)
+		{
+			const ContentRuntime::FRouteHermiteControlPoint &ControlPoint = HanRoute.PresentationPath->ControlPoints[ControlPointIndex];
+			const FTransform PathTransform = HanCourse->GetCourseTransform(static_cast<double>(ControlPoint.RouteDistanceMm));
+			for (int32 SideIndex = 0; SideIndex < 2; ++SideIndex)
+			{
+				const int32 Side = SideIndex == 0 ? -1 : 1;
+				const FVector ExpectedBeacon = PathTransform.GetLocation() + PathTransform.GetUnitAxis(EAxis::Y) * (Side * 650.0) + FVector(0.0, 0.0, 175.0);
+				TestTrue(FString::Printf(TEXT("control-point beacon %s side %d is path-aligned"), UTF8_TO_TCHAR(ControlPoint.PointId.c_str()), Side),
+					HanCourse->GetControlPointMarkerLocationForTesting(ControlPointIndex * 2 + SideIndex).Equals(ExpectedBeacon, 0.01));
+			}
+		}
+		HanCourse->Destroy(); });
+
+	It("aligns the authored level to the signed Han path frame", [this]()
+	   {
+		AGrayBoxCourseActor *HanCourse = World->SpawnActor<AGrayBoxCourseActor>();
+		ContentRuntime::FRouteDefinition HanRoute = MakeTestHanRoute();
+		auto &Path = *HanRoute.PresentationPath;
+		Path.RouteLocalOriginMm = {1'000'000, 2'000'000, 3'000};
+		Path.RouteLocalYawMicroradians = 1'570'796;
+		Path.ControlPoints.front().PositionMm = {400'000, 0, 0};
+		HanCourse->ConfigureRoute(HanRoute);
+		HanCourse->InitializeCourse();
+		const FTransform Transform = HanCourse->GetAuthoredLevelTransform();
+		TestTrue(TEXT("level starts at the rotated v2 path position"), Transform.GetLocation().Equals(FVector(100'000.01, 240'000.0, 300.0), 0.1));
+		TestTrue(TEXT("level follows the v2 path yaw"), FMath::IsNearlyEqual(Transform.Rotator().Yaw, 90.0f, 0.01f));
 		HanCourse->Destroy(); });
 
 	It("builds the Han kit when the actor is spawned into a world that has begun play", [this]()
@@ -93,18 +244,14 @@ void FCoursePresentationSpec::Define()
 		// build the Standard course before the route could be configured.
 		World->InitializeActorsForPlay(FURL());
 		World->BeginPlay();
-		ContentRuntime::FRouteDefinition HanRoute = ContentRuntime::BuiltInStandardRouteDefinition();
-		HanRoute.RouteId = "route.han-river.5k";
-		HanRoute.SemanticVersion = "1.0.1";
-		HanRoute.ContentSetId = "han-river-alpha-1";
-		HanRoute.LengthMm = 5'000'000;
-		HanRoute.bClosed = false;
+		ContentRuntime::FRouteDefinition HanRoute = MakeTestHanRoute();
 		AGrayBoxCourseActor *HanCourse = World->SpawnActorDeferred<AGrayBoxCourseActor>(AGrayBoxCourseActor::StaticClass(), FTransform::Identity);
 		HanCourse->ConfigureRoute(HanRoute);
 		HanCourse->FinishSpawning(FTransform::Identity);
 		HanCourse->InitializeCourse();
 		TestTrue(TEXT("Han route is honored after BeginPlay"), HanCourse->HasHanRiverEnvironmentForTesting());
-		TestEqual(TEXT("no Standard distance markers"), HanCourse->GetMarkerCountForTesting(), 0);
+		TestEqual(TEXT("Han checkpoint labels are present after BeginPlay"), HanCourse->GetMarkerCountForTesting(), static_cast<int32>(HanRoute.Checkpoints.size()));
+		TestEqual(TEXT("paired checkpoint buoys are present after BeginPlay"), HanCourse->GetBuoyCountForTesting(), static_cast<int32>(HanRoute.Checkpoints.size() * 2));
 		HanCourse->SetAuthoredLevelActive(true);
 		TestTrue(TEXT("authored level can take over"), HanCourse->IsAuthoredLevelActiveForTesting());
 		HanCourse->Destroy(); });
@@ -175,12 +322,7 @@ void FCoursePresentationSpec::Define()
 	It("yields the kit's start-area landmarks to the authored level and restores them", [this]()
 	   {
 		AGrayBoxCourseActor *HanCourse = World->SpawnActor<AGrayBoxCourseActor>();
-		ContentRuntime::FRouteDefinition HanRoute = ContentRuntime::BuiltInStandardRouteDefinition();
-		HanRoute.RouteId = "route.han-river.5k";
-		HanRoute.SemanticVersion = "1.0.0";
-		HanRoute.ContentSetId = "han-river-alpha-1";
-		HanRoute.LengthMm = 5'000'000;
-		HanRoute.bClosed = false;
+		ContentRuntime::FRouteDefinition HanRoute = MakeTestHanRoute();
 		HanCourse->ConfigureRoute(HanRoute);
 		HanCourse->InitializeCourse();
 		const int32 AllLandmarks = HanCourse->GetVisibleHanLandmarkCountForTesting();
@@ -197,12 +339,7 @@ void FCoursePresentationSpec::Define()
 	It("hands over between the kit and the authored level without moving the boat or camera", [this]()
 	   {
 		AGrayBoxCourseActor *HanCourse = World->SpawnActor<AGrayBoxCourseActor>();
-		ContentRuntime::FRouteDefinition HanRoute = ContentRuntime::BuiltInStandardRouteDefinition();
-		HanRoute.RouteId = "route.han-river.5k";
-		HanRoute.SemanticVersion = "1.0.0";
-		HanRoute.ContentSetId = "han-river-alpha-1";
-		HanRoute.LengthMm = 5'000'000;
-		HanRoute.bClosed = false;
+		ContentRuntime::FRouteDefinition HanRoute = MakeTestHanRoute();
 		HanCourse->ConfigureRoute(HanRoute);
 		HanCourse->InitializeCourse();
 		FCoursePresentationSnapshot Snapshot;
@@ -218,150 +355,55 @@ void FCoursePresentationSpec::Define()
 		TestTrue(TEXT("camera is unmoved by fallback to the kit"), HanCourse->GetCameraTransformForTesting().Equals(Camera, 0.0));
 		HanCourse->Destroy(); });
 
-	It("chases the Han boat from 12 m astern and 1 m up, level and along its heading", [this]()
+	It("adapts anchor, cosmetic root, and level camera snapshots on both courses", [this]()
 	   {
+		auto VerifySnapshot = [this](AGrayBoxCourseActor &Actor, const TCHAR *RouteName)
+		{
+			FCoursePresentationSnapshot Snapshot;
+			Snapshot.PathPositionMm = {10'000.0, 20'000.0, 300.0};
+			Snapshot.DampedYawRadians = PI / 2.0;
+			Snapshot.HullRollDegrees = -1.2;
+			Snapshot.HullPitchDegrees = 0.7;
+			Snapshot.AmbientBobMm = 12.0;
+			Snapshot.StrokeHeaveMm = 5.0;
+			Snapshot.CameraPose.PositionMm = {1'000.0, 2'000.0, 3'000.0};
+			Snapshot.CameraPose.LookAtMm = {5'000.0, 2'000.0, 3'000.0};
+			Snapshot.CameraPose.FieldOfViewDegrees = 68.0;
+			Actor.ApplyPresentation(Snapshot);
+
+			const FTransform Anchor = Actor.GetBoatTransformForTesting();
+			TestTrue(FString::Printf(TEXT("%s converts path millimetres once"), RouteName),
+				Anchor.GetLocation().Equals(FVector(1'000.0, 2'000.0, 30.0), 0.01));
+			FVector VisibleBoat;
+			TestTrue(FString::Printf(TEXT("%s reports a visible hull world location"), RouteName),
+				Actor.TryGetVisibleBoatWorldLocation(VisibleBoat));
+			TestTrue(FString::Printf(TEXT("%s includes the visible hull bob and heave"), RouteName),
+				VisibleBoat.Equals(Anchor.GetLocation() + FVector(0.0, 0.0, 1.7), 0.01));
+			TestTrue(FString::Printf(TEXT("%s keeps the authoritative anchor level"), RouteName),
+				FMath::IsNearlyZero(Anchor.Rotator().Pitch, 0.01) &&
+				FMath::IsNearlyZero(Anchor.Rotator().Roll, 0.01) &&
+				FMath::IsNearlyEqual(Anchor.Rotator().Yaw, 90.0, 0.01));
+			const FTransform Visual = Actor.GetVisualRootRelativeTransformForTesting();
+			TestTrue(FString::Printf(TEXT("%s confines bob and heave to the visual child"), RouteName),
+				FMath::IsNearlyEqual(Visual.GetLocation().Z, 1.7, 0.01));
+			TestTrue(FString::Printf(TEXT("%s confines roll and pitch to the visual child"), RouteName),
+				FMath::IsNearlyEqual(Visual.Rotator().Pitch, 0.7, 0.01) &&
+				FMath::IsNearlyEqual(Visual.Rotator().Roll, -1.2, 0.01));
+			const FTransform Camera = Actor.GetCameraTransformForTesting();
+			TestTrue(FString::Printf(TEXT("%s converts the numeric camera pose once"), RouteName),
+				Camera.GetLocation().Equals(FVector(100.0, 200.0, 300.0), 0.01));
+			TestTrue(FString::Printf(TEXT("%s camera horizon remains level"), RouteName),
+				FMath::IsNearlyZero(Camera.Rotator().Roll, 0.01));
+			TestTrue(FString::Printf(TEXT("%s applies the numeric FOV"), RouteName),
+				FMath::IsNearlyEqual(Actor.GetCameraFieldOfViewForTesting(), 68.0, 0.01));
+		};
+
+		VerifySnapshot(*Course, TEXT("Standard"));
 		AGrayBoxCourseActor *HanCourse = World->SpawnActor<AGrayBoxCourseActor>();
-		ContentRuntime::FRouteDefinition HanRoute = ContentRuntime::BuiltInStandardRouteDefinition();
-		HanRoute.RouteId = "route.han-river.5k";
-		HanRoute.SemanticVersion = "1.0.0";
-		HanRoute.ContentSetId = "han-river-alpha-1";
-		HanRoute.LengthMm = 5'000'000;
-		HanRoute.bClosed = false;
-		HanCourse->ConfigureRoute(HanRoute);
+		HanCourse->ConfigureRoute(MakeTestHanRoute());
 		HanCourse->InitializeCourse();
-		FCoursePresentationSnapshot Snapshot;
-		Snapshot.WrappedCourseDistanceMm = 100'000.0;
-		HanCourse->ApplyPresentation(Snapshot);
-		const FTransform Boat = HanCourse->GetBoatTransformForTesting();
-		const FTransform Camera = HanCourse->GetCameraTransformForTesting();
-		const FVector Offset = Camera.GetLocation() - Boat.GetLocation();
-		const FVector Forward = Boat.GetUnitAxis(EAxis::X);
-		TestTrue(TEXT("camera is 12 m behind the boat"), FMath::IsNearlyEqual(static_cast<float>(-FVector::DotProduct(Offset, Forward)), 1'200.0f, 1.0f));
-		TestTrue(TEXT("camera is 1 m above the boat"), FMath::IsNearlyEqual(static_cast<float>(Offset.Z), 100.0f, 1.0f));
-		TestTrue(TEXT("camera is on the boat centerline"), FMath::IsNearlyZero(static_cast<float>(FVector::DotProduct(Offset, Boat.GetUnitAxis(EAxis::Y))), 1.0f));
-		TestTrue(TEXT("camera is level"), FMath::IsNearlyZero(Camera.Rotator().Pitch, 0.01) && FMath::IsNearlyZero(Camera.Rotator().Roll, 0.01));
-		TestTrue(TEXT("camera looks along the boat heading"), FMath::IsNearlyZero(FMath::FindDeltaAngleDegrees(Camera.Rotator().Yaw, Forward.Rotation().Yaw), 0.1));
+		VerifySnapshot(*HanCourse, TEXT("Han"));
 		HanCourse->Destroy(); });
-
-	It("uses only a fresh telemetry-backed Han rest for the cinematic reveal and resets its dwell", [this]()
-	   {
-		auto ConfigureHan = [this]()
-		{
-			AGrayBoxCourseActor *HanCourse = World->SpawnActor<AGrayBoxCourseActor>();
-			ContentRuntime::FRouteDefinition HanRoute = ContentRuntime::BuiltInStandardRouteDefinition();
-			HanRoute.RouteId = "route.han-river.5k";
-			HanRoute.LengthMm = 5'000'000;
-			HanRoute.bClosed = false;
-			HanCourse->ConfigureRoute(HanRoute);
-			HanCourse->InitializeCourse();
-			return HanCourse;
-		};
-		auto RestTelemetry = []()
-		{
-			FCourseTelemetryInput Telemetry;
-			Telemetry.bHasSession = true;
-			Telemetry.bHasValidSample = true;
-			Telemetry.bConnected = true;
-			Telemetry.SessionState = ERowingSessionState::Active;
-			Telemetry.WorkoutState = ERowingWorkoutState::Resting;
-			return Telemetry;
-		};
-		auto OffsetMatches = [this](const AGrayBoxCourseActor &HanCourse, float BehindCm, float StarboardCm, float HeightCm)
-		{
-			const FTransform Boat = HanCourse.GetBoatTransformForTesting();
-			const FVector Offset = HanCourse.GetCameraTransformForTesting().GetLocation() - Boat.GetLocation();
-			return FMath::IsNearlyEqual(FVector::DotProduct(Offset, Boat.GetUnitAxis(EAxis::X)), -BehindCm, 1.0f) &&
-				FMath::IsNearlyEqual(FVector::DotProduct(Offset, Boat.GetUnitAxis(EAxis::Y)), StarboardCm, 1.0f) &&
-				FMath::IsNearlyEqual(Offset.Z, HeightCm, 1.0f);
-		};
-
-		AGrayBoxCourseActor::SetReduceMotionForTesting(false);
-		AGrayBoxCourseActor *HanCourse = ConfigureHan();
-		FCoursePresentationSnapshot Snapshot;
-		Snapshot.WrappedCourseDistanceMm = 100'000.0;
-		FCourseTelemetryInput Telemetry = RestTelemetry();
-		HanCourse->ApplyPresentation(Snapshot, Telemetry, 1'000'000'000ULL);
-		HanCourse->ApplyPresentation(Snapshot, Telemetry, 6'000'000'000ULL);
-		TestTrue(TEXT("five-second dwell leaves the chase framing in place"), OffsetMatches(*HanCourse, 1'200.0f, 0.0f, 100.0f));
-		HanCourse->ApplyPresentation(Snapshot, Telemetry, 11'000'000'000ULL);
-		TestTrue(TEXT("outbound midpoint is 18 m astern, 6 m starboard, and 5 m above"), OffsetMatches(*HanCourse, 1'800.0f, 600.0f, 500.0f));
-		TestTrue(TEXT("midpoint widens to 84 degrees"), FMath::IsNearlyEqual(HanCourse->GetCameraFieldOfViewForTesting(), 84.0f));
-		HanCourse->ApplyPresentation(Snapshot, Telemetry, 16'000'000'000ULL);
-		const FTransform Reveal = HanCourse->GetCameraTransformForTesting();
-		TestTrue(TEXT("reveal is 32 m astern, 18 m starboard, and 14 m above"), OffsetMatches(*HanCourse, 3'200.0f, 1'800.0f, 1'400.0f));
-		TestTrue(TEXT("reveal widens to 92 degrees with a level horizon"), FMath::IsNearlyEqual(HanCourse->GetCameraFieldOfViewForTesting(), 92.0f) && FMath::IsNearlyZero(Reveal.Rotator().Roll, 0.01f));
-		HanCourse->ApplyPresentation(Snapshot, Telemetry, 24'000'000'000ULL);
-		TestTrue(TEXT("wide reveal holds for the rest interval"), HanCourse->GetCameraTransformForTesting().Equals(Reveal, 0.01f));
-
-		Telemetry.WorkoutState = ERowingWorkoutState::Active;
-		HanCourse->ApplyPresentation(Snapshot, Telemetry, 24'000'000'000ULL);
-		HanCourse->ApplyPresentation(Snapshot, Telemetry, 26'000'000'000ULL);
-		TestTrue(TEXT("four-second return restores FOV smoothly"), FMath::IsNearlyEqual(HanCourse->GetCameraFieldOfViewForTesting(), 85.0f, 0.1f));
-		HanCourse->ApplyPresentation(Snapshot, Telemetry, 28'000'000'000ULL);
-		TestTrue(TEXT("return restores the normal Han chase"), OffsetMatches(*HanCourse, 1'200.0f, 0.0f, 100.0f) && FMath::IsNearlyEqual(HanCourse->GetCameraFieldOfViewForTesting(), 78.0f));
-
-		Telemetry = RestTelemetry();
-		HanCourse->ApplyPresentation(Snapshot, Telemetry, 29'000'000'000ULL);
-		HanCourse->ApplyPresentation(Snapshot, Telemetry, 33'999'000'000ULL);
-		TestTrue(TEXT("a new rest does not inherit its prior dwell"), FMath::IsNearlyEqual(HanCourse->GetCameraFieldOfViewForTesting(), 78.0f));
-		HanCourse->ApplyPresentation(Snapshot, Telemetry, 34'000'000'000ULL);
-		HanCourse->ApplyPresentation(Snapshot, Telemetry, 39'000'000'000ULL);
-		TestTrue(TEXT("a new rest reveals only after its fresh dwell"), FMath::IsNearlyEqual(HanCourse->GetCameraFieldOfViewForTesting(), 84.0f));
-		HanCourse->Destroy();
-
-		AGrayBoxCourseActor *SuppressedCourse = ConfigureHan();
-		for (const TCHAR *Reason : {TEXT("stale"), TEXT("frozen"), TEXT("reconnecting")})
-		{
-			FCourseTelemetryInput Suppressed = RestTelemetry();
-			if (FCString::Strcmp(Reason, TEXT("stale")) == 0)
-				Suppressed.bStale = true;
-			else if (FCString::Strcmp(Reason, TEXT("frozen")) == 0)
-				Suppressed.bFrozen = true;
-			else
-				Suppressed.bConnected = false;
-			SuppressedCourse->ApplyPresentation(Snapshot, Suppressed, 1'000'000'000ULL);
-			SuppressedCourse->ApplyPresentation(Snapshot, Suppressed, 12'000'000'000ULL);
-			TestTrue(FString::Printf(TEXT("%s rest cannot start an automatic view"), Reason), FMath::IsNearlyEqual(SuppressedCourse->GetCameraFieldOfViewForTesting(), 78.0f));
-		}
-		SuppressedCourse->Destroy();
-
-		AGrayBoxCourseActor *EarlyCancellationCourse = ConfigureHan();
-		Telemetry = RestTelemetry();
-		EarlyCancellationCourse->ApplyPresentation(Snapshot, Telemetry, 1'000'000'000ULL);
-		Telemetry.WorkoutState = ERowingWorkoutState::Active;
-		EarlyCancellationCourse->ApplyPresentation(Snapshot, Telemetry, 3'000'000'000ULL);
-		TestTrue(TEXT("rest ending before dwell cancellation leaves the chase untouched"), OffsetMatches(*EarlyCancellationCourse, 1'200.0f, 0.0f, 100.0f) && FMath::IsNearlyEqual(EarlyCancellationCourse->GetCameraFieldOfViewForTesting(), 78.0f));
-		EarlyCancellationCourse->Destroy();
-
-		Course->ApplyPresentation(Snapshot, RestTelemetry(), 1'000'000'000ULL);
-		Course->ApplyPresentation(Snapshot, RestTelemetry(), 20'000'000'000ULL);
-		TestTrue(TEXT("Standard remains on its existing camera during rest"), FMath::IsNearlyEqual(Course->GetCameraFieldOfViewForTesting(), 50.0f));
-		AGrayBoxCourseActor *OtherRouteCourse = World->SpawnActor<AGrayBoxCourseActor>();
-		ContentRuntime::FRouteDefinition OtherRoute = ContentRuntime::BuiltInStandardRouteDefinition();
-		OtherRoute.RouteId = "route.example.5k";
-		OtherRoute.LengthMm = 5'000'000;
-		OtherRoute.bClosed = false;
-		OtherRouteCourse->ConfigureRoute(OtherRoute);
-		OtherRouteCourse->InitializeCourse();
-		OtherRouteCourse->ApplyPresentation(Snapshot, RestTelemetry(), 1'000'000'000ULL);
-		OtherRouteCourse->ApplyPresentation(Snapshot, RestTelemetry(), 6'000'000'000ULL);
-		OtherRouteCourse->ApplyPresentation(Snapshot, RestTelemetry(), 11'000'000'000ULL);
-		TestTrue(TEXT("every non-Standard route receives camera cutscene one"), FMath::IsNearlyEqual(OtherRouteCourse->GetCameraFieldOfViewForTesting(), 84.0f));
-		OtherRouteCourse->Destroy();
-
-		AGrayBoxCourseActor *ReducedMotionCourse = ConfigureHan();
-		AGrayBoxCourseActor::SetReduceMotionForTesting(true);
-		ReducedMotionCourse->ApplyPresentation(Snapshot, RestTelemetry(), 1'000'000'000ULL);
-		TestTrue(TEXT("reduced motion exposes a rest-only static-view action"), ReducedMotionCourse->CanToggleRestView() && !ReducedMotionCourse->IsRestViewEnabled());
-		ReducedMotionCourse->ToggleRestView();
-		ReducedMotionCourse->ApplyPresentation(Snapshot, RestTelemetry(), 2'000'000'000ULL);
-		TestTrue(TEXT("reduced motion uses the static wide view without an automatic move"), ReducedMotionCourse->IsRestViewEnabled() && FMath::IsNearlyEqual(ReducedMotionCourse->GetCameraFieldOfViewForTesting(), 92.0f));
-		Telemetry = RestTelemetry();
-		Telemetry.WorkoutState = ERowingWorkoutState::Active;
-		ReducedMotionCourse->ApplyPresentation(Snapshot, Telemetry, 3'000'000'000ULL);
-		TestTrue(TEXT("active rowing restores reduced-motion chase"), !ReducedMotionCourse->CanToggleRestView() && !ReducedMotionCourse->IsRestViewEnabled() && FMath::IsNearlyEqual(ReducedMotionCourse->GetCameraFieldOfViewForTesting(), 78.0f));
-		AGrayBoxCourseActor::SetReduceMotionForTesting({});
-		ReducedMotionCourse->Destroy(); });
 
 	It("applies catch drive finish recovery and disconnect-return proxy transforms", [this]()
 	   {

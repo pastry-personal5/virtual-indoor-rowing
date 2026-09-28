@@ -34,14 +34,16 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	void ConfigureRoute(const ContentRuntime::FRouteDefinition &Route);
 	void ApplyPresentation(const FCoursePresentationSnapshot &Snapshot);
 	// The telemetry input is a read-only copy of the latest workout snapshot. It
-	// drives only the route-local rest camera; it never changes workout facts.
+	// drives only presentation effects; it never changes workout facts.
 	void ApplyPresentation(const FCoursePresentationSnapshot &Snapshot,
 						   const FCourseTelemetryInput &Telemetry,
 						   uint64 NowMonotonicNs);
 
 	FTransform GetCourseTransform(double WrappedDistanceMm) const;
 	FVector GetCourseTangent(double WrappedDistanceMm) const;
+	bool TryGetVisibleBoatWorldLocation(FVector &OutLocation) const;
 	FTransform GetBoatTransformForTesting() const;
+	FTransform GetVisualRootRelativeTransformForTesting() const;
 	FTransform GetSeatRelativeTransformForTesting() const;
 	FTransform GetTorsoRelativeTransformForTesting() const;
 	FTransform GetLeftOarRelativeTransformForTesting() const;
@@ -50,9 +52,6 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	FTransform GetCameraTransformForTesting() const;
 	static float InterpolateOarMotion(float Current, float Target, float DeltaSeconds);
 	float GetCameraFieldOfViewForTesting() const;
-	bool CanToggleRestView() const;
-	bool IsRestViewEnabled() const;
-	void ToggleRestView();
 	static void SetReduceMotionForTesting(TOptional<bool> bRequested);
 	static bool ReduceMotionRequested();
 	static bool WaterHiddenForBenchmark();
@@ -64,6 +63,13 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	float GetWaterMotionScaleForTesting() const;
 	float GetCourseLightIntensityForTesting() const;
 	int32 GetMarkerCountForTesting() const;
+	int32 GetBuoyCountForTesting() const;
+	bool AreRouteBuoysVisibleForTesting() const;
+	FVector GetMarkerLocationForTesting(int32 Index) const;
+	int32 GetControlPointMarkerCountForTesting() const;
+	bool AreControlPointMarkersVisibleForTesting() const;
+	FVector GetControlPointMarkerLocationForTesting(int32 Index) const;
+	FVector GetCheckpointArrowForwardForTesting() const;
 	int32 GetCourseEdgeSegmentCountForTesting() const;
 	bool AreCourseEdgesAttachedForTesting() const;
 	int32 GetHanLandmarkCountForTesting() const;
@@ -77,8 +83,10 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	void SetAuthoredLevelActive(bool bActive);
 	bool IsAuthoredLevelActiveForTesting() const;
 	int32 GetVisibleHanLandmarkCountForTesting() const;
-	// Offset that places the authored level's origin at the route start.
-	static FVector GetAuthoredLevelOriginCm();
+	// Places the authored level's origin at the signed route start. The streamed
+	// map follows the engine-independent route frame instead of legacy spline
+	// coordinates, so downloaded v2 geometry remains the presentation authority.
+	FTransform GetAuthoredLevelTransform() const;
 
   private:
 	UPROPERTY(Transient)
@@ -87,6 +95,10 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	TObjectPtr<USplineComponent> CourseSpline;
 	UPROPERTY(Transient)
 	TObjectPtr<USceneComponent> BoatRoot;
+	UPROPERTY(Transient)
+	TObjectPtr<USceneComponent> VisualRoot;
+	UPROPERTY(Transient)
+	TObjectPtr<USceneComponent> CheckpointArrowRoot;
 	UPROPERTY(Transient)
 	TObjectPtr<UStaticMeshComponent> Hull;
 	UPROPERTY(Transient)
@@ -113,6 +125,12 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	TObjectPtr<UStaticMeshComponent> LeftOar;
 	UPROPERTY(Transient)
 	TObjectPtr<UStaticMeshComponent> RightOar;
+	UPROPERTY(Transient)
+	TObjectPtr<UStaticMeshComponent> CheckpointArrowShaft;
+	UPROPERTY(Transient)
+	TObjectPtr<UStaticMeshComponent> CheckpointArrowHeadPort;
+	UPROPERTY(Transient)
+	TObjectPtr<UStaticMeshComponent> CheckpointArrowHeadStarboard;
 	UPROPERTY(Transient)
 	TObjectPtr<UCameraComponent> InspectionCamera;
 	UPROPERTY(Transient)
@@ -151,56 +169,19 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	TArray<TObjectPtr<USplineMeshComponent>> CourseEdgeMeshes;
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UTextRenderComponent>> MarkerLabels;
+	TArray<TObjectPtr<UStaticMeshComponent>> RouteMarkers;
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UTextRenderComponent>> ControlPointLabels;
+	TArray<TObjectPtr<UStaticMeshComponent>> ControlPointMarkers;
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UStaticMeshComponent>> WaterEffectMeshes;
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> WaterEffectMaterials;
 
 	bool bInitialized = false;
-	float SmoothedCameraYaw = 0.0f;
-	bool bHasCameraHeading = false;
-	FVector PreviousCameraBoatLocation = FVector::ZeroVector;
 	bool bIsHanRiverRoute = false;
 	bool bAuthoredLevelActive = false;
 	bool bHasRowerCharacterMeshes = false;
-	struct FRestCameraKeyframe
-	{
-		float BehindCm = 0.0f;
-		float StarboardCm = 0.0f;
-		float HeightCm = 0.0f;
-		float FieldOfView = 0.0f;
-		float LookAheadCm = 0.0f;
-	};
-	struct FRouteCameraMetadata
-	{
-		bool bRestViewEnabled = false;
-		float RestDwellSeconds = 5.0f;
-		float OutboundSeconds = 10.0f;
-		float ReturnSeconds = 4.0f;
-		FRestCameraKeyframe Chase;
-		FRestCameraKeyframe Midpoint;
-		FRestCameraKeyframe Reveal;
-	};
-	enum class ERestCameraState : uint8
-	{
-		Chase,
-		Dwell,
-		Outbound,
-		Hold,
-		Returning
-	};
-	struct FCameraPose
-	{
-		FVector Location = FVector::ZeroVector;
-		FRotator Rotation = FRotator::ZeroRotator;
-		float FieldOfView = 50.0f;
-	};
-	FRouteCameraMetadata CameraMetadata;
-	ERestCameraState RestCameraState = ERestCameraState::Chase;
-	uint64 RestCameraStateStartedNs = 0;
-	FCameraPose ReturnStartPose;
-	bool bRestViewRequested = false;
-	bool bRestCameraEligible = false;
 	ContentRuntime::FRouteDefinition Route = ContentRuntime::BuiltInStandardRouteDefinition();
 	bool bHasOarPresentation = false;
 	bool bHasOarPoseHistory = false;
@@ -227,14 +208,8 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	void UpdateWaterEffects(uint64 NowMonotonicNs);
 	void UpdateHullWake(bool bFreshStroke, uint64 NowMonotonicNs);
 	void UpdateOarWaterContacts(bool bFreshStroke, uint64 NowMonotonicNs);
+	void UpdateCheckpointArrow(const FCoursePresentationSnapshot &Snapshot);
 	UStaticMeshComponent *MakeMesh(const TCHAR *Name, UStaticMesh *Mesh, USceneComponent *Parent, const FVector &Scale, const FLinearColor &Color);
 	UStaticMeshComponent *MakeHanLandmark(const TCHAR *Name, UStaticMesh *Mesh, const FVector &Scale, const FLinearColor &Color, const FVector &Location);
 	void BuildHanRiverEnvironment(UStaticMesh *Cube, UStaticMesh *Cylinder);
-	static FRouteCameraMetadata CameraMetadataForRoute(const std::string &RouteId);
-	static bool IsRestCameraEligible(const FCourseTelemetryInput &Telemetry);
-	FCameraPose BuildChaseCameraPose(const FTransform &CourseTransform, float DeltaSeconds);
-	FCameraPose BuildRestCameraPose(const FTransform &CourseTransform, const FRestCameraKeyframe &Keyframe) const;
-	static FCameraPose InterpolateCameraPose(const FCameraPose &Start, const FCameraPose &End, float Alpha);
-	void ApplyCameraPose(const FCameraPose &Pose);
-	void ApplyRouteCamera(const FTransform &CourseTransform, const FCourseTelemetryInput &Telemetry, uint64 NowMonotonicNs, float DeltaSeconds);
 };

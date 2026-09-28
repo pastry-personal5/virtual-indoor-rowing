@@ -11,6 +11,7 @@
 #include <array>
 #include <cassert>
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -59,7 +60,7 @@ namespace
 			Bytes.push_back(static_cast<char>(Value >> (Index * 8U)));
 	}
 
-	rowing::v1::RouteDefinitionV1 ValidRoute();
+	rowing::v1::RouteDefinitionV1 ValidRoute(std::uint64_t ControlPointCount = 8);
 
 	std::string MakeArchive(std::string_view InventoryBytes,
 							std::string_view Notice = "Virtual Indoor Rowing content notice\n",
@@ -130,12 +131,12 @@ namespace
 		return Signature;
 	}
 
-	rowing::v1::RouteDefinitionV1 ValidRoute()
+	rowing::v1::RouteDefinitionV1 ValidRoute(std::uint64_t ControlPointCount)
 	{
 		rowing::v1::RouteDefinitionV1 Route;
-		Route.set_schema_version(1);
+		Route.set_schema_version(2);
 		Route.set_route_id("route.han-river.5k");
-		Route.set_semantic_version("1.0.0");
+		Route.set_semantic_version("2.0.0");
 		Route.set_content_set_id("han-river-alpha-1");
 		Route.set_length_mm(5'000'000);
 		Route.set_is_closed(false);
@@ -143,7 +144,7 @@ namespace
 		Compatibility->set_minimum_build(1);
 		Compatibility->set_maximum_build(999999);
 		Compatibility->set_content_schema(1);
-		Compatibility->set_route_schema(1);
+		Compatibility->set_route_schema(2);
 		Route.set_display_name_key("route.han.name");
 		Route.set_description_key("route.han.description");
 		for (int Index = 1; Index < 5; ++Index)
@@ -152,6 +153,46 @@ namespace
 			Checkpoint->set_checkpoint_id("km" + std::to_string(Index));
 			Checkpoint->set_distance_mm(static_cast<std::uint64_t>(Index) * 1'000'000ULL);
 		}
+		auto SetVector = [](rowing::v1::RouteVectorMmV2 *Vector, std::int64_t X, std::int64_t Y, std::int64_t Z)
+		{
+			Vector->set_x_mm(X);
+			Vector->set_y_mm(Y);
+			Vector->set_z_mm(Z);
+		};
+		auto *Path = Route.mutable_presentation_path();
+		Path->set_path_format_version(1);
+		Path->set_owning_route_id(Route.route_id());
+		SetVector(Path->mutable_route_local_origin_mm(), 0, 0, 0);
+		Path->set_route_local_yaw_microradians(0);
+		for (std::uint64_t Index = 0; Index < ControlPointCount; ++Index)
+		{
+			const std::uint64_t Distance = 5'000'000ULL * Index / (ControlPointCount - 1);
+			const std::uint64_t Previous = Index == 0 ? 0 : 5'000'000ULL * (Index - 1) / (ControlPointCount - 1);
+			const std::uint64_t Next = Index + 1 == ControlPointCount ? 5'000'000ULL : 5'000'000ULL * (Index + 1) / (ControlPointCount - 1);
+			auto *Point = Path->add_control_points();
+			Point->set_point_id("point-" + std::to_string(Index));
+			Point->set_route_distance_mm(Distance);
+			SetVector(Point->mutable_position_mm(), static_cast<std::int64_t>(Distance), 0, 0);
+			SetVector(Point->mutable_arrive_tangent_mm(), static_cast<std::int64_t>(Index == 0 ? Next - Distance : Distance - Previous), 0, 0);
+			SetVector(Point->mutable_leave_tangent_mm(), static_cast<std::int64_t>(Index + 1 == ControlPointCount ? Distance - Previous : Next - Distance), 0, 0);
+		}
+		std::vector<ContentRuntime::FRouteArcLengthLookupEntry> Lookup;
+		for (std::uint64_t Distance = 0;; Distance = std::min<std::uint64_t>(5'000'000, Distance + 5'000))
+		{
+			const std::uint32_t Segment = Distance == 5'000'000 ? static_cast<std::uint32_t>(ControlPointCount - 2) : static_cast<std::uint32_t>(Distance * (ControlPointCount - 1) / 5'000'000);
+			const std::uint64_t Start = 5'000'000ULL * Segment / (ControlPointCount - 1);
+			const std::uint64_t End = 5'000'000ULL * (Segment + 1) / (ControlPointCount - 1);
+			const std::uint32_t Parameter = Distance == 5'000'000 ? 1'000'000 : static_cast<std::uint32_t>((Distance - Start) * 1'000'000ULL / (End - Start));
+			Path->add_arc_length_lookup()->set_route_distance_mm(Distance);
+			auto *Entry = Path->mutable_arc_length_lookup(Path->arc_length_lookup_size() - 1);
+			Entry->set_segment_index(Segment);
+			Entry->set_segment_parameter_ppm(Parameter);
+			Lookup.push_back({Distance, Segment, Parameter});
+			if (Distance == 5'000'000)
+				break;
+		}
+		const std::string LookupBytes = ContentRuntime::CanonicalArcLengthLookupBytes(Lookup);
+		Path->set_arc_length_lookup_sha256(HashBytes(ContentRuntime::Sha256(std::span(reinterpret_cast<const std::uint8_t *>(LookupBytes.data()), LookupBytes.size()))));
 		const std::string MetadataBytes = Serialize(Route);
 		Route.set_metadata_sha256(HashBytes(ContentRuntime::Sha256(std::span(reinterpret_cast<const std::uint8_t *>(MetadataBytes.data()), MetadataBytes.size()))));
 		return Route;
@@ -171,10 +212,10 @@ namespace
 			Compatibility->set_minimum_build(1);
 			Compatibility->set_maximum_build(999999);
 			Compatibility->set_content_schema(1);
-			Compatibility->set_route_schema(1);
+			Compatibility->set_route_schema(2);
 		}
 		*Manifest.mutable_route() = ValidRoute();
-		Manifest.set_package_url("https://content.internal.invalid/han-river-alpha-1/1.0.0/package.vircontent");
+		Manifest.set_package_url("https://content.internal.invalid/han-river-alpha-1/2.0.0/package.vircontent");
 		Manifest.set_package_sha256(HashBytes(PackageHash));
 		Manifest.set_compressed_size_bytes(PackageSize);
 		Manifest.set_uncompressed_size_bytes(PackageSize + 1024);
@@ -306,6 +347,77 @@ namespace
 		const std::string Huge(ContentRuntime::MaximumManifestBytes + 1, 'x');
 		ExpectError(ContentRuntime::EContentError::Oversized, [&]
 					{ ContentRuntime::ParseAndVerifyManifest(Huge, Keys, Verifier, {}); });
+
+		const auto Route = ValidRoute();
+		const std::string RouteBytes = Serialize(Route);
+		const auto Parsed = ContentRuntime::ParseAndValidateRouteDefinition(RouteBytes, 42);
+		assert(Parsed.SchemaVersion == ContentRuntime::RouteDefinitionSchemaV2);
+		assert(Parsed.PresentationPath && Parsed.PresentationPath->ControlPoints.size() == 8);
+		assert(Parsed.PresentationPath->ArcLengthLookup.size() == 1001);
+		const auto FortyPointRoute = ContentRuntime::ParseAndValidateRouteDefinition(Serialize(ValidRoute(40)), 42);
+		assert(FortyPointRoute.PresentationPath && FortyPointRoute.PresentationPath->ControlPoints.size() == 40);
+		ExpectError(ContentRuntime::EContentError::InvalidRoute, [&]
+					{ ContentRuntime::ParseAndValidateRouteDefinition(Serialize(ValidRoute(41)), 42); });
+		auto BadLookup = Route;
+		BadLookup.mutable_presentation_path()->set_arc_length_lookup_sha256(std::string(32, 'x'));
+		BadLookup.clear_metadata_sha256();
+		const std::string BadLookupMetadata = Serialize(BadLookup);
+		BadLookup.set_metadata_sha256(HashText(BadLookupMetadata));
+		ExpectError(ContentRuntime::EContentError::InvalidHash, [&]
+					{ ContentRuntime::ParseAndValidateRouteDefinition(Serialize(BadLookup), 42); });
+
+		auto LegacyHan = Route;
+		LegacyHan.set_schema_version(1);
+		LegacyHan.mutable_compatibility()->set_route_schema(1);
+		LegacyHan.clear_presentation_path();
+		LegacyHan.clear_metadata_sha256();
+		const std::string LegacyMetadata = Serialize(LegacyHan);
+		LegacyHan.set_metadata_sha256(HashText(LegacyMetadata));
+		ExpectError(ContentRuntime::EContentError::RouteSchemaIncompatible, [&]
+					{ ContentRuntime::ParseAndValidateRouteDefinition(Serialize(LegacyHan), 42); });
+		assert(std::string(ContentRuntime::ContentErrorName(ContentRuntime::EContentError::RouteSchemaIncompatible)) == "content.route_schema_incompatible");
+
+		auto RehashRoute = [](rowing::v1::RouteDefinitionV1 &Candidate)
+		{
+			std::vector<ContentRuntime::FRouteArcLengthLookupEntry> Lookup;
+			for (const auto &Entry : Candidate.presentation_path().arc_length_lookup())
+				Lookup.push_back({Entry.route_distance_mm(), Entry.segment_index(), Entry.segment_parameter_ppm()});
+			const std::string LookupBytes = ContentRuntime::CanonicalArcLengthLookupBytes(Lookup);
+			Candidate.mutable_presentation_path()->set_arc_length_lookup_sha256(HashText(LookupBytes));
+			Candidate.clear_metadata_sha256();
+			Candidate.set_metadata_sha256(HashText(Serialize(Candidate)));
+		};
+		auto Reversing = Route;
+		Reversing.mutable_presentation_path()->mutable_control_points(3)->mutable_arrive_tangent_mm()->set_x_mm(-714'286);
+		Reversing.mutable_presentation_path()->mutable_control_points(3)->mutable_leave_tangent_mm()->set_x_mm(-714'286);
+		RehashRoute(Reversing);
+		ExpectError(ContentRuntime::EContentError::InvalidRoute, [&]
+					{ ContentRuntime::ParseAndValidateRouteDefinition(Serialize(Reversing), 42); });
+
+		// A smooth open route that closes back on its own starting point has valid
+		// point counts, C1 tangents, radius, and length, but is still ambiguous.
+		auto SelfCrossing = Route;
+		constexpr double RadiusMm = 795'775.0;
+		constexpr double SpanRadians = 2.0 * 3.14159265358979323846 / 7.0;
+		for (int Index = 0; Index < 8; ++Index)
+		{
+			const double Angle = SpanRadians * Index;
+			auto *Point = SelfCrossing.mutable_presentation_path()->mutable_control_points(Index);
+			Point->mutable_position_mm()->set_x_mm(static_cast<std::int64_t>(std::llround(RadiusMm * std::cos(Angle))));
+			Point->mutable_position_mm()->set_y_mm(static_cast<std::int64_t>(std::llround(RadiusMm * std::sin(Angle))));
+			Point->mutable_position_mm()->set_z_mm(0);
+			const std::int64_t TangentX = static_cast<std::int64_t>(std::llround(-RadiusMm * std::sin(Angle) * SpanRadians));
+			const std::int64_t TangentY = static_cast<std::int64_t>(std::llround(RadiusMm * std::cos(Angle) * SpanRadians));
+			for (auto *Tangent : {Point->mutable_arrive_tangent_mm(), Point->mutable_leave_tangent_mm()})
+			{
+				Tangent->set_x_mm(TangentX);
+				Tangent->set_y_mm(TangentY);
+				Tangent->set_z_mm(0);
+			}
+		}
+		RehashRoute(SelfCrossing);
+		ExpectError(ContentRuntime::EContentError::InvalidRoute, [&]
+					{ ContentRuntime::ParseAndValidateRouteDefinition(Serialize(SelfCrossing), 42); });
 	}
 
 	void TestInventoryAndPackageValidation()

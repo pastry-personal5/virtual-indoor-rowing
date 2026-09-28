@@ -15,7 +15,7 @@ from vir_dev import content, doctor, native, release, tui, unreal  # noqa: E402
 
 def main() -> int:
 	parser = argparse.ArgumentParser(description=__doc__)
-	parser.add_argument("command", choices=("doctor", "configure", "build", "test", "format-check", "format", "pm5-tui", "unreal-smoke", "unreal-shipping", "han-source-verify", "han-external-cook", "unreal-package-verify", "unreal-bluetooth-probe", "release-sign-notarize", "pm5-tui-hil", "pm5-tui-journal", "unreal-native-app", "content-canary", "content-fixture", "content-release-package", "han-area-audit", "han-area-register", "han-area-osm-acquire", "han-area-osm-generate", "han-area-osm-preflight", "han-area-test", "clean", "clean-unreal"))
+	parser.add_argument("command", choices=("doctor", "configure", "build", "test", "format-check", "format", "pm5-tui", "unreal-smoke", "unreal-shipping", "han-source-verify", "han-external-cook", "unreal-package-verify", "unreal-bluetooth-probe", "release-sign-notarize", "pm5-tui-hil", "pm5-tui-journal", "unreal-native-app", "content-canary", "content-fixture", "content-path-source-candidate", "content-path-source-approve", "content-release-package", "han-area-audit", "han-area-register", "han-area-osm-acquire", "han-area-osm-generate", "han-area-osm-preflight", "han-area-test", "clean", "clean-unreal"))
 	args = parser.parse_args()
 	if args.command in ("han-area-audit", "han-area-register"):
 		import han_area
@@ -86,6 +86,10 @@ def main() -> int:
 		return content.command("canary")
 	if args.command == "content-fixture":
 		return content.command("fixture")
+	if args.command == "content-path-source-candidate":
+		return content.command("generate-path-source-candidate")
+	if args.command == "content-path-source-approve":
+		return content.command("approve-path-source")
 	if args.command == "content-release-package":
 		return content.command("release-package")
 	if args.command == "unreal-bluetooth-probe":

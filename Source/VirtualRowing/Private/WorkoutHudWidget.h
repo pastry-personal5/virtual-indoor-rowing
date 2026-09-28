@@ -30,6 +30,7 @@ class VIRTUALROWING_API UWorkoutHudWidget : public UUserWidget
 	// Moves keyboard focus to the action that applies now. Public so the Escape
 	// input processor can reach it; never activates the action.
 	void FocusAction();
+	bool HandleCameraShortcut();
 	static ESlateVisibility AnimationLabelVisibility(ECourseAnimationQuality Quality);
 	static FLinearColor RootBackgroundColor();
 	static FLinearColor MetricPanelBackgroundColor();
@@ -46,12 +47,9 @@ class VIRTUALROWING_API UWorkoutHudWidget : public UUserWidget
 	void HandleEndClicked();
 	UFUNCTION()
 	void HandleStartNewClicked();
-	UFUNCTION()
-	void HandleViewSurroundingsClicked();
 	UWorkoutSubsystem *GetWorkoutSubsystem() const;
 	class UCourseSubsystem *GetCourseSubsystem() const;
 	void ApplyDisplay(const UWorkoutSubsystem &Subsystem);
-	void UpdateRestViewAction();
 	bool IsActionFocused() const;
 	void ApplyFocusCue();
 
@@ -63,6 +61,10 @@ class VIRTUALROWING_API UWorkoutHudWidget : public UUserWidget
 	TObjectPtr<UTextBlock> MetricAccuracyText;
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> EstimatedStrokeText;
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> BoatPositionText;
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> CameraToastText;
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> DistanceText;
 	UPROPERTY(Transient)
@@ -81,17 +83,14 @@ class VIRTUALROWING_API UWorkoutHudWidget : public UUserWidget
 	TObjectPtr<UButton> EndButton;
 	UPROPERTY(Transient)
 	TObjectPtr<UButton> StartNewButton;
-	UPROPERTY(Transient)
-	TObjectPtr<UButton> ViewSurroundingsButton;
-	UPROPERTY(Transient)
-	TObjectPtr<UTextBlock> ViewSurroundingsLabel;
 
 	uint64 AppliedGeneration = 0;
 	bool bHasApplied = false;
+	bool bHasBoatPositionText = false;
+	FIntVector LastBoatPositionMetres = FIntVector::ZeroValue;
 	bool bAppliedCanEnd = false;
 	bool bEndFocusedApplied = false;
 	bool bStartNewFocusedApplied = false;
-	bool bViewSurroundingsFocusedApplied = false;
 	bool bFocusCueApplied = false;
 	// Initial focus is retried each frame until Slate reports it landed, because it
 	// cannot land before the widget has been arranged in the viewport.

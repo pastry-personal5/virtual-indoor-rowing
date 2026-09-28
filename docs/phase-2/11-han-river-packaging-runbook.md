@@ -215,20 +215,18 @@ export VIR_CONTENT_ORIGIN_BASE_URL="${VIR_CONTENT_ORIGIN_BASE_URL%/}"
 export VIR_CONTENT_SIGNING_KEY="$VIR_TOOLS/keys/content-current.pem"
 export VIR_CONTENT_OUTPUT_DIR="$VIR_TOOLS/releases"
 export VIR_CATALOG_URL="$VIR_CONTENT_ORIGIN_BASE_URL/catalog-current.pb"
-# This must be the new SemVer recorded in both reviewed source files:
-# route-beats.json semantic_version and han-river-5k.geojson route_version.
-export VIR_CONTENT_VERSION="1.0.3"
+# This must be set by the release/signing environment, not source metadata.
+: "${VIR_CONTENT_VERSION:?Set the release package Semantic Version in the signing environment}"
 test -f "$VIR_CONTENT_SIGNING_KEY"
 ```
 
 `VIR_CONTENT_VERSION` is a required SemVer input to
 `make content-release-package`; it is not merely an origin-directory label.
-The packager rejects a value that differs from either reviewed source version,
-then writes that exact value into the signed `route.pb`, signed catalog package
-URL, `release.json`, and printed upload URL. For a replacement of retained
-content, use a new semantic version (for example, `1.0.3` after `1.0.1`), not
-only a higher catalog revision. Review and commit the matching source metadata
-change before cooking; do not edit it after the cook or alter a signed output.
+The packager writes that exact environment value into the signed `route.pb`,
+signed catalog package URL, `release.json`, and printed upload URL. The
+reviewed source JSON deliberately carries no package version. For a replacement
+of retained content, use a new semantic version (for example, `2.0.2` after
+`2.0.1`), not only a higher catalog revision. Do not edit a signed output.
 
 For the first publication, there is no previous catalog and the revision must
 be `1`. Confirm the origin really has no current catalog; a network error or
@@ -286,8 +284,8 @@ release. It performs no upload. The output directory contains:
 Compare the two calculated digests with `package_sha256` and `catalog_sha256`
 in `release.json`. Confirm the catalog revision, `content-current` key ID,
 semantic version, content set, and `package_url`. The semantic version must
-equal `VIR_CONTENT_VERSION` and both reviewed source metadata values. The URL must begin with the
-approved `VIR_CONTENT_ORIGIN_BASE_URL` and end with
+equal `VIR_CONTENT_VERSION`. The URL must begin with the approved
+`VIR_CONTENT_ORIGIN_BASE_URL` and end with
 `/$VIR_PACKAGE_SHA256/HanRiver.vircontent`. If a field is wrong, stop and fix
 the input; do not edit the signed catalog, release JSON, or archive after
 creation. The catalog expires seven days after signing, so sign close to the

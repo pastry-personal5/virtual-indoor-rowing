@@ -28,7 +28,9 @@ DEFINE_LOG_CATEGORY_STATIC(LogContentSubsystem, Log, All);
 
 namespace
 {
-	constexpr uint32 ContentClientBuild = 1;
+	constexpr std::uint64_t HanKitRouteLengthMm = 5'000'000;
+
+	constexpr uint32 ContentClientBuild = 2;
 	constexpr const TCHAR *AppDataFolderName = TEXT("dev.virtualrowing.app");
 
 	int64 UnixNowSeconds()
@@ -151,18 +153,29 @@ void UContentSubsystem::Initialize(FSubsystemCollectionBase &Collection)
 				// Parse before mounting so an invalid route never changes the IoStore
 				// mount set. The archive validator has already bound this file to the
 				// signed manifest before it could reach the install directory.
-				Impl->HanRoute = ContentRuntime::ParseAndValidateRouteDefinition(
+				auto ParsedRoute = ContentRuntime::ParseAndValidateRouteDefinition(
 					LoadRouteDefinitionBytes(FPaths::Combine(InstallPath, TEXT("route.pb"))), ContentClientBuild);
-				Impl->SelectedRoute = Impl->HanRoute;
-				if (TryMountInstalledContent(InstallPath, Failure))
+				// The signed Han presentation contract is exactly 5 km. Reject an
+				// installed incompatible route before mounting it,
+				// rather than restoring the waterless tail through a retained package.
+				if (ParsedRoute.RouteId != "route.han-river.5k" || ParsedRoute.LengthMm != HanKitRouteLengthMm)
 				{
-					FFileHelper::LoadFileToString(Impl->ActivePackageNotice, *FPaths::Combine(InstallPath, TEXT("licenses/NOTICE.txt")));
-					Impl->ActivePackageIssuedAtUnixSeconds = Candidate->IssuedAtUnixSeconds;
-					Impl->ActiveVersion = UTF8_TO_TCHAR(Candidate->SemanticVersion.c_str());
-					Impl->ActiveCatalogRevision = Candidate->CatalogRevision;
-					Impl->ActiveInstallLeaf = FPaths::GetCleanFilename(InstallPath);
-					Impl->Note(FString::Printf(TEXT("boot: mounted v%s (catalog r%llu)"), *Impl->ActiveVersion, Impl->ActiveCatalogRevision));
-					return true;
+					Failure = TEXT("content.route_geometry_incompatible");
+				}
+				else
+				{
+					Impl->HanRoute = std::move(ParsedRoute);
+					Impl->SelectedRoute = Impl->HanRoute;
+					if (TryMountInstalledContent(InstallPath, Failure))
+					{
+						FFileHelper::LoadFileToString(Impl->ActivePackageNotice, *FPaths::Combine(InstallPath, TEXT("licenses/NOTICE.txt")));
+						Impl->ActivePackageIssuedAtUnixSeconds = Candidate->IssuedAtUnixSeconds;
+						Impl->ActiveVersion = UTF8_TO_TCHAR(Candidate->SemanticVersion.c_str());
+						Impl->ActiveCatalogRevision = Candidate->CatalogRevision;
+						Impl->ActiveInstallLeaf = FPaths::GetCleanFilename(InstallPath);
+						Impl->Note(FString::Printf(TEXT("boot: mounted v%s (catalog r%llu)"), *Impl->ActiveVersion, Impl->ActiveCatalogRevision));
+						return true;
+					}
 				}
 			}
 			catch (const ContentRuntime::FContentValidationError &Error)

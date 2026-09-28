@@ -1,6 +1,165 @@
 # Phase 2 changelog
 
+- Realigned every `HanRouteGate_CP00`–`HanRouteGate_CP20` actor to the signed
+  Hermite tangent at its saved control point (2026-09-28). End gates use their
+  one-sided tangent and interior gates use their centred tangent; the edit is
+  presentation-only and leaves the reviewed X/Y curve unchanged.
+
+- Corrected the saved Blue Hour route-gate geometry to satisfy the signed-path
+  100 m minimum turn-radius requirement (2026-09-28): interpolated
+  `HanRouteGate_CP01` and `HanRouteGate_CP06` from their neighboring control
+  positions and re-solved `HanRouteGate_CP20` on the existing CP19-to-CP20
+  heading for the exact 5 km Hermite path. The deterministic candidate now
+  measures 4,999,998.59 mm in the independent dense audit with a 109.19 m
+  minimum radius; it remains pending owner review under ADR-0016.
+
+- Repositioned `HanRouteGate_CP20` by extending the CP18-to-former-CP20
+  heading and put `HanRouteGate_CP19` at the exact CP18/CP20 midpoint
+  (2026-09-28). The dense, deterministic Hermite audit is 5,000,000.08 mm;
+  CP00–CP20 yaw now follows the corresponding one-sided/centred XY tangents.
+  The candidate v2 source compiles these saved gate transforms directly and
+  remains pending owner review under ADR-0016.
+
+- Recalculated the 21-point Han River path from the connected Blue Hour
+  water-tile centreline after the owner-selected start moved. The deterministic
+  source resamples that corridor to exactly 5 km; every `HanRouteGate_CP00`
+  through `HanRouteGate_CP20` now has the corresponding saved map transform,
+  400 cm above the waterline and tangent-aligned. This is a fresh candidate
+  awaiting owner review under ADR-0016.
+
+- Moved the owner-selected Han course/map start (route point 1) to the nearest
+  millimetre-representable location of `(40628.756492, 10112.881706, 0)` cm:
+  `(40628.8, 10112.9, 0)` cm. The signed route's local-frame origin and its
+  generated path source now agree; Z uses the map's established flat waterline.
+  The changed path is a new candidate and requires a fresh owner review before
+  it can be approved for publication under ADR-0016.
+
+- Added owner-directed floating route gates to the Blue Hour map (2026-09-28):
+  one high-contrast amber, 70%-opacity `M_Han_RouteGate` gate at each of the
+  21 authentic signed path points, enlarged 1.6x horizontally and 1.8x
+  vertically, aligned to each point's tangent and with collision disabled.
+  Removed legacy 40-point markers remain absent. This is presentation content
+  only and does not pass a Phase 2 gate.
+
+- Restored the owner-selected signed Han presentation length to exactly 5 km
+  (2026-09-28) and regenerated the owner-approved forty-point v2 path, route
+  metadata, UI copy, compatibility contract, and fallback landmarks. The live
+  runtime map still supplies only a 500 m water HISM footprint; this source
+  change does not claim that map coverage was expanded.
+
+- Constrained the zero-origin Han presentation course to the reviewed map's
+  measured water geography (2026-09-28). Lazy-MCP Editor read-back found the
+  water HISM at X=-125 m through +525 m, while the signed path starts at X=0;
+  the deterministic curve and signed route therefore now have an exact 500 m
+  arc length with a 25 m forward margin. This removes the unsupported tail
+  rather than presenting waterless terrain. Camera preferences now
+  independently create the app support directory, including Content Safe Mode
+  launches.
+
+- Refined the reviewed Han v2 presentation path (2026-09-28) from the straight
+  fixture geometry to a deterministic forty-point, gently curving virtual
+  river-centre approximation. The running course now shows every signed
+  control point as a paired cyan, non-collision beacon gate, separate from the
+  existing orange-and-white checkpoint buoys. The source remains bound to the
+  exact reviewed runtime-map bytes; live Editor/map visual review remains owed.
+
 ## Unreleased
+
+- Moved Han release-package SemVer ownership wholly to the required
+  `VIR_CONTENT_VERSION` environment variable (2026-09-28). Reviewed route,
+  waterline, and presentation-path JSON no longer duplicate a package version;
+  the packager rejects source metadata that attempts to embed one and emits the
+  environment value into the signed route, catalog URL, and release metadata.
+
+- Added distinct, high-visibility Han River BlueHour checkpoint objects
+  (2026-09-27): every signed route checkpoint now has paired orange-and-white
+  buoys, an uppercase name label, and a bright bow-mounted arrow that updates
+  toward the next checkpoint. The buoy pairs follow the signed path; Standard
+  keeps its existing 250 m markers.
+
+- Added native and Unreal automation coverage for checkpoint alignment
+  (2026-09-27): the Standard and Han presentation runtime and adapters now
+  prove that each route-defined checkpoint resolves to the signed path transform
+  used by the boat anchor.
+
+- Accepted [ADR-0016](../adr/0016-owner-approved-han-path-publication.md) and
+  recorded the owner-approved v2.0.1 path against the current BlueHour map
+  SHA-256. Baseline/calibration and clearance audits are no longer prerequisites
+  for internal Han path publication; no geographic or clearance claim is made.
+
+- Fixed the Milestone 6 reveal and publication gates (2026-09-27): completion,
+  endpoint entry, pause, stale/frozen input, disconnect, and reconnect now
+  immediately cut every camera-reveal phase to static chase; a v2 path candidate
+  can no longer self-promote to owner-approved status or pass release packaging
+  without independently recorded map, baseline/calibration, and clearance-audit
+  evidence.
+
+- Removed the fixed `2.0.0` release-version guard (2026-09-27). The Han
+  packager now accepts a valid SemVer release version while retaining its
+  source/version, reviewed-path, immutable URL, and increasing-catalog checks.
+  The currently reviewed source metadata advances to `2.0.1`.
+
+- Fixed the mounted BlueHour level transform (2026-09-27): the authored Han
+  level now streams at the signed v2 path start and fixed-point yaw rather
+  than the legacy `-2.5 km` spline offset. This keeps the loaded map at the
+  boat/camera start after v2 path activation.
+
+- Fixed v2 Han release-manifest canonicalization (2026-09-27): the manual
+  path encoder now omits proto3 scalar zero defaults in the first control point,
+  first lookup entry, and zero yaw. Those defaults previously made otherwise
+  signed catalogs fail the client's deterministic protobuf check as
+  `content.non_canonical`.
+
+- Generated and owner-approved `presentation-path-v2.json` (2026-09-27) after
+  the reported reviewed-path promotion into `L_HanRiver_BlueHour`. The
+  deterministic v2 source contains its explicit 5 m lookup, source-input hashes,
+  and the runtime-map SHA-256; release packaging rejects it if that promoted map
+  no longer matches the reviewed identity.
+
+- Milestone 6 review follow-up (2026-09-27): included the typed presentation
+  preference repository in the change set; persist the runtime-selected preset
+  rather than a stale render snapshot; permit fresh Resting/inactive samples
+  to begin the stopped-rowing dwell; make active-rowing resume edge-triggered;
+  derive cosmetic roll and pitch from path curvature, speed, and speed change;
+  and reject reversing or self-crossing Hermite presentation paths. Native
+  format/build/tests pass. `presentation-path-v2.json` remains an intentional
+  release hard gate: it cannot be authored or represented as reviewed without
+  the required Unreal map review, geographic/clearance audit, and owner
+  approval.
+
+- Implemented the engine-independent and adapter portions of Phase 2 Milestone
+  6 (2026-09-27): deterministic Standard closed-path evaluation/lap wrapping,
+  v2 Han path contracts and compatibility, bounded cosmetic motion, persistent
+  starboard camera presets, fresh-PM reveal behavior, HUD keyboard/toast flow,
+  and an owner-only global preference repository. Standard and Han now share
+  presentation behavior; Standard retains its closed geometry. Downloaded v1
+  Han fails as `content.route_schema_incompatible` and falls back to Standard.
+  Native tests, native Unreal archive, fresh closed-Editor module build,
+  external Han cook (`HanRiver-m6-20260927`), unsigned arm64 Shipping package,
+  and package verification pass. Han baseline/map authoring, reviewed
+  geographic/clearance evidence, live Editor automation, signed publication,
+  and mounted next-launch activation remain open because editor-owned Unreal
+  MCP work and owner approval were unavailable. Milestone 6 performs wake/ripple
+  regression only; it does not take ownership of Milestone 5 water selection or
+  visual acceptance.
+
+- Completed Phase 2 Milestone 5 through an owner-directed scope reduction
+  (2026-09-26). The milestone records its bounded water source/editor/external
+  cook hardening work only. Water-treatment selection and visual review,
+  `-ReduceMotion` review, and hull/oar wake and splash implementation/review
+  were deferred because the boat will be modified; Milestone 6 only regression-
+  tests wake/ripple attachment and does not own that selection or review. No
+  selected treatment, packaged visual acceptance, QA
+  result, or Phase 2 exit-gate result is claimed by this completion.
+
+- Replanned the warm six-minute Shipping thermal/performance run from Phase 2
+  Milestone 5 to newly scoped Milestone 9 (2026-09-26). Milestone 9 retains
+  the Standard and mounted-Han measurement matrix, thresholds, and matched
+  water/hull-oar cost captures. Water visual selection and reduced-motion
+  evidence remain outside both completed Milestone 5 and Milestone 6.
+  [ADR-0015](../adr/0015-move-six-minute-shipping-thermal-run-to-milestone-9.md)
+  supersedes ADR-0014's milestone assignment without changing QA-001 or the
+  Phase 4 six- and 60-minute obligation.
 
 - Content release packaging now requires `VIR_CONTENT_VERSION` as a SemVer
   input and binds it to the reviewed Han route-beats and waterline metadata.

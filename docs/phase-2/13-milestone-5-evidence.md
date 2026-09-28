@@ -1,7 +1,19 @@
 # Phase 2 Milestone 5 evidence log
 
-Status: In progress; Standard and Han water plus interaction assets saved, Han external cook passed, Shipping acceptance unverified  
-Last updated: 2026-09-25
+Status: Complete — owner-directed scope reduction; deferred review is explicitly unverified
+Last updated: 2026-09-27
+
+## Completion decision, 2026-09-26
+
+The owner marked Milestone 5 complete after its bounded source, editor, and
+external-cook hardening work. The owner reported a normal-mode review of Han
+River BlueHour, but did not select a water treatment. Water-treatment
+selection/review, remaining packaged visual review, `-ReduceMotion` review,
+and hull/oar wake and splash review are deferred because the boat will be
+modified. The planned
+[Milestone 6 boat-movement work](16-milestone-6-boat-movement-and-camera.md)
+now owns that deferred selection and review. No visual/QA acceptance is claimed
+here.
 
 ## Source work on 2026-09-24
 
@@ -131,7 +143,7 @@ view or measured on Metal.
 | Post-repair Han cook preflight, 2026-09-25 | Two `make han-external-cook` attempts after the map repair stopped before source validation, UAT, or cooking because `/bin/ps` was denied by this managed session. The failed process query does not establish that Editor is closed. The normal owner-terminal workflow remains required; no external Han IoStore trio was produced by these attempts. |
 | Fresh Han external cook, 2026-09-25 | After the owner confirmed all Editors were saved and closed, the approved `make han-external-cook` reached the output guard and found an existing trio in the default directory; it preserved that earlier output. With `VIR_HAN_IOSTORE_DIR=Build/han-cook/HanRiver-m5-20260925`, the closed-Editor preflight, source verification, doctor, native app build, and UE 5.8 BuildCookRun all passed. UAT reported `BUILD SUCCESSFUL` in 55.61 seconds. The wrapper validated one nonempty `HanRiver.pak` (339 bytes), `HanRiver.utoc` (43 KB), and `HanRiver.ucas` (1.3 MB) and checked the IoStore TOC header. The trio is in `Build/han-cook/HanRiver-m5-20260925`; SHA-256 digests are `4b1709b351d48ef0b7c82a7e029b2a9ef81a7a44bab4637a1026de27046d6712` (pak), `b0a1b74114e6edc579f02a35cee28f6a1360d62490cc799ca32fc7290f382bcc` (utoc), and `5abf60e56b3185f69a8cd3b7bc50fe82a90fca4fb4999f42c025e85d6386ffa6` (ucas). Mounted packaged-app behavior remains unverified. |
 | Han IoStore inventory, 2026-09-25 | UnrealPak `-List` opened the fresh `HanRiver.utoc` and reported 346 files (1,255,395 uncompressed bytes). Its listing includes `Content/Phase2/HanRiver/Materials/M_Han_Water.uasset` and `Content/Phase2/HanRiver/Maps/L_HanRiver_BlueHour.umap`; the filtered listing contains no `Trial/` or `Textures/` path. `make unreal-package-verify` still passes for the separately archived unsigned app (`e9fc85252e718060c38a8f18c380bb8aad917994e1ec3ec118c174a9c0603f6a`). This confirms the reviewed material and runtime map are in the external container, but does not establish packaged mounting or visual quality. |
-| Six-minute thermal gate prepared, 2026-09-25 | Owner changed the Milestone 5 thermal duration from 60 minutes to six warm minutes per route. [ADR-0014](../adr/0014-six-minute-milestone-5-thermal-gate.md) narrows the Milestone 5 gate without claiming product-level QA-001 certification. The [run worksheet](14-milestone-5-six-minute-thermal-run.md) fixes the Shipping build/content identifiers, mounted-Han prerequisite, warm-up boundary, metric and thermal timeline, and matched benchmark modes. No six-minute run or timing result has been collected. |
+| Six-minute thermal run prepared, 2026-09-25 | The original Milestone 5 scope used six warm minutes per route under [ADR-0014](../adr/0014-six-minute-milestone-5-thermal-gate.md). [ADR-0015](../adr/0015-move-six-minute-shipping-thermal-run-to-milestone-9.md) subsequently moved that measurement to Milestone 9 without claiming product-level QA-001 certification. The [Milestone 9 run worksheet](15-milestone-9-six-minute-shipping-thermal-run.md) fixes the Shipping build/content identifiers, mounted-Han prerequisite, warm-up boundary, metric and thermal timeline, and matched benchmark modes. No six-minute run or timing result has been collected. |
 | Packaged Han availability, 2026-09-25 | The owner supplied the app's Details screenshot. `Content status` is `content.catalog_ready`; a loopback catalog returned HTTP 200 and verified revision 11, offering v1.0.1 built 2026-09-25 07:55:28 UTC. The installed v1.0.1 (catalog r9) and v1.0.0 (r2) records are both `failed`, each with `content.mount_failed`. Details says `mounted: no` and `han unavailable because: content.mount_failed`; no current `mount:` event is visible because this launch found no active candidate to retry. The fresh cook does not install or activate a signed package. The app's retry path permits a failed version to be downloaded and replaced, followed by next-launch activation. A v1.0.1 r11 download/relaunch result is pending; mounted-Han canary and Han thermal timing remain blocked. |
 | Catalog rollback diagnostic, 2026-09-25 | A later app screenshot shows a different loopback immutable catalog URL (`catalog-0a90dbea...pb` instead of the earlier `catalog-8e877c1b...pb`). HTTP still returns 200, but `Content status` is `revision_rollback` and the event says the catalog revision is older than accepted revision 11. The absence of a verified current offer explains the disabled Download button in this launch. Restore the revision-11 catalog URL or use a newer signed catalog, then ensure the workout is idle before retrying the failed v1.0.1 download. No catalog ledger or installed files were changed here. |
 | New signed catalog candidate, 2026-09-25 | The owner reports offering signed catalog revision 12. The packaged app has not yet shown an r12 verification, download, next-launch activation, or mount result. The canary must launch against that exact immutable r12 URL while idle and record the subsequent status; the reported offer alone does not clear the prior `content.mount_failed` records. |
@@ -141,12 +153,13 @@ its unsaved indicator saved them as untracked files under `Content/Boat/Source`;
 they have been left intact for the owner to review. The untracked review and
 backup Han maps were left intact.
 
-## Open acceptance evidence
+## Deferred acceptance evidence
 
 No baseline or after-change Shipping chase-view capture, complete moving-camera
 reflection comparison (including the bounded planar prototype), CC0 texture
 sample comparison/provenance approval, complete chase-view water or interaction
-review, mounted packaged-app Han canary, water-on versus
-water-hidden GPU delta, six-minute
-thermal run per route, QA-001 timing proxy, or owner visual decision is recorded. The active
-[Milestone 5 plan](12-realistic-water-refinement-plan.md) remains the gate.
+review, or `-ReduceMotion` review is recorded. This work is deferred to the
+planned [Milestone 6](16-milestone-6-boat-movement-and-camera.md); it is not
+represented as Milestone 5 acceptance. The water-on versus water-hidden GPU
+delta, six-minute thermal run per route, and QA-001 timing proxy remain owned by
+[Milestone 9](15-milestone-9-six-minute-shipping-thermal-run.md).

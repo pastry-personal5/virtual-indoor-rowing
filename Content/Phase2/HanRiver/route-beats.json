@@ -1,7 +1,6 @@
 {
   "schema_version": 1,
   "route_id": "route.han-river.5k",
-  "semantic_version": "1.0.1",
   "display": {
     "en": {
       "name": "Han River: Bridges at Blue Hour",
@@ -65,7 +64,7 @@
       "landmark": "Wonhyo Bridge / 원효대교",
       "coordinate_wgs84": [126.946, 37.5272],
       "camera_intent": "Resolve on a wide downstream vista. At the endpoint, hold the boat at the finish presentation position while the PM-backed workout continues.",
-      "environment": ["open-water vista", "receding bridge lights", "quiet skyline"]
+      "environment": ["open-water vista", "continuous banks", "quiet skyline"]
     }
   ]
 }

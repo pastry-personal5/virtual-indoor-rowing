@@ -15,6 +15,8 @@ namespace ContentRuntime
 	inline constexpr std::uint32_t ContentManifestSchemaV1 = 1;
 	inline constexpr std::uint32_t ContentManifestEnvelopeV1 = 1;
 	inline constexpr std::uint32_t RouteDefinitionSchemaV1 = 1;
+	inline constexpr std::uint32_t RouteDefinitionSchemaV2 = 2;
+	inline constexpr std::uint32_t PresentationPathFormatV1 = 1;
 	inline constexpr std::uint64_t MaximumCompressedPackageBytes = 100ULL * 1024ULL * 1024ULL * 1024ULL;
 	inline constexpr std::uint64_t MinimumFreeStorageBytes = 100ULL * 1024ULL * 1024ULL * 1024ULL;
 	inline constexpr std::size_t MaximumManifestBytes = 1024 * 1024;
@@ -47,6 +49,40 @@ namespace ContentRuntime
 		std::uint64_t DistanceMm = 0;
 	};
 
+	struct FRouteVectorMm
+	{
+		std::int64_t X = 0;
+		std::int64_t Y = 0;
+		std::int64_t Z = 0;
+	};
+
+	struct FRouteHermiteControlPoint
+	{
+		std::string PointId;
+		std::uint64_t RouteDistanceMm = 0;
+		FRouteVectorMm PositionMm;
+		FRouteVectorMm ArriveTangentMm;
+		FRouteVectorMm LeaveTangentMm;
+	};
+
+	struct FRouteArcLengthLookupEntry
+	{
+		std::uint64_t RouteDistanceMm = 0;
+		std::uint32_t SegmentIndex = 0;
+		std::uint32_t SegmentParameterPpm = 0;
+	};
+
+	struct FRoutePresentationPath
+	{
+		std::uint32_t PathFormatVersion = 0;
+		std::string OwningRouteId;
+		FRouteVectorMm RouteLocalOriginMm;
+		std::int32_t RouteLocalYawMicroradians = 0;
+		std::vector<FRouteHermiteControlPoint> ControlPoints;
+		std::vector<FRouteArcLengthLookupEntry> ArcLengthLookup;
+		FSha256 ArcLengthLookupSha256{};
+	};
+
 	struct FRouteDefinition
 	{
 		std::uint32_t SchemaVersion = 0;
@@ -60,6 +96,7 @@ namespace ContentRuntime
 		std::string DisplayNameKey;
 		std::string DescriptionKey;
 		FSha256 MetadataSha256{};
+		std::optional<FRoutePresentationPath> PresentationPath;
 	};
 
 	struct FContentManifest
@@ -92,6 +129,7 @@ namespace ContentRuntime
 		BadSignature,
 		BadSchema,
 		Incompatible,
+		RouteSchemaIncompatible,
 		Expired,
 		RevisionRollback,
 		Withdrawn,
@@ -144,6 +182,7 @@ namespace ContentRuntime
 											const FManifestPolicy &Policy);
 	FRouteDefinition BuiltInStandardRouteDefinition();
 	FRouteDefinition ParseAndValidateRouteDefinition(std::string_view RouteBytes, std::uint32_t ClientBuild);
+	std::string CanonicalArcLengthLookupBytes(const std::vector<FRouteArcLengthLookupEntry> &Entries);
 
 	std::string CanonicalizeManifestPayload(std::string_view UnsignedPayload);
 	FSha256 Sha256(std::span<const std::uint8_t> Bytes);

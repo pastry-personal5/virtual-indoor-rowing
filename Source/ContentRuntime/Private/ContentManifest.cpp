@@ -8,10 +8,12 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cmath>
 #include <cstring>
 #include <fstream>
 #include <limits>
 #include <sstream>
+#include <unordered_set>
 
 namespace ContentRuntime
 {
@@ -160,10 +162,229 @@ namespace ContentRuntime
 		void ValidateCompatibility(const FClientCompatibility &Compatibility, std::uint32_t ClientBuild)
 		{
 			if (Compatibility.MinimumBuild == 0 || Compatibility.MaximumBuild < Compatibility.MinimumBuild ||
-				Compatibility.ContentSchema != ContentManifestSchemaV1 || Compatibility.RouteSchema != RouteDefinitionSchemaV1)
+				Compatibility.ContentSchema != ContentManifestSchemaV1)
 				throw FContentValidationError(EContentError::BadSchema, "invalid compatibility range or schema");
+			if (Compatibility.RouteSchema != RouteDefinitionSchemaV2)
+				throw FContentValidationError(EContentError::RouteSchemaIncompatible, "content.route_schema_incompatible");
 			if (!Compatibility.Supports(ClientBuild))
 				throw FContentValidationError(EContentError::Incompatible, "manifest is incompatible with this client build");
+		}
+
+		FRouteVectorMm ConvertVector(const rowing::v1::RouteVectorMmV2 &Wire)
+		{
+			return {Wire.x_mm(), Wire.y_mm(), Wire.z_mm()};
+		}
+
+		double Length3(const FRouteVectorMm &Value)
+		{
+			return std::hypot(std::hypot(static_cast<double>(Value.X), static_cast<double>(Value.Y)), static_cast<double>(Value.Z));
+		}
+
+		struct FDoubleVector
+		{
+			double X = 0.0;
+			double Y = 0.0;
+			double Z = 0.0;
+		};
+
+		FDoubleVector EvaluateHermite(const FRouteHermiteControlPoint &Start,
+									  const FRouteHermiteControlPoint &End,
+									  double T)
+		{
+			const double T2 = T * T;
+			const double T3 = T2 * T;
+			const double H00 = 2.0 * T3 - 3.0 * T2 + 1.0;
+			const double H10 = T3 - 2.0 * T2 + T;
+			const double H01 = -2.0 * T3 + 3.0 * T2;
+			const double H11 = T3 - T2;
+			return {
+				H00 * Start.PositionMm.X + H10 * Start.LeaveTangentMm.X + H01 * End.PositionMm.X + H11 * End.ArriveTangentMm.X,
+				H00 * Start.PositionMm.Y + H10 * Start.LeaveTangentMm.Y + H01 * End.PositionMm.Y + H11 * End.ArriveTangentMm.Y,
+				H00 * Start.PositionMm.Z + H10 * Start.LeaveTangentMm.Z + H01 * End.PositionMm.Z + H11 * End.ArriveTangentMm.Z};
+		}
+
+		FDoubleVector EvaluateHermiteDerivative(const FRouteHermiteControlPoint &Start,
+												const FRouteHermiteControlPoint &End,
+												double T)
+		{
+			const double T2 = T * T;
+			const double H00 = 6.0 * T2 - 6.0 * T;
+			const double H10 = 3.0 * T2 - 4.0 * T + 1.0;
+			const double H01 = -6.0 * T2 + 6.0 * T;
+			const double H11 = 3.0 * T2 - 2.0 * T;
+			return {
+				H00 * Start.PositionMm.X + H10 * Start.LeaveTangentMm.X + H01 * End.PositionMm.X + H11 * End.ArriveTangentMm.X,
+				H00 * Start.PositionMm.Y + H10 * Start.LeaveTangentMm.Y + H01 * End.PositionMm.Y + H11 * End.ArriveTangentMm.Y,
+				H00 * Start.PositionMm.Z + H10 * Start.LeaveTangentMm.Z + H01 * End.PositionMm.Z + H11 * End.ArriveTangentMm.Z};
+		}
+
+		FDoubleVector EvaluateHermiteSecondDerivative(const FRouteHermiteControlPoint &Start,
+													  const FRouteHermiteControlPoint &End,
+													  double T)
+		{
+			const double H00 = 12.0 * T - 6.0;
+			const double H10 = 6.0 * T - 4.0;
+			const double H01 = -12.0 * T + 6.0;
+			const double H11 = 6.0 * T - 2.0;
+			return {
+				H00 * Start.PositionMm.X + H10 * Start.LeaveTangentMm.X + H01 * End.PositionMm.X + H11 * End.ArriveTangentMm.X,
+				H00 * Start.PositionMm.Y + H10 * Start.LeaveTangentMm.Y + H01 * End.PositionMm.Y + H11 * End.ArriveTangentMm.Y,
+				H00 * Start.PositionMm.Z + H10 * Start.LeaveTangentMm.Z + H01 * End.PositionMm.Z + H11 * End.ArriveTangentMm.Z};
+		}
+
+		double Distance(const FDoubleVector &A, const FDoubleVector &B)
+		{
+			return std::hypot(std::hypot(A.X - B.X, A.Y - B.Y), A.Z - B.Z);
+		}
+
+		double Cross2d(const FDoubleVector &Origin, const FDoubleVector &A, const FDoubleVector &B)
+		{
+			return (A.X - Origin.X) * (B.Y - Origin.Y) - (A.Y - Origin.Y) * (B.X - Origin.X);
+		}
+
+		bool IsBetween(double Value, double A, double B)
+		{
+			return Value >= std::min(A, B) - 1e-6 && Value <= std::max(A, B) + 1e-6;
+		}
+
+		bool SegmentsIntersect2d(const FDoubleVector &A, const FDoubleVector &B, const FDoubleVector &C, const FDoubleVector &D)
+		{
+			const double Abc = Cross2d(A, B, C);
+			const double Abd = Cross2d(A, B, D);
+			const double Cda = Cross2d(C, D, A);
+			const double Cdb = Cross2d(C, D, B);
+			const bool bAbStraddles = (Abc > 0.0 && Abd < 0.0) || (Abc < 0.0 && Abd > 0.0);
+			const bool bCdStraddles = (Cda > 0.0 && Cdb < 0.0) || (Cda < 0.0 && Cdb > 0.0);
+			const bool bProperCrossing = bAbStraddles && bCdStraddles;
+			if (bProperCrossing)
+				return true;
+			return (std::abs(Abc) <= 1e-6 && IsBetween(C.X, A.X, B.X) && IsBetween(C.Y, A.Y, B.Y)) ||
+				   (std::abs(Abd) <= 1e-6 && IsBetween(D.X, A.X, B.X) && IsBetween(D.Y, A.Y, B.Y)) ||
+				   (std::abs(Cda) <= 1e-6 && IsBetween(A.X, C.X, D.X) && IsBetween(A.Y, C.Y, D.Y)) ||
+				   (std::abs(Cdb) <= 1e-6 && IsBetween(B.X, C.X, D.X) && IsBetween(B.Y, C.Y, D.Y));
+		}
+
+		void ValidatePresentationPath(FRouteDefinition &Route, const rowing::v1::RoutePresentationPathV2 &Wire)
+		{
+			FRoutePresentationPath Path;
+			Path.PathFormatVersion = Wire.path_format_version();
+			Path.OwningRouteId = Wire.owning_route_id();
+			Path.RouteLocalOriginMm = ConvertVector(Wire.route_local_origin_mm());
+			Path.RouteLocalYawMicroradians = Wire.route_local_yaw_microradians();
+			Path.ArcLengthLookupSha256 = RequireHash(Wire.arc_length_lookup_sha256(), "arc-length lookup hash");
+			if (Path.PathFormatVersion != PresentationPathFormatV1 || Path.OwningRouteId != Route.RouteId ||
+				std::abs(static_cast<std::int64_t>(Path.RouteLocalYawMicroradians)) > 3'141'593)
+				throw FContentValidationError(EContentError::InvalidRoute, "presentation path frame or owner is invalid");
+			if (Wire.control_points_size() < 8 || Wire.control_points_size() > 40)
+				throw FContentValidationError(EContentError::InvalidRoute, "presentation path requires 8-40 control points");
+			std::unordered_set<std::string> PointIds;
+			std::uint64_t PreviousDistance = 0;
+			for (int Index = 0; Index < Wire.control_points_size(); ++Index)
+			{
+				const auto &PointWire = Wire.control_points(Index);
+				FRouteHermiteControlPoint Point;
+				Point.PointId = PointWire.point_id();
+				Point.RouteDistanceMm = PointWire.route_distance_mm();
+				Point.PositionMm = ConvertVector(PointWire.position_mm());
+				Point.ArriveTangentMm = ConvertVector(PointWire.arrive_tangent_mm());
+				Point.LeaveTangentMm = ConvertVector(PointWire.leave_tangent_mm());
+				const bool bEndpointValid = (Index == 0 && Point.RouteDistanceMm == 0) ||
+											(Index > 0 && Point.RouteDistanceMm > PreviousDistance);
+				if (!IsIdentifier(Point.PointId, 128) || !PointIds.insert(Point.PointId).second || !bEndpointValid ||
+					std::abs(Point.PositionMm.X) > 10'000'000 || std::abs(Point.PositionMm.Y) > 10'000'000 ||
+					std::abs(Point.PositionMm.Z) > 1'000'000 || Length3(Point.ArriveTangentMm) < 1.0 ||
+					Length3(Point.LeaveTangentMm) < 1.0 || Length3(Point.ArriveTangentMm) > 20'000'000.0 ||
+					Length3(Point.LeaveTangentMm) > 20'000'000.0)
+					throw FContentValidationError(EContentError::InvalidRoute, "presentation path control point is invalid");
+				PreviousDistance = Point.RouteDistanceMm;
+				Path.ControlPoints.push_back(std::move(Point));
+			}
+			if (Path.ControlPoints.back().RouteDistanceMm != Route.LengthMm)
+				throw FContentValidationError(EContentError::InvalidRoute, "presentation path endpoints do not match route length");
+
+			// C1 direction continuity is explicit. Different tangent magnitudes are
+			// allowed because they tune the adjacent Hermite spans.
+			for (std::size_t Index = 1; Index + 1 < Path.ControlPoints.size(); ++Index)
+			{
+				const auto &Point = Path.ControlPoints[Index];
+				const double Dot = static_cast<double>(Point.ArriveTangentMm.X) * Point.LeaveTangentMm.X +
+								   static_cast<double>(Point.ArriveTangentMm.Y) * Point.LeaveTangentMm.Y +
+								   static_cast<double>(Point.ArriveTangentMm.Z) * Point.LeaveTangentMm.Z;
+				if (Dot / (Length3(Point.ArriveTangentMm) * Length3(Point.LeaveTangentMm)) < 0.999)
+					throw FContentValidationError(EContentError::InvalidRoute, "presentation path tangent continuity failed");
+			}
+
+			if (Wire.arc_length_lookup_size() < 2 || Wire.arc_length_lookup_size() > 1'000'002)
+				throw FContentValidationError(EContentError::Oversized, "presentation path lookup size is invalid");
+			std::uint64_t PreviousLookupDistance = 0;
+			std::uint32_t PreviousSegment = 0;
+			std::uint32_t PreviousParameter = 0;
+			for (int Index = 0; Index < Wire.arc_length_lookup_size(); ++Index)
+			{
+				const auto &EntryWire = Wire.arc_length_lookup(Index);
+				FRouteArcLengthLookupEntry Entry{EntryWire.route_distance_mm(), EntryWire.segment_index(), EntryWire.segment_parameter_ppm()};
+				const bool bFirst = Index == 0;
+				const bool bLast = Index + 1 == Wire.arc_length_lookup_size();
+				const bool bCurveMonotonic = bFirst || Entry.SegmentIndex > PreviousSegment ||
+											 (Entry.SegmentIndex == PreviousSegment && Entry.SegmentParameterPpm > PreviousParameter);
+				if (Entry.SegmentIndex + 1 >= Path.ControlPoints.size() || Entry.SegmentParameterPpm > 1'000'000 ||
+					(bFirst && (Entry.RouteDistanceMm != 0 || Entry.SegmentIndex != 0 || Entry.SegmentParameterPpm != 0)) ||
+					(!bFirst && (Entry.RouteDistanceMm <= PreviousLookupDistance || Entry.RouteDistanceMm - PreviousLookupDistance > 5'000 || !bCurveMonotonic)) ||
+					(bLast && (Entry.RouteDistanceMm != Route.LengthMm || Entry.SegmentIndex + 2 != Path.ControlPoints.size() || Entry.SegmentParameterPpm != 1'000'000)))
+					throw FContentValidationError(EContentError::InvalidRoute, "presentation path lookup is not bounded and monotonic");
+				PreviousLookupDistance = Entry.RouteDistanceMm;
+				PreviousSegment = Entry.SegmentIndex;
+				PreviousParameter = Entry.SegmentParameterPpm;
+				Path.ArcLengthLookup.push_back(Entry);
+			}
+			const std::string LookupBytes = CanonicalArcLengthLookupBytes(Path.ArcLengthLookup);
+			if (Sha256(std::span(reinterpret_cast<const std::uint8_t *>(LookupBytes.data()), LookupBytes.size())) != Path.ArcLengthLookupSha256)
+				throw FContentValidationError(EContentError::InvalidHash, "arc-length lookup hash does not match canonical bytes");
+
+			// Independent dense audit: 128 chords per segment is deterministic and
+			// substantially denser than the signed <=5 m lookup.
+			double DenseLengthMm = 0.0;
+			std::vector<FDoubleVector> DensePoints;
+			for (std::size_t Segment = 0; Segment + 1 < Path.ControlPoints.size(); ++Segment)
+			{
+				const auto &Start = Path.ControlPoints[Segment];
+				const auto &End = Path.ControlPoints[Segment + 1];
+				FDoubleVector Previous = EvaluateHermite(Start, End, 0.0);
+				if (DensePoints.empty())
+					DensePoints.push_back(Previous);
+				const FDoubleVector Chord{static_cast<double>(End.PositionMm.X - Start.PositionMm.X),
+										  static_cast<double>(End.PositionMm.Y - Start.PositionMm.Y),
+										  static_cast<double>(End.PositionMm.Z - Start.PositionMm.Z)};
+				for (int Step = 1; Step <= 128; ++Step)
+				{
+					const double T = static_cast<double>(Step) / 128.0;
+					const FDoubleVector Current = EvaluateHermite(Start, End, T);
+					DenseLengthMm += Distance(Previous, Current);
+					Previous = Current;
+					const FDoubleVector D1 = EvaluateHermiteDerivative(Start, End, T);
+					const FDoubleVector D2 = EvaluateHermiteSecondDerivative(Start, End, T);
+					const double SpeedSquared = D1.X * D1.X + D1.Y * D1.Y;
+					const double Cross = std::abs(D1.X * D2.Y - D1.Y * D2.X);
+					const double ForwardDotChord = D1.X * Chord.X + D1.Y * Chord.Y + D1.Z * Chord.Z;
+					if (SpeedSquared < 1.0 ||
+						(Cross > 1e-9 && std::pow(SpeedSquared, 1.5) / Cross < 100'000.0))
+						throw FContentValidationError(EContentError::InvalidRoute, "presentation path turn radius is below 100 m");
+					if (ForwardDotChord <= 0.0)
+						throw FContentValidationError(EContentError::InvalidRoute, "presentation path reverses within a span");
+					DensePoints.push_back(Current);
+				}
+			}
+			for (std::size_t First = 0; First + 1 < DensePoints.size(); ++First)
+			{
+				for (std::size_t Second = First + 2; Second + 1 < DensePoints.size(); ++Second)
+				{
+					if (SegmentsIntersect2d(DensePoints[First], DensePoints[First + 1], DensePoints[Second], DensePoints[Second + 1]))
+						throw FContentValidationError(EContentError::InvalidRoute, "presentation path self-intersects");
+				}
+			}
+			if (std::abs(DenseLengthMm - static_cast<double>(Route.LengthMm)) > 500.0)
+				throw FContentValidationError(EContentError::InvalidRoute, "presentation path dense length audit exceeds 500 mm tolerance");
+			Route.PresentationPath = std::move(Path);
 		}
 
 		FRouteDefinition ConvertRoute(const rowing::v1::RouteDefinitionV1 &Wire, std::uint32_t ClientBuild)
@@ -179,7 +400,9 @@ namespace ContentRuntime
 			Route.DisplayNameKey = Wire.display_name_key();
 			Route.DescriptionKey = Wire.description_key();
 			Route.MetadataSha256 = RequireHash(Wire.metadata_sha256(), "route metadata hash");
-			if (Route.SchemaVersion != RouteDefinitionSchemaV1 || !IsIdentifier(Route.RouteId, 128) ||
+			if (Route.SchemaVersion != RouteDefinitionSchemaV2)
+				throw FContentValidationError(EContentError::RouteSchemaIncompatible, "content.route_schema_incompatible");
+			if (!IsIdentifier(Route.RouteId, 128) ||
 				!IsIdentifier(Route.SemanticVersion, 64) || !IsIdentifier(Route.ContentSetId, 128) ||
 				Route.LengthMm == 0 || Route.LengthMm > 1'000'000'000ULL ||
 				!IsLocalizationKey(Route.DisplayNameKey) || !IsLocalizationKey(Route.DescriptionKey))
@@ -195,6 +418,9 @@ namespace ContentRuntime
 				Route.Checkpoints.push_back({Checkpoint.checkpoint_id(), Checkpoint.distance_mm()});
 				PreviousDistance = Checkpoint.distance_mm();
 			}
+			if (!Wire.has_presentation_path())
+				throw FContentValidationError(EContentError::InvalidRoute, "route-schema v2 requires a presentation path");
+			ValidatePresentationPath(Route, Wire.presentation_path());
 			rowing::v1::RouteDefinitionV1 Hashable = Wire;
 			Hashable.clear_metadata_sha256();
 			const std::string HashableBytes = DeterministicSerialize(Hashable);
@@ -219,6 +445,24 @@ namespace ContentRuntime
 	bool FClientCompatibility::Supports(std::uint32_t ClientBuild) const noexcept
 	{
 		return ClientBuild >= MinimumBuild && ClientBuild <= MaximumBuild;
+	}
+
+	std::string CanonicalArcLengthLookupBytes(const std::vector<FRouteArcLengthLookupEntry> &Entries)
+	{
+		std::string Bytes("VIRPATHLOOKUP1\0", 15);
+		auto Append = [&Bytes](std::uint64_t Value, unsigned Width)
+		{
+			for (unsigned Index = 0; Index < Width; ++Index)
+				Bytes.push_back(static_cast<char>(Value >> (Index * 8U)));
+		};
+		Append(Entries.size(), 4);
+		for (const FRouteArcLengthLookupEntry &Entry : Entries)
+		{
+			Append(Entry.RouteDistanceMm, 8);
+			Append(Entry.SegmentIndex, 4);
+			Append(Entry.SegmentParameterPpm, 4);
+		}
+		return Bytes;
 	}
 
 	FContentValidationError::FContentValidationError(EContentError InCode, std::string Message)
@@ -324,6 +568,76 @@ namespace ContentRuntime
 		Route.DescriptionKey = "route.standard.description";
 		constexpr std::string_view CanonicalIdentity = "route.standard.2k|1.0.0|builtin-standard|2000000|closed|km1:1000000";
 		Route.MetadataSha256 = Sha256(std::span(reinterpret_cast<const std::uint8_t *>(CanonicalIdentity.data()), CanonicalIdentity.size()));
+
+		// The sole schema-v1 path exception is compiled into the client. It is the
+		// same closed 32-span ellipse used by the Phase 1 actor, now expressed as
+		// explicit Hermite data so Unreal no longer owns its parameterization.
+		FRoutePresentationPath Path;
+		Path.PathFormatVersion = PresentationPathFormatV1;
+		Path.OwningRouteId = Route.RouteId;
+		constexpr std::size_t SegmentCount = 32;
+		constexpr double RadiusXmm = 650'000.0;
+		constexpr double RadiusYmm = 180'000.0;
+		constexpr double TwoPi = 6.283185307179586476925286766559;
+		for (std::size_t Index = 0; Index <= SegmentCount; ++Index)
+		{
+			const double Angle = TwoPi * static_cast<double>(Index) / static_cast<double>(SegmentCount);
+			const double SpanAngle = TwoPi / static_cast<double>(SegmentCount);
+			FRouteHermiteControlPoint Point;
+			Point.PointId = Index == SegmentCount ? "standard-finish" : "standard-" + std::to_string(Index);
+			Point.RouteDistanceMm = Route.LengthMm * Index / SegmentCount;
+			Point.PositionMm = {static_cast<std::int64_t>(std::llround(RadiusXmm * std::cos(Angle))),
+								static_cast<std::int64_t>(std::llround(RadiusYmm * std::sin(Angle))),
+								200};
+			Point.ArriveTangentMm = {static_cast<std::int64_t>(std::llround(-RadiusXmm * std::sin(Angle) * SpanAngle)),
+									 static_cast<std::int64_t>(std::llround(RadiusYmm * std::cos(Angle) * SpanAngle)),
+									 0};
+			Point.LeaveTangentMm = Point.ArriveTangentMm;
+			Path.ControlPoints.push_back(std::move(Point));
+		}
+
+		struct FArcSample
+		{
+			double ArcMm;
+			std::uint32_t Segment;
+			double T;
+		};
+		std::vector<FArcSample> Samples;
+		Samples.push_back({0.0, 0, 0.0});
+		double TotalArcMm = 0.0;
+		for (std::size_t Segment = 0; Segment < SegmentCount; ++Segment)
+		{
+			FDoubleVector Previous = EvaluateHermite(Path.ControlPoints[Segment], Path.ControlPoints[Segment + 1], 0.0);
+			for (int Step = 1; Step <= 256; ++Step)
+			{
+				const double T = static_cast<double>(Step) / 256.0;
+				const FDoubleVector Current = EvaluateHermite(Path.ControlPoints[Segment], Path.ControlPoints[Segment + 1], T);
+				TotalArcMm += Distance(Previous, Current);
+				Samples.push_back({TotalArcMm, static_cast<std::uint32_t>(Segment), T});
+				Previous = Current;
+			}
+		}
+		for (std::uint64_t DistanceMm = 0;; DistanceMm = std::min(Route.LengthMm, DistanceMm + 5'000))
+		{
+			if (DistanceMm == Route.LengthMm)
+			{
+				Path.ArcLengthLookup.push_back({DistanceMm, SegmentCount - 1, 1'000'000});
+				break;
+			}
+			const double TargetArc = TotalArcMm * static_cast<double>(DistanceMm) / static_cast<double>(Route.LengthMm);
+			const auto Upper = std::lower_bound(Samples.begin(), Samples.end(), TargetArc, [](const FArcSample &Sample, double Arc)
+												{ return Sample.ArcMm < Arc; });
+			const FArcSample &After = Upper == Samples.end() ? Samples.back() : *Upper;
+			const FArcSample &Before = Upper == Samples.begin() ? *Upper : *(Upper - 1);
+			double T = After.T;
+			std::uint32_t Segment = After.Segment;
+			if (After.Segment == Before.Segment && After.ArcMm > Before.ArcMm)
+				T = Before.T + (After.T - Before.T) * (TargetArc - Before.ArcMm) / (After.ArcMm - Before.ArcMm);
+			Path.ArcLengthLookup.push_back({DistanceMm, Segment, static_cast<std::uint32_t>(std::llround(std::clamp(T, 0.0, 1.0) * 1'000'000.0))});
+		}
+		const std::string LookupBytes = CanonicalArcLengthLookupBytes(Path.ArcLengthLookup);
+		Path.ArcLengthLookupSha256 = Sha256(std::span(reinterpret_cast<const std::uint8_t *>(LookupBytes.data()), LookupBytes.size()));
+		Route.PresentationPath = std::move(Path);
 		return Route;
 	}
 
@@ -410,6 +724,8 @@ namespace ContentRuntime
 			return "bad_schema";
 		case EContentError::Incompatible:
 			return "incompatible";
+		case EContentError::RouteSchemaIncompatible:
+			return "content.route_schema_incompatible";
 		case EContentError::Expired:
 			return "expired";
 		case EContentError::RevisionRollback:

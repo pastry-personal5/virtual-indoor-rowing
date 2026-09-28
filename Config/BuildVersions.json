@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "application_version": "0.1.0",
-  "application_build": 1,
+  "application_build": 2,
   "platform": {
     "os": "macOS Tahoe",
     "minimum_version": "26.6.2",

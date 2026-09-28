@@ -16,6 +16,43 @@ message ClientCompatibilityV1 {
   uint32 route_schema = 4;
 }
 
+// Route-schema v2 presentation geometry. The historical RouteDefinitionV1
+// name is retained for wire compatibility; schema_version defines semantics.
+// All spatial values are route-local integer millimetres. Tangents are the
+// explicit derivatives for the control point's adjacent cubic-Hermite segment,
+// so no engine auto-tangent or reparameterization table is authoritative.
+message RouteVectorMmV2 {
+  sint64 x_mm = 1;
+  sint64 y_mm = 2;
+  sint64 z_mm = 3;
+}
+
+message RouteHermiteControlPointV2 {
+  string point_id = 1;
+  uint64 route_distance_mm = 2;
+  RouteVectorMmV2 position_mm = 3;
+  RouteVectorMmV2 arrive_tangent_mm = 4;
+  RouteVectorMmV2 leave_tangent_mm = 5;
+}
+
+message RouteArcLengthLookupEntryV2 {
+  uint64 route_distance_mm = 1;
+  uint32 segment_index = 2;
+  // Unit segment parameter in millionths, inclusive range [0, 1000000].
+  uint32 segment_parameter_ppm = 3;
+}
+
+message RoutePresentationPathV2 {
+  uint32 path_format_version = 1;
+  string owning_route_id = 2;
+  RouteVectorMmV2 route_local_origin_mm = 3;
+  // Fixed-point clockwise yaw from level +X, in microradians.
+  sint32 route_local_yaw_microradians = 4;
+  repeated RouteHermiteControlPointV2 control_points = 5;
+  repeated RouteArcLengthLookupEntryV2 arc_length_lookup = 6;
+  bytes arc_length_lookup_sha256 = 7;
+}
+
 message RouteDefinitionV1 {
   uint32 schema_version = 1;
   string route_id = 2;
@@ -28,6 +65,7 @@ message RouteDefinitionV1 {
   string display_name_key = 9;
   string description_key = 10;
   bytes metadata_sha256 = 11;
+  RoutePresentationPathV2 presentation_path = 12;
 }
 
 message ContentManifestUnsignedV1 {

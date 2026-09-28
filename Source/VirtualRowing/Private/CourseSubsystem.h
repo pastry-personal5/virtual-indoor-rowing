@@ -6,6 +6,7 @@
 #include "Tickable.h"
 
 #include "CourseRuntime/CoursePresentation.h"
+#include "LocalData/PresentationPreferenceRepository.h"
 
 #include "CourseSubsystem.generated.h"
 
@@ -37,9 +38,8 @@ class VIRTUALROWING_API UCourseSubsystem : public UWorldSubsystem, public FTicka
 	static bool SupportsWorldType(EWorldType::Type WorldType);
 	const FCoursePresentationSnapshot &GetPresentation() const;
 	ECourseAnimationQuality GetAnimationQuality() const;
-	bool CanToggleRestView() const;
-	bool IsRestViewEnabled() const;
-	void ToggleRestView();
+	bool TryGetVisibleBoatWorldLocation(FVector &OutLocation) const;
+	void CycleCameraPreset(uint64 NowMonotonicNs);
 	AGrayBoxCourseActor *GetCourseActorForTesting() const;
 	// Called before the HUD enters the viewport so the same visible frame has a
 	// world actor and active course camera behind it.
@@ -61,6 +61,7 @@ class VIRTUALROWING_API UCourseSubsystem : public UWorldSubsystem, public FTicka
 
   private:
 	FCoursePresentationRuntime Runtime;
+	std::unique_ptr<LocalData::FCoalescedCameraPreference> CameraPreference;
 	UPROPERTY(Transient)
 	TObjectPtr<AGrayBoxCourseActor> CourseActor;
 	FString LastSampleKey;

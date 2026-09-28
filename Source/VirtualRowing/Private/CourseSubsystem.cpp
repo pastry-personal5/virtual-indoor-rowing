@@ -9,12 +9,16 @@
 #include "Engine/LevelStreamingDynamic.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Components/InstancedStaticMeshComponent.h"
+#include "HAL/FileManager.h"
+#include "HAL/PlatformProcess.h"
 #include "HAL/PlatformTime.h"
 #include "Misc/PackageName.h"
+#include "Misc/Paths.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 
 #include "ContentRuntime/CourseLevel.h"
+#include "LocalData/PresentationPreferenceRepository.h"
 #include "WorkoutRuntime/WorkoutSnapshot.h"
 
 #include <chrono>
@@ -34,12 +38,17 @@ namespace
 		if (!Snapshot)
 			return Input;
 		Input.bHasSession = true;
+		Input.AcceptedSampleGeneration = Snapshot->AcceptedSampleCount;
 		Input.SessionId = Snapshot->SessionId;
 		Input.SessionState = Snapshot->State;
 		Input.bFrozen = Snapshot->bInputFrozen;
 		Input.bStale = Snapshot->ConnectionState == ERowingConnectionState::Stale ||
 					   Snapshot->ConnectionState == ERowingConnectionState::Reconnecting;
 		Input.bConnected = Snapshot->ConnectionState == ERowingConnectionState::Ready;
+		Input.bWorkoutCompleted = Snapshot->Disposition == ERowingSessionDisposition::Completed;
+		Input.bWorkoutTerminated = Snapshot->EndReason == ERowingSessionStateReason::UserAborted ||
+								   Snapshot->EndReason == ERowingSessionStateReason::DeviceTerminated ||
+								   Snapshot->Disposition == ERowingSessionDisposition::Aborted;
 		if (Snapshot->LatestSample)
 		{
 			const FRowingMetricSample &Sample = *Snapshot->LatestSample;
@@ -64,16 +73,52 @@ namespace
 	{
 		return UTF8_TO_TCHAR((Route.RouteId + ":" + Route.SemanticVersion + ":" + Route.ContentSetId).c_str());
 	}
+
+	ECourseCameraPreset ToCoursePreset(LocalData::ECameraPreferencePreset Preset)
+	{
+		switch (Preset)
+		{
+		case LocalData::ECameraPreferencePreset::Close:
+			return ECourseCameraPreset::Close;
+		case LocalData::ECameraPreferencePreset::Wide:
+			return ECourseCameraPreset::Wide;
+		case LocalData::ECameraPreferencePreset::Medium:
+		default:
+			return ECourseCameraPreset::Medium;
+		}
+	}
+
+	LocalData::ECameraPreferencePreset ToStoredPreset(ECourseCameraPreset Preset)
+	{
+		switch (Preset)
+		{
+		case ECourseCameraPreset::Close:
+			return LocalData::ECameraPreferencePreset::Close;
+		case ECourseCameraPreset::Wide:
+			return LocalData::ECameraPreferencePreset::Wide;
+		case ECourseCameraPreset::Medium:
+		default:
+			return LocalData::ECameraPreferencePreset::Medium;
+		}
+	}
 } // namespace
 
 void UCourseSubsystem::Initialize(FSubsystemCollectionBase &Collection)
 {
 	Super::Initialize(Collection);
+	const FString AppSupport = FPaths::Combine(FPlatformProcess::UserHomeDir(), TEXT("Library/Application Support"), TEXT("dev.virtualrowing.app"));
+	// Content safe mode deliberately skips UContentSubsystem initialization, so
+	// preference persistence must establish its own application-support path.
+	IFileManager::Get().MakeDirectory(*AppSupport, true);
+	CameraPreference = std::make_unique<LocalData::FCoalescedCameraPreference>(
+		std::filesystem::path(TCHAR_TO_UTF8(*FPaths::Combine(AppSupport, TEXT("rowing.sqlite3")))));
+	Runtime.SetCameraPreset(ToCoursePreset(CameraPreference->Get()), 0);
 }
 
 void UCourseSubsystem::Deinitialize()
 {
 	DestroyCourseScene();
+	CameraPreference.reset();
 	Runtime.Reset();
 	Super::Deinitialize();
 }
@@ -150,6 +195,7 @@ void UCourseSubsystem::Pump(uint64 NowMonotonicNs)
 		SampleObservedNs = 0;
 	}
 	const FCourseTelemetryInput Telemetry = TranslateSnapshot(WorkoutSnapshot, SampleTimestampNs);
+	Runtime.SetReducedMotion(AGrayBoxCourseActor::ReduceMotionRequested(), NowMonotonicNs);
 	const FCoursePresentationSnapshot Snapshot = Runtime.Update(Telemetry, NowMonotonicNs);
 	if (CourseActor)
 		CourseActor->ApplyPresentation(Snapshot, Telemetry, NowMonotonicNs);
@@ -336,7 +382,8 @@ void UCourseSubsystem::BeginAuthoredLevelLoad()
 		RejectAuthoredLevel(TEXT("course.level_missing"));
 		return;
 	}
-	ULevelStreamingDynamic::FLoadLevelInstanceParams Params(World, PackageName, FTransform(FRotator::ZeroRotator, AGrayBoxCourseActor::GetAuthoredLevelOriginCm()));
+	const FTransform LevelTransform = CourseActor ? CourseActor->GetAuthoredLevelTransform() : FTransform::Identity;
+	ULevelStreamingDynamic::FLoadLevelInstanceParams Params(World, PackageName, LevelTransform);
 	Params.bInitiallyVisible = false;
 	bool bSuccess = false;
 	ULevelStreamingDynamic *Streaming = ULevelStreamingDynamic::LoadLevelInstance(Params, bSuccess);
@@ -487,20 +534,16 @@ ECourseAnimationQuality UCourseSubsystem::GetAnimationQuality() const
 	return Runtime.GetSnapshot().AnimationQuality;
 }
 
-bool UCourseSubsystem::CanToggleRestView() const
+bool UCourseSubsystem::TryGetVisibleBoatWorldLocation(FVector &OutLocation) const
 {
-	return CourseActor && CourseActor->CanToggleRestView();
+	return CourseActor && IsValid(CourseActor) && CourseActor->TryGetVisibleBoatWorldLocation(OutLocation);
 }
 
-bool UCourseSubsystem::IsRestViewEnabled() const
+void UCourseSubsystem::CycleCameraPreset(uint64 NowMonotonicNs)
 {
-	return CourseActor && CourseActor->IsRestViewEnabled();
-}
-
-void UCourseSubsystem::ToggleRestView()
-{
-	if (CourseActor)
-		CourseActor->ToggleRestView();
+	Runtime.CycleCameraPreset(NowMonotonicNs);
+	if (CameraPreference)
+		CameraPreference->Set(ToStoredPreset(Runtime.GetSelectedCameraPreset()));
 }
 
 AGrayBoxCourseActor *UCourseSubsystem::GetCourseActorForTesting() const

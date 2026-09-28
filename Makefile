@@ -95,7 +95,7 @@ pm5-tui-journal: ## Launch the TUI with the opt-in Keychain-sealed workout journ
 
 # --- Unreal ------------------------------------------------------------------
 
-.PHONY: unreal-native-app unreal-smoke unreal-shipping han-source-verify han-external-cook unreal-package-verify unreal-bluetooth-probe unreal-bluetooth-probe-clean content-canary content-fixture content-release-package water-source-check
+.PHONY: unreal-native-app unreal-smoke unreal-shipping han-source-verify han-external-cook unreal-package-verify unreal-bluetooth-probe unreal-bluetooth-probe-clean content-canary content-fixture content-path-source-candidate content-path-source-approve content-release-package water-source-check
 
 water-source-check: ## Check Milestone 5 source, native tests, and Han references while Editor is open; does not compile Unreal.
 	$(DEV) format-check
@@ -127,6 +127,12 @@ content-canary: ## Run the deterministic Phase 2 origin/download/fallback/rollba
 
 content-fixture: ## Generate the local deterministic content-origin fixture (not Shipping evidence).
 	$(DEV) content-fixture
+
+content-path-source-candidate: ## Generate or verify the unapproved deterministic Han v2 path-source candidate.
+	$(DEV) content-path-source-candidate
+
+content-path-source-approve: ## Record owner approval against the exact reviewed Han map.
+	$(DEV) content-path-source-approve
 
 content-release-package: ## Create a signed immutable Han release from a reviewed external IoStore cook.
 	$(DEV) content-release-package
