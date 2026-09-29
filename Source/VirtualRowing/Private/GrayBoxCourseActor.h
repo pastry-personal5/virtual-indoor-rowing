@@ -76,16 +76,15 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	bool HasHanRiverEnvironmentForTesting() const;
 	bool HasInputComponentForTesting() const;
 
-	// The downloaded Han level covers only the first ~500 m of the route, so the
-	// built-in kit stays as the whole-route baseline. While the level is shown the
-	// kit's own overlapping landmarks, light and water surface yield to it. The
-	// call is reversible and has no effect on any workout fact.
+	// While the full-route downloaded Han level is shown, the built-in kit's
+	// landmarks, light and water surface yield to it. The call is reversible and
+	// has no effect on any workout fact.
 	void SetAuthoredLevelActive(bool bActive);
 	bool IsAuthoredLevelActiveForTesting() const;
 	int32 GetVisibleHanLandmarkCountForTesting() const;
-	// Places the authored level's origin at the signed route start. The streamed
-	// map follows the engine-independent route frame instead of legacy spline
-	// coordinates, so downloaded v2 geometry remains the presentation authority.
+	// The Blue Hour map is saved in the same absolute world frame reconstructed
+	// by the signed route. Streaming must preserve that frame rather than apply
+	// the route origin and yaw a second time.
 	FTransform GetAuthoredLevelTransform() const;
 
   private:

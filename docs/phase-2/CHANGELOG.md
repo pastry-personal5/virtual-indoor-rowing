@@ -1,5 +1,13 @@
 # Phase 2 changelog
 
+- Fixed the mounted Blue Hour coordinate-frame mismatch (2026-09-29). The
+  runtime map already stores actors in the absolute world frame reconstructed
+  by the signed route, so dynamic streaming now uses the identity transform
+  instead of applying the route origin and 180-degree yaw a second time. This
+  realigns the saved `HanRouteGate_CP*` actors, signed route markers, boat, and
+  heading. While the full-route authored level is active, all fallback-kit
+  landmarks yield without relying on the obsolete positive-X footprint test.
+
 - Owner-approved the current deterministic `presentation-path-v2.json` against
   the exact current `L_HanRiver_BlueHour` runtime-map bytes under ADR-0016
   (2026-09-29). This records only Han path publication approval; it does not

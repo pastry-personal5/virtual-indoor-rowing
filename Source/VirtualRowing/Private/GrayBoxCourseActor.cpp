@@ -954,20 +954,7 @@ int32 AGrayBoxCourseActor::GetHanLandmarkCountForTesting() const
 }
 FTransform AGrayBoxCourseActor::GetAuthoredLevelTransform() const
 {
-	if (!Route.PresentationPath || Route.PresentationPath->ControlPoints.empty())
-		return FTransform::Identity;
-	const ContentRuntime::FRoutePresentationPath &Path = *Route.PresentationPath;
-	const ContentRuntime::FRouteHermiteControlPoint &Start = Path.ControlPoints.front();
-	const double YawRadians = static_cast<double>(Path.RouteLocalYawMicroradians) / 1'000'000.0;
-	const double CosYaw = FMath::Cos(YawRadians);
-	const double SinYaw = FMath::Sin(YawRadians);
-	const double StartX = static_cast<double>(Start.PositionMm.X);
-	const double StartY = static_cast<double>(Start.PositionMm.Y);
-	const FVector OriginCm(
-		(CosYaw * StartX - SinYaw * StartY + static_cast<double>(Path.RouteLocalOriginMm.X)) / 10.0,
-		(SinYaw * StartX + CosYaw * StartY + static_cast<double>(Path.RouteLocalOriginMm.Y)) / 10.0,
-		(static_cast<double>(Start.PositionMm.Z + Path.RouteLocalOriginMm.Z)) / 10.0);
-	return FTransform(FRotator(0.0, FMath::RadiansToDegrees(YawRadians), 0.0), OriginCm);
+	return FTransform::Identity;
 }
 
 void AGrayBoxCourseActor::SetAuthoredLevelActive(bool bActive)
@@ -976,11 +963,9 @@ void AGrayBoxCourseActor::SetAuthoredLevelActive(bool bActive)
 		return;
 	bAuthoredLevelActive = bActive;
 	ClearWaterEffects();
-	// Authored footprint: the first 500 m plus the bridge approach behind the start.
-	const double FootprintEndX = GetAuthoredLevelTransform().GetLocation().X + 50'000.0;
 	for (UStaticMeshComponent *Landmark : HanLandmarkMeshes)
 	{
-		if (Landmark && Landmark->GetComponentLocation().X < FootprintEndX)
+		if (Landmark)
 			Landmark->SetVisibility(!bActive);
 	}
 	if (CourseLight)

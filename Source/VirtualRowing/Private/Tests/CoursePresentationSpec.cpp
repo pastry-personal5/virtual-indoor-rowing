@@ -223,7 +223,7 @@ void FCoursePresentationSpec::Define()
 		}
 		HanCourse->Destroy(); });
 
-	It("aligns the authored level to the signed Han path frame", [this]()
+	It("preserves the world-authored Han level frame", [this]()
 	   {
 		AGrayBoxCourseActor *HanCourse = World->SpawnActor<AGrayBoxCourseActor>();
 		ContentRuntime::FRouteDefinition HanRoute = MakeTestHanRoute();
@@ -234,8 +234,7 @@ void FCoursePresentationSpec::Define()
 		HanCourse->ConfigureRoute(HanRoute);
 		HanCourse->InitializeCourse();
 		const FTransform Transform = HanCourse->GetAuthoredLevelTransform();
-		TestTrue(TEXT("level starts at the rotated v2 path position"), Transform.GetLocation().Equals(FVector(100'000.01, 240'000.0, 300.0), 0.1));
-		TestTrue(TEXT("level follows the v2 path yaw"), FMath::IsNearlyEqual(Transform.Rotator().Yaw, 90.0f, 0.01f));
+		TestTrue(TEXT("world-authored level is not translated or rotated a second time"), Transform.Equals(FTransform::Identity, 0.0));
 		HanCourse->Destroy(); });
 
 	It("builds the Han kit when the actor is spawned into a world that has begun play", [this]()
