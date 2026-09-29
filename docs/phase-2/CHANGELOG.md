@@ -1,5 +1,11 @@
 # Phase 2 changelog
 
+- Owner-approved the current deterministic `presentation-path-v2.json` against
+  the exact current `L_HanRiver_BlueHour` runtime-map bytes under ADR-0016
+  (2026-09-29). This records only Han path publication approval; it does not
+  claim geographic accuracy, clearance, Editor automation, mounted-package,
+  performance, accessibility, or Phase 2 exit-gate evidence.
+
 - Realigned every `HanRouteGate_CP00`–`HanRouteGate_CP20` actor to the signed
   Hermite tangent at its saved control point (2026-09-28). End gates use their
   one-sided tangent and interior gates use their centred tangent; the edit is

@@ -185,13 +185,13 @@ class ContentReleasePackagerTests(unittest.TestCase):
 
 
 class ContentPathSourceCandidateTests(unittest.TestCase):
-	def test_repository_source_is_a_structurally_valid_owner_review_candidate(self) -> None:
+	def test_repository_source_is_a_structurally_valid_owner_approved_source(self) -> None:
 		path = content.SOURCE_CANDIDATE_ROOT / "presentation-path-v2.json"
 		self.assertTrue(path.is_file())
-		self.assertEqual(path.read_bytes(), content._candidate_path_source_bytes())
+		self.assertEqual(path.read_bytes(), content._owner_approved_path_source_bytes())
 		source = json.loads(path.read_text(encoding="utf-8"))
-		self.assertEqual(source["owner_approval"], "pending")
-		self.assertEqual(source["review_status"], "candidate-generated-not-approved")
+		self.assertEqual(source["owner_approval"], "approved")
+		self.assertEqual(source["review_status"], "owner-approved-map-identity")
 		self.assertTrue(content._presentation_path(source))
 
 	def test_path_encoder_omits_proto3_default_scalars(self) -> None:

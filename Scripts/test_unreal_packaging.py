@@ -533,11 +533,11 @@ class UnrealShippingPackagingTests(unittest.TestCase):
 		otool_output = "\n".join([
 			"/x/libVirtualRowing.dylib:",
 			"\t/usr/lib/libsqlite3.dylib (compatibility version 9.0.0, current version 377.0.0)",
-			"\t/opt/homebrew/opt/protobuf/lib/libprotobuf.36.1.0.dylib (compatibility version 36.0.0, current version 36.1.0)",
+			"\t/opt/homebrew/opt/protobuf/lib/libprotobuf.36.2.0.dylib (compatibility version 36.0.0, current version 36.2.0)",
 			"\t/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation (compatibility version 300.0.0, current version 4109.1.255)",
 		])
 		with patch.object(common, "capture", return_value=otool_output):
-			self.assertEqual(packaging.homebrew_load_commands(self.root / "x"), ["/opt/homebrew/opt/protobuf/lib/libprotobuf.36.1.0.dylib"])
+			self.assertEqual(packaging.homebrew_load_commands(self.root / "x"), ["/opt/homebrew/opt/protobuf/lib/libprotobuf.36.2.0.dylib"])
 		with patch.object(common, "capture", return_value=None):
 			self.assertEqual(packaging.homebrew_load_commands(self.root / "x"), [])
 

@@ -5412,13 +5412,19 @@
     "lookup_spacing_mm": 5000,
     "note": "A deterministic 5 km path compiled from the saved Blue Hour route-gate transforms pending Unreal map review."
   },
-  "owner_approval": "pending",
+  "owner_approval": "approved",
   "path_format_version": 1,
+  "review": {
+    "map": "Maps/L_HanRiver_BlueHour.umap",
+    "map_sha256": "a1cd9965c5f6961eeb6ceba1eb75984e04632a657ff466169f7bd67f5f0fa7db",
+    "owner_reviewed_on": "2026-09-29",
+    "record": "Owner decision: approve the v2 Han path for publication under ADR-0016."
+  },
   "review_inputs": {
     "route_beats_sha256": "21de1d00f31d5cf7f543d4fb67198d862c232cb7d9165138793c5ea05712f8b4",
     "waterline_sha256": "b2bcdd989f343db098dafff94b8ad0fca0efb34b6b32b939db28038a1779678d"
   },
-  "review_status": "candidate-generated-not-approved",
+  "review_status": "owner-approved-map-identity",
   "route_id": "route.han-river.5k",
   "route_local_origin_mm": [
     406288,

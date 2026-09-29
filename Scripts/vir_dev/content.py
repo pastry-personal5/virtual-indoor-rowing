@@ -580,7 +580,7 @@ def _owner_approved_path_source() -> dict[str, object]:
 		"review": {
 			"map": REVIEWED_PATH_MAP_RELATIVE,
 			"map_sha256": hashlib.sha256(map_path.read_bytes()).hexdigest(),
-			"owner_reviewed_on": "2026-09-28",
+			"owner_reviewed_on": "2026-09-29",
 			"record": "Owner decision: approve the v2 Han path for publication under ADR-0016.",
 		},
 	})
