@@ -68,7 +68,7 @@ Unreal MCP and notify the owner immediately.
 |---|---|
 | Start | The new route start, not a staging pose, is 200 m geographically north of the current visible 0 m Han boat transform. |
 | Route | Keep the stable `route.han-river.5k` identifier, westbound and open, with signed v2 geometry of exactly 5,000 m. Its final authored position is the nearest integer-millimetre representation of the owner target `(-455000.000333, -124999.999865, 0)` Unreal cm: `(-454999.99999997, -124999.97271864, 0)` cm. The reviewed runtime-map water footprint remains a separate visual-coverage concern. |
-| Control points | Author 21 signed points, including the start and finish, distributed through bends, clear bridge spans, and useful composition beats. The Blue Hour map has one suspended, high-contrast amber semi-transparent gate at each authentic signed point, built from two posts and a crossbar using `M_Han_RouteGate`. Gates sit 400 cm above the path height, are enlarged for visibility, have no collision, and remain presentation-only. Legacy 40-point markers are removed. |
+| Control points | Author 21 signed points, including the start and finish, distributed through bends, clear bridge spans, and useful composition beats. Each point has a text label containing its `CP` number and cumulative distance from the start, rounded up to a whole metre and grouped with thousands separators. Elevated beacon geometry is absent, and the saved `HanRouteGate_CP*` map actors are hidden before the mounted level becomes visible. Legacy 40-point markers remain removed. |
 | Direction | Follow the signed path tangent with bounded, damped yaw; there is no steering, collision avoidance, current, or drift. |
 | Hull motion | Use subtle roll, pitch, bob, and stroke heave derived only from reversible presentation values. |
 | Normal camera | Starboard rear-quarter, world-stabilized, with Close/Medium/Wide presets; Medium is the default. |
@@ -508,6 +508,9 @@ With a fresh unsuffixed module, automation must prove:
 - v2 points/tangents convert from millimetres to centimetres once and the
   visible Unreal path matches engine-independent samples within the declared
   tolerance;
+- every signed control-point and named-checkpoint label shows cumulative
+  distance rounded up to a grouped whole metre, with no elevated control-point
+  beacon or saved route-gate geometry visible;
 - the course anchor follows the signed path while the visual child alone gets
   hull motion; camera roll remains zero and water effects use the final rendered
   hull/blade transforms;

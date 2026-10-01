@@ -1,8 +1,11 @@
 #include "CourseRuntime/CoursePresentation.h"
 
 #include <cassert>
+#include <array>
 #include <cmath>
 #include <iostream>
+#include <limits>
+#include <vector>
 
 namespace
 {
@@ -44,6 +47,201 @@ namespace
 	bool Near(double A, double B, double Epsilon = 0.001)
 	{
 		return std::abs(A - B) <= Epsilon;
+	}
+
+	void TestMinimumJerkAndHermiteFoundation()
+	{
+		const auto Before = FBiomechanicalStrokeTrajectory::MinimumJerk(2.0, 7.0, -1.0, 2.0);
+		const auto After = FBiomechanicalStrokeTrajectory::MinimumJerk(2.0, 7.0, 2.0, 2.0);
+		assert(Near(Before.Position, 2.0) && Near(Before.Velocity, 0.0) && Near(Before.Acceleration, 0.0));
+		assert(Near(After.Position, 7.0) && Near(After.Velocity, 0.0) && Near(After.Acceleration, 0.0));
+		double Previous = 2.0;
+		for (int Index = 0; Index <= 1000; ++Index)
+		{
+			const auto State = FBiomechanicalStrokeTrajectory::MinimumJerk(2.0, 7.0, Index / 1000.0, 2.0);
+			assert(State.Position >= Previous - 1.0e-12 && State.Position >= 2.0 && State.Position <= 7.0);
+			Previous = State.Position;
+		}
+
+		const FQuinticKinematicState Start{3.0, 1.25, -0.5};
+		const FQuinticKinematicState End{8.0, -0.75, 0.25};
+		const auto ExactStart = FBiomechanicalStrokeTrajectory::QuinticHermite(Start, End, 0.0, 1.75);
+		const auto ExactEnd = FBiomechanicalStrokeTrajectory::QuinticHermite(Start, End, 1.0, 1.75);
+		assert(Near(ExactStart.Position, Start.Position) && Near(ExactStart.Velocity, Start.Velocity) && Near(ExactStart.Acceleration, Start.Acceleration));
+		assert(Near(ExactEnd.Position, End.Position) && Near(ExactEnd.Velocity, End.Velocity) && Near(ExactEnd.Acceleration, End.Acceleration));
+
+		const std::array<FQuinticHermiteKnot, 3> Knots{{
+			{0.0, {0.0, 0.0, 0.0}},
+			{0.8, {0.55, 0.9, -0.2}},
+			{2.0, {1.0, 0.0, 0.0}},
+		}};
+		const auto AtKnot = FBiomechanicalStrokeTrajectory::PiecewiseQuinticHermite(Knots, 0.8);
+		const auto BeforeKnot = FBiomechanicalStrokeTrajectory::PiecewiseQuinticHermite(Knots, 0.8 - 1.0e-7);
+		const auto AfterKnot = FBiomechanicalStrokeTrajectory::PiecewiseQuinticHermite(Knots, 0.8 + 1.0e-7);
+		assert(Near(AtKnot.Position, 0.55) && Near(AtKnot.Velocity, 0.9) && Near(AtKnot.Acceleration, -0.2));
+		assert(Near(BeforeKnot.Position, AfterKnot.Position, 1.0e-5));
+		assert(Near(BeforeKnot.Velocity, AfterKnot.Velocity, 1.0e-5));
+		assert(Near(BeforeKnot.Acceleration, AfterKnot.Acceleration, 1.0e-4));
+
+		for (double Duration : {0.0, 0.001, 0.5, 60.0 * 60.0})
+		{
+			const auto State = FBiomechanicalStrokeTrajectory::MinimumJerk(0.0, 1.0, 0.37, Duration);
+			assert(std::isfinite(State.Position) && std::isfinite(State.Velocity) && std::isfinite(State.Acceleration));
+		}
+		const auto InvalidTime = FBiomechanicalStrokeTrajectory::MinimumJerk(
+			0.0, 1.0, std::numeric_limits<double>::quiet_NaN(), 1.0);
+		assert(Near(InvalidTime.Position, 0.0) && Near(InvalidTime.Velocity, 0.0) &&
+			   Near(InvalidTime.Acceleration, 0.0));
+	}
+
+	void TestBiomechanicalChannelOrderingAndOarVelocity()
+	{
+		const auto EarlyDrive = FBiomechanicalStrokeTrajectory::Evaluate(0.20, EBiomechanicalStrokePhase::Drive, 1.0);
+		const auto BodyDrive = FBiomechanicalStrokeTrajectory::Evaluate(0.55, EBiomechanicalStrokePhase::Drive, 1.0);
+		const auto ArmDrive = FBiomechanicalStrokeTrajectory::Evaluate(0.85, EBiomechanicalStrokePhase::Drive, 1.0);
+		assert(EarlyDrive.Seat.Position > 0.0 && Near(EarlyDrive.Torso.Position, 0.0) && Near(EarlyDrive.Arms.Position, 0.0));
+		assert(BodyDrive.Seat.Position > BodyDrive.Torso.Position && Near(BodyDrive.Arms.Position, 0.0));
+		assert(ArmDrive.Seat.Position > 0.99 && ArmDrive.Torso.Position > 0.9 && ArmDrive.Arms.Position > 0.0);
+
+		const auto HandsAway = FBiomechanicalStrokeTrajectory::Evaluate(0.90, EBiomechanicalStrokePhase::Recovery, 2.0);
+		const auto BodyOver = FBiomechanicalStrokeTrajectory::Evaluate(0.70, EBiomechanicalStrokePhase::Recovery, 2.0);
+		const auto Slide = FBiomechanicalStrokeTrajectory::Evaluate(0.20, EBiomechanicalStrokePhase::Recovery, 2.0);
+		assert(HandsAway.Arms.Position < 1.0 && Near(HandsAway.Torso.Position, 1.0) && Near(HandsAway.Seat.Position, 1.0));
+		assert(BodyOver.Arms.Position < 0.01 && BodyOver.Torso.Position < 1.0 && Near(BodyOver.Seat.Position, 1.0));
+		assert(Slide.Arms.Position < 0.01 && Slide.Torso.Position < 0.01 && Slide.Seat.Position < 1.0);
+
+		double PreviousPosition = 0.0;
+		double MaximumVelocity = -1.0;
+		int MaximumIndex = -1;
+		for (int Index = 0; Index <= 1000; ++Index)
+		{
+			const auto State = FBiomechanicalStrokeTrajectory::Evaluate(Index / 1000.0, EBiomechanicalStrokePhase::Drive, 1.0).Oar;
+			assert(State.Position >= PreviousPosition - 1.0e-10 && State.Position >= 0.0 && State.Position <= 1.0);
+			if (State.Velocity > MaximumVelocity)
+			{
+				MaximumVelocity = State.Velocity;
+				MaximumIndex = Index;
+			}
+			PreviousPosition = State.Position;
+		}
+		assert(MaximumIndex >= 495 && MaximumIndex <= 505);
+	}
+
+	FCoursePresentationSnapshot SampleDriveAt(std::uint64_t TargetOffsetNs,
+											  const std::vector<std::uint64_t> &FrameSteps)
+	{
+		FCoursePresentationRuntime Runtime;
+		auto Input = ActiveInput();
+		Input.DriveTimeMs = 1000;
+		Runtime.Update(Input, Second);
+		Input.StrokeState = ERowingStrokeState::Drive;
+		Runtime.Update(Input, Second + 1);
+		std::uint64_t Now = Second + 1;
+		std::size_t StepIndex = 0;
+		while (Now < Second + 1 + TargetOffsetNs)
+		{
+			Now = std::min(Second + 1 + TargetOffsetNs, Now + FrameSteps[StepIndex++ % FrameSteps.size()]);
+			Runtime.Update(Input, Now);
+		}
+		return Runtime.GetSnapshot();
+	}
+
+	FCoursePresentationSnapshot SampleRecoveryAt(std::uint64_t TargetOffsetNs,
+												 const std::vector<std::uint64_t> &FrameSteps)
+	{
+		FCoursePresentationRuntime Runtime;
+		auto Input = ActiveInput();
+		Input.DriveTimeMs = 1000;
+		Input.RecoveryTimeMs = 2000;
+		Runtime.Update(Input, Second);
+		Input.StrokeState = ERowingStrokeState::Drive;
+		Runtime.Update(Input, 2 * Second);
+		Runtime.Update(Input, 3 * Second);
+		Input.StrokeState = ERowingStrokeState::Recovery;
+		Runtime.Update(Input, 3 * Second + 1);
+		std::uint64_t Now = 3 * Second + 1;
+		std::size_t StepIndex = 0;
+		while (Now < 3 * Second + 1 + TargetOffsetNs)
+		{
+			Now = std::min(3 * Second + 1 + TargetOffsetNs, Now + FrameSteps[StepIndex++ % FrameSteps.size()]);
+			Runtime.Update(Input, Now);
+		}
+		return Runtime.GetSnapshot();
+	}
+
+	void TestStrokeFrameRateIndependenceAndLatchedDurations()
+	{
+		const auto Thirty = SampleDriveAt(640'000'000ULL, {33'333'333ULL});
+		const auto Sixty = SampleDriveAt(640'000'000ULL, {16'666'667ULL});
+		const auto OneTwenty = SampleDriveAt(640'000'000ULL, {8'333'333ULL});
+		const auto Irregular = SampleDriveAt(640'000'000ULL, {5'000'000ULL, 41'000'000ULL, 13'000'000ULL, 22'000'000ULL});
+		for (const auto *Other : {&Sixty, &OneTwenty, &Irregular})
+		{
+			assert(Near(Thirty.StrokePose, Other->StrokePose, 1.0e-12));
+			assert(Near(Thirty.SeatPose, Other->SeatPose, 1.0e-12));
+			assert(Near(Thirty.TorsoPose, Other->TorsoPose, 1.0e-12));
+			assert(Near(Thirty.ArmsPose, Other->ArmsPose, 1.0e-12));
+			assert(Near(Thirty.OarPose, Other->OarPose, 1.0e-12));
+		}
+		const auto RecoveryThirty = SampleRecoveryAt(1'280'000'000ULL, {33'333'333ULL});
+		const auto RecoverySixty = SampleRecoveryAt(1'280'000'000ULL, {16'666'667ULL});
+		const auto RecoveryOneTwenty = SampleRecoveryAt(1'280'000'000ULL, {8'333'333ULL});
+		const auto RecoveryIrregular = SampleRecoveryAt(1'280'000'000ULL, {5'000'000ULL, 41'000'000ULL, 13'000'000ULL, 22'000'000ULL});
+		for (const auto *Other : {&RecoverySixty, &RecoveryOneTwenty, &RecoveryIrregular})
+		{
+			assert(Near(RecoveryThirty.StrokePose, Other->StrokePose, 1.0e-12));
+			assert(Near(RecoveryThirty.SeatPose, Other->SeatPose, 1.0e-12));
+			assert(Near(RecoveryThirty.TorsoPose, Other->TorsoPose, 1.0e-12));
+			assert(Near(RecoveryThirty.ArmsPose, Other->ArmsPose, 1.0e-12));
+			assert(Near(RecoveryThirty.OarPose, Other->OarPose, 1.0e-12));
+		}
+
+		FCoursePresentationRuntime Runtime;
+		auto Input = ActiveInput();
+		Input.DriveTimeMs = 1000;
+		Runtime.Update(Input, Second);
+		Input.StrokeState = ERowingStrokeState::Drive;
+		Runtime.Update(Input, 2 * Second);
+		Input.DriveTimeMs = 2000;
+		auto Snapshot = Runtime.Update(Input, 2 * Second + 500'000'000ULL);
+		assert(Near(Snapshot.StrokePose, 0.5));
+		Input.StrokeState = ERowingStrokeState::Recovery;
+		Input.RecoveryTimeMs = 2000;
+		Runtime.Update(Input, 3 * Second);
+		Input.RecoveryTimeMs = 4000;
+		Snapshot = Runtime.Update(Input, 4 * Second);
+		assert(Near(Snapshot.StrokePose, 0.5));
+	}
+
+	void TestCatchAndReconnectQuinticBridges()
+	{
+		FCoursePresentationRuntime Runtime;
+		auto Input = ActiveInput();
+		Input.DriveTimeMs = 1000;
+		Runtime.Update(Input, Second);
+		Input.StrokeState = ERowingStrokeState::Drive;
+		Runtime.Update(Input, 2 * Second);
+		auto Snapshot = Runtime.Update(Input, 2 * Second + 800'000'000ULL);
+		const double LiveSeat = Snapshot.SeatPose;
+		assert(LiveSeat > 0.9);
+
+		Input.bStale = true;
+		const auto BridgeStart = Runtime.Update(Input, 3 * Second);
+		assert(Near(BridgeStart.SeatPose, LiveSeat));
+		const auto BridgeMiddle = Runtime.Update(Input, 3 * Second + 250'000'000ULL);
+		assert(BridgeMiddle.SeatPose > 0.0 && BridgeMiddle.SeatPose < LiveSeat);
+		const auto Catch = Runtime.Update(Input, 3 * Second + 500'000'000ULL);
+		assert(Near(Catch.StrokePose, 0.0) && Near(Catch.SeatPose, 0.0) && Near(Catch.OarPose, 0.0));
+
+		Input.bStale = false;
+		Input.StrokeState = ERowingStrokeState::Recovery;
+		Input.RecoveryTimeMs = 2000;
+		const auto ReconnectStart = Runtime.Update(Input, 4 * Second);
+		assert(Near(ReconnectStart.StrokePose, 0.0));
+		const auto ReconnectMiddle = Runtime.Update(Input, 4 * Second + 250'000'000ULL);
+		assert(ReconnectMiddle.StrokePose > 0.0 && ReconnectMiddle.StrokePose < 1.0);
+		const auto ReconnectFinish = Runtime.Update(Input, 4 * Second + 500'000'000ULL);
+		assert(Near(ReconnectFinish.StrokePose, 1.0));
 	}
 
 	ContentRuntime::FRouteDefinition StraightHanRoute()
@@ -366,6 +564,10 @@ namespace
 
 int main()
 {
+	TestMinimumJerkAndHermiteFoundation();
+	TestBiomechanicalChannelOrderingAndOarVelocity();
+	TestStrokeFrameRateIndependenceAndLatchedDurations();
+	TestCatchAndReconnectQuinticBridges();
 	TestStandardGoldenPathAndWrapping();
 	TestPredictionSeekAndHolds();
 	TestOpenEndpointAndPath();

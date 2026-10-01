@@ -1,5 +1,57 @@
 # Phase 2 changelog
 
+## 2026-10-01 — Checkpoint distance labels and elevated gate suppression
+
+- Added cumulative distance to every named Han checkpoint and signed control-
+  point label. Distances are converted from signed route millimetres by rounding
+  up to a whole metre and formatting thousands separators, for example
+  `CP 20` / `2,436 m`.
+- Removed the generated cyan control-point beacon geometry. The mounted-level
+  handover now also hides every saved `HanRouteGate_CP*` actor before making the
+  authored level visible, while leaving route coordinates, checkpoint buoys,
+  labels, boat motion, and official workout distance unchanged.
+
+## 2026-09-29 — Milestone 7 biomechanical high-order sculling animation implementation
+
+- Added the scoped [Milestone 7 specification](17-milestone-7-biomechanical-sculling-animation.md)
+  after Milestone 6 without changing route coordinates, content compatibility,
+  PM5 authority, journal behavior, reconnect policy, or race behavior.
+- Recorded the research basis from Flash and Hogan's minimum-jerk reaching
+  model and selected the clamped fifth-order `10u^3-15u^4+6u^5` curve plus
+  explicit `C2` quintic-Hermite knots. Unconstrained joint/oar Catmull-Rom and
+  independent final-mesh Euler interpolation remain prohibited.
+- Added engine-independent `FBiomechanicalStrokeTrajectory` evaluation with
+  analytic position, velocity, and acceleration; drive/recovery channel
+  windows; a two-segment oar path with one mid-drive velocity maximum; latched
+  measured/fallback durations; 500 ms state-preserving catch/reconnect
+  bridges; and safe catch-endpoint handling for malformed non-finite timing.
+- Replaced the actor's frame-delta hand/oar smoothing and stretched proxy limbs
+  with a stern-facing `RowerRoot`, fixed-length upper arm/forearm/hand and
+  thigh/shin/shoe components, fixed feet, fixed pins, final-transform grips,
+  analytic two-bone knees/elbows, neutral fixed-length torso, crossover offset,
+  and quintic entry/extraction/feather/re-square windows. Feathered recovery is
+  ineligible for drive ripples.
+- Corrected the modular rower torso scale: the source mesh includes a head, so
+  runtime now maps its authored 72 cm hip-to-shoulder span—not its full 109 cm
+  head-inclusive height—to the fixed 58 cm torso length. This restores head and
+  torso proportion against the fixed-length limbs; the presentation spec guards
+  the calibrated scale.
+- Native implementation evidence: `make build`, `make test` (34 discovered,
+  no failures; the repeat run skipped the optional `local_data_mac_tests`),
+  focused course-runtime tests, `make format-check`, and `make unreal-native-app`
+  pass. Coverage includes quintic endpoints and
+  derivatives, monotonic/no-overshoot behavior, zero/minimum/long durations,
+  `C2` knots, 30/60/120 Hz and irregular cadence equivalence, stroke ordering,
+  duration latching, one oar velocity peak, and catch/reconnect bridges.
+- Editor evidence remains open: the live Editor was intentionally not used for
+  mutation or hot reload. A normal closed-Editor unsuffixed module build, fresh
+  Editor automation, and owner pose review from side/overhead/chase/reveal
+  views are still required.
+- Package evidence remains open: unsigned Shipping build and package
+  verification for Standard and the exact activated mounted-Han v2 identity
+  have not yet been run. Milestone 9 continues to own frame/GPU/thermal
+  acceptance.
+
 - Fixed the mounted Blue Hour coordinate-frame mismatch (2026-09-29). The
   runtime map already stores actors in the absolute world frame reconstructed
   by the signed route, so dynamic streaming now uses the identity transform

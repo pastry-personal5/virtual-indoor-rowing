@@ -47,10 +47,23 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	FTransform GetSeatRelativeTransformForTesting() const;
 	FTransform GetTorsoRelativeTransformForTesting() const;
 	FTransform GetLeftOarRelativeTransformForTesting() const;
+	FTransform GetRightOarRelativeTransformForTesting() const;
+	FTransform GetRowerRootRelativeTransformForTesting() const;
+	FVector GetLeftGripVisualPositionForTesting() const;
+	FVector GetRightGripVisualPositionForTesting() const;
+	FVector GetLeftHandVisualPositionForTesting() const;
+	FVector GetRightHandVisualPositionForTesting() const;
+	double GetLeftUpperArmLengthForTesting() const;
+	double GetLeftForearmLengthForTesting() const;
+	double GetLeftThighLengthForTesting() const;
+	double GetLeftShinLengthForTesting() const;
+	double GetLeftElbowAngleForTesting() const;
+	double GetLeftKneeAngleForTesting() const;
+	double GetLeftShinVerticalDeviationForTesting() const;
+	FVector GetLeftFootRowerPositionForTesting() const;
 	int32 GetOarWaterContactCountForTesting() const;
 	int32 GetActiveWaterEffectCountForTesting() const;
 	FTransform GetCameraTransformForTesting() const;
-	static float InterpolateOarMotion(float Current, float Target, float DeltaSeconds);
 	float GetCameraFieldOfViewForTesting() const;
 	static void SetReduceMotionForTesting(TOptional<bool> bRequested);
 	static bool ReduceMotionRequested();
@@ -60,6 +73,7 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	static void ApplyWaterMotion(UMaterialInstanceDynamic &Water, bool bReduceMotion);
 	static void ApplyPresentationOptionsToLevelWater(ULevel &Level);
 	static void ApplyPresentationOptionsToLevelWater(ULevel &Level, bool bReduceMotion, bool bHideWater);
+	static int32 HideAuthoredRouteGates(ULevel &Level);
 	float GetWaterMotionScaleForTesting() const;
 	float GetCourseLightIntensityForTesting() const;
 	int32 GetMarkerCountForTesting() const;
@@ -69,6 +83,9 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	int32 GetControlPointMarkerCountForTesting() const;
 	bool AreControlPointMarkersVisibleForTesting() const;
 	FVector GetControlPointMarkerLocationForTesting(int32 Index) const;
+	FString GetMarkerLabelTextForTesting(int32 Index) const;
+	int32 GetControlPointLabelCountForTesting() const;
+	FString GetControlPointLabelTextForTesting(int32 Index) const;
 	FVector GetCheckpointArrowForwardForTesting() const;
 	int32 GetCourseEdgeSegmentCountForTesting() const;
 	bool AreCourseEdgesAttachedForTesting() const;
@@ -97,6 +114,8 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	UPROPERTY(Transient)
 	TObjectPtr<USceneComponent> VisualRoot;
 	UPROPERTY(Transient)
+	TObjectPtr<USceneComponent> RowerRoot;
+	UPROPERTY(Transient)
 	TObjectPtr<USceneComponent> CheckpointArrowRoot;
 	UPROPERTY(Transient)
 	TObjectPtr<UStaticMeshComponent> Hull;
@@ -108,6 +127,14 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	TObjectPtr<UStaticMeshComponent> LeftArm;
 	UPROPERTY(Transient)
 	TObjectPtr<UStaticMeshComponent> RightArm;
+	UPROPERTY(Transient)
+	TObjectPtr<UStaticMeshComponent> LeftForearm;
+	UPROPERTY(Transient)
+	TObjectPtr<UStaticMeshComponent> RightForearm;
+	UPROPERTY(Transient)
+	TObjectPtr<UStaticMeshComponent> LeftHand;
+	UPROPERTY(Transient)
+	TObjectPtr<UStaticMeshComponent> RightHand;
 	UPROPERTY(Transient)
 	TObjectPtr<UStaticMeshComponent> LeftThigh;
 	UPROPERTY(Transient)
@@ -182,7 +209,6 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	bool bAuthoredLevelActive = false;
 	bool bHasRowerCharacterMeshes = false;
 	ContentRuntime::FRouteDefinition Route = ContentRuntime::BuiltInStandardRouteDefinition();
-	bool bHasOarPresentation = false;
 	bool bHasOarPoseHistory = false;
 	bool bOarDrivePhase = false;
 	float PreviousOarPose = 0.0f;
@@ -198,9 +224,7 @@ class VIRTUALROWING_API AGrayBoxCourseActor : public AActor
 	TArray<FWaterEffectState> WaterEffectStates;
 	bool bHasWakeAnchor = false;
 	FVector PreviousWakeAnchor = FVector::ZeroVector;
-	float SmoothedHandsX = 0.0f;
-	float SmoothedOarYaw = 0.0f;
-	static float OarBladePitch(float OarPose, bool bDrivePhase);
+	static float OarBladePitch(float StrokePose, bool bDrivePhase);
 	void InitializeWaterEffects();
 	void ClearWaterEffects();
 	void SpawnWaterEffect(bool bOarRipple, const FVector &Position, uint64 NowMonotonicNs);

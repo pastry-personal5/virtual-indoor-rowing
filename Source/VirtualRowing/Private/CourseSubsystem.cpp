@@ -477,7 +477,8 @@ void UCourseSubsystem::PollAuthoredLevel()
 		}
 	}
 	bLevelAllowlistPassed = true;
-	NoteLevel(TEXT("allowlist passed; making level visible"));
+	const int32 HiddenRouteGateCount = AGrayBoxCourseActor::HideAuthoredRouteGates(*Loaded);
+	NoteLevel(FString::Printf(TEXT("allowlist passed; hid %d route gates; making level visible"), HiddenRouteGateCount));
 	AGrayBoxCourseActor::ApplyPresentationOptionsToLevelWater(*Loaded);
 	AuthoredLevel->SetShouldBeVisible(true);
 	AuthoredLevelState = EAuthoredLevelState::Shown;

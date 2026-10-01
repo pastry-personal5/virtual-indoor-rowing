@@ -1,8 +1,8 @@
 # Delivery Phase 2: solo alpha and content pipeline
 
-Status: In progress — Milestones 1, 3, 4, and 5 are owner-complete; Milestone 2 is in progress; the Phase 2 exit gate is not passed
+Status: In progress — Milestones 1, 3, 4, and 5 are owner-complete; Milestones 2, 6, and 7 are in progress; the Phase 2 exit gate is not passed
 Owner: CTO / product
-Last reviewed: 2026-09-27
+Last reviewed: 2026-09-29
 
 ## Outcome
 
@@ -47,6 +47,8 @@ network failure must leave the local menu, safe route, and local workout usable.
 | [Phase 2 Milestone 5](12-realistic-water-refinement-plan.md) — Photorealistic water refinement | Complete — owner-directed scope reduction (2026-09-26) | Completed bounded water source/editor/cook hardening. Deferred treatment selection and visual acceptance remain outside Milestone 6. |
 
 | [Phase 2 Milestone 6](16-milestone-6-boat-movement-and-camera.md) — Deterministic boat movement and camera presentation | In progress — native/runtime/tooling implementation complete; editor evidence pending | Common Standard/Han deterministic paths, bounded cosmetic motion, persistent starboard cameras, fresh-PM stop reveal, v2 Han compatibility, and wake/ripple regression only. |
+
+| [Phase 2 Milestone 7](17-milestone-7-biomechanical-sculling-animation.md) — Biomechanical high-order sculling animation | In progress — native trajectory and procedural rig implemented; editor/package evidence pending | Minimum-jerk and `C2` quintic stroke paths, fixed-length two-bone athlete, fixed oarlocks, grip-driven hands, authored blade phases, and bounded catch/reconnect bridges. |
 
 | [Phase 2 Milestone 9](15-milestone-9-six-minute-shipping-thermal-run.md) — Six-minute Shipping thermal run | Planned — blocked at mounted-Han canary prerequisite | Measure warm six-minute Shipping performance and thermal behavior on Standard and mounted Han, including matched water and hull/oar cost captures. |
 

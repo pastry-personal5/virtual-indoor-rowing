@@ -119,8 +119,10 @@ void FCoursePresentationSpec::Define()
 		TestEqual(TEXT("Han route shows one label for every signed checkpoint"), HanCourse->GetMarkerCountForTesting(), static_cast<int32>(HanRoute.Checkpoints.size()));
 		TestEqual(TEXT("every checkpoint has two distinct river buoys"), HanCourse->GetBuoyCountForTesting(), static_cast<int32>(HanRoute.Checkpoints.size() * 2));
 		TestTrue(TEXT("orange and white checkpoint buoys remain visible"), HanCourse->AreRouteBuoysVisibleForTesting());
-		TestEqual(TEXT("every signed Han control point has a visible beacon gate"), HanCourse->GetControlPointMarkerCountForTesting(), static_cast<int32>(HanRoute.PresentationPath->ControlPoints.size() * 2));
-		TestTrue(TEXT("cyan Han control-point beacon gates remain visible"), HanCourse->AreControlPointMarkersVisibleForTesting());
+		TestEqual(TEXT("signed Han control points have no elevated marker geometry"), HanCourse->GetControlPointMarkerCountForTesting(), 0);
+		TestEqual(TEXT("every signed Han control point has a distance label"), HanCourse->GetControlPointLabelCountForTesting(), static_cast<int32>(HanRoute.PresentationPath->ControlPoints.size()));
+		TestEqual(TEXT("named checkpoint label includes grouped distance"), HanCourse->GetMarkerLabelTextForTesting(1), FString(TEXT("DONGJAK SPAN\n1,450 m")));
+		TestEqual(TEXT("control-point distance rounds up to a whole metre"), HanCourse->GetControlPointLabelTextForTesting(19), FString(TEXT("CP 20\n2,436 m")));
 		TestTrue(TEXT("bright directional arrow is attached at the boat bow"), !HanCourse->GetCheckpointArrowForwardForTesting().IsNearlyZero());
 		TestFalse(TEXT("Han endpoint stays open rather than wrapping"), HanCourse->GetCourseTransform(0.0).GetLocation().Equals(HanCourse->GetCourseTransform(5'000'000.0).GetLocation(), 1.0));
 		HanCourse->Destroy(); });
@@ -170,8 +172,7 @@ void FCoursePresentationSpec::Define()
 		TestEqual(TEXT("each Han checkpoint has a visible marker"), HanCourse->GetMarkerCountForTesting(), static_cast<int32>(HanRoute.Checkpoints.size()));
 		TestEqual(TEXT("two buoy objects are created for each Han checkpoint"), HanCourse->GetBuoyCountForTesting(), static_cast<int32>(HanRoute.Checkpoints.size() * 2));
 		TestTrue(TEXT("both sides of every checkpoint gate remain visible"), HanCourse->AreRouteBuoysVisibleForTesting());
-		TestEqual(TEXT("two beacon objects are created for each signed Han control point"), HanCourse->GetControlPointMarkerCountForTesting(), static_cast<int32>(HanRoute.PresentationPath->ControlPoints.size() * 2));
-		TestTrue(TEXT("both sides of every control-point beacon gate remain visible"), HanCourse->AreControlPointMarkersVisibleForTesting());
+		TestEqual(TEXT("signed Han control points create labels without elevated marker geometry"), HanCourse->GetControlPointMarkerCountForTesting(), 0);
 		for (int32 CheckpointIndex = 0; CheckpointIndex < static_cast<int32>(HanRoute.Checkpoints.size()); ++CheckpointIndex)
 		{
 			const ContentRuntime::FRouteCheckpoint &Checkpoint = HanRoute.Checkpoints[CheckpointIndex];
@@ -208,18 +209,6 @@ void FCoursePresentationSpec::Define()
 									 NextPoint.PositionMm.Z - ArrowSnapshot.PathPositionMm.Z);
 			TestTrue(FString::Printf(TEXT("bow arrow points from %s to the next checkpoint"), UTF8_TO_TCHAR(Checkpoint.CheckpointId.c_str())),
 				HanCourse->GetCheckpointArrowForwardForTesting().Equals(Direction.GetSafeNormal(), 0.001));
-		}
-		for (int32 ControlPointIndex = 0; ControlPointIndex < static_cast<int32>(HanRoute.PresentationPath->ControlPoints.size()); ++ControlPointIndex)
-		{
-			const ContentRuntime::FRouteHermiteControlPoint &ControlPoint = HanRoute.PresentationPath->ControlPoints[ControlPointIndex];
-			const FTransform PathTransform = HanCourse->GetCourseTransform(static_cast<double>(ControlPoint.RouteDistanceMm));
-			for (int32 SideIndex = 0; SideIndex < 2; ++SideIndex)
-			{
-				const int32 Side = SideIndex == 0 ? -1 : 1;
-				const FVector ExpectedBeacon = PathTransform.GetLocation() + PathTransform.GetUnitAxis(EAxis::Y) * (Side * 650.0) + FVector(0.0, 0.0, 175.0);
-				TestTrue(FString::Printf(TEXT("control-point beacon %s side %d is path-aligned"), UTF8_TO_TCHAR(ControlPoint.PointId.c_str()), Side),
-					HanCourse->GetControlPointMarkerLocationForTesting(ControlPointIndex * 2 + SideIndex).Equals(ExpectedBeacon, 0.01));
-			}
 		}
 		HanCourse->Destroy(); });
 
@@ -318,6 +307,20 @@ void FCoursePresentationSpec::Define()
 		TestTrue(TEXT("benchmark flag preserves a same-named material in another package"), Impostor->IsVisible());
 		TestTrue(TEXT("benchmark flag preserves non-water geometry"), Bank->IsVisible()); });
 
+	It("hides saved Han route gates before the authored level is shown", [this]()
+	   {
+		FActorSpawnParameters GateParams;
+		GateParams.Name = TEXT("HanRouteGate_CP05");
+		AActor *Gate = World->SpawnActor<AActor>(AActor::StaticClass(), FTransform::Identity, GateParams);
+		FActorSpawnParameters OtherParams;
+		OtherParams.Name = TEXT("HanPromenadeMarker");
+		AActor *Other = World->SpawnActor<AActor>(AActor::StaticClass(), FTransform::Identity, OtherParams);
+		if (!TestNotNull(TEXT("route gate test actor"), Gate) || !TestNotNull(TEXT("unrelated level actor"), Other))
+			return;
+		TestEqual(TEXT("only the route gate is selected"), AGrayBoxCourseActor::HideAuthoredRouteGates(*World->PersistentLevel), 1);
+		TestTrue(TEXT("saved route gate is hidden"), Gate->IsHidden());
+		TestFalse(TEXT("unrelated authored actor stays visible"), Other->IsHidden()); });
+
 	It("yields the kit's start-area landmarks to the authored level and restores them", [this]()
 	   {
 		AGrayBoxCourseActor *HanCourse = World->SpawnActor<AGrayBoxCourseActor>();
@@ -409,13 +412,18 @@ void FCoursePresentationSpec::Define()
 		FCoursePresentationSnapshot Snapshot;
 		Course->ApplyPresentation(Snapshot);
 		const FTransform CatchSeat = Course->GetSeatRelativeTransformForTesting();
+		const FVector FixedFoot = Course->GetLeftFootRowerPositionForTesting();
+		TestTrue(TEXT("catch knee is within the authored range"), Course->GetLeftKneeAngleForTesting() >= 55.0 && Course->GetLeftKneeAngleForTesting() <= 70.0);
+		TestTrue(TEXT("catch shin is near vertical"), Course->GetLeftShinVerticalDeviationForTesting() <= 5.0);
+		TestTrue(TEXT("catch elbow is nearly straight"), Course->GetLeftElbowAngleForTesting() >= 165.0 && Course->GetLeftElbowAngleForTesting() <= 180.0);
+		TestTrue(TEXT("catch torso leans sternward within range"), FMath::Abs(Course->GetTorsoRelativeTransformForTesting().Rotator().Pitch) >= 25.0 && FMath::Abs(Course->GetTorsoRelativeTransformForTesting().Rotator().Pitch) <= 35.0);
 		Snapshot.StrokePose = 0.5;
 		Snapshot.SeatPose = 1.0;
 		Snapshot.TorsoPose = 0.5;
 		Snapshot.ArmsPose = 0.0;
 		Snapshot.OarPose = 0.5;
 		Course->ApplyPresentation(Snapshot);
-		TestTrue(TEXT("seat moves first"), Course->GetSeatRelativeTransformForTesting().GetLocation().X > CatchSeat.GetLocation().X);
+		TestFalse(TEXT("seat moves first"), Course->GetSeatRelativeTransformForTesting().Equals(CatchSeat, 0.1));
 		const FRotator MidTorso = Course->GetTorsoRelativeTransformForTesting().Rotator();
 		Snapshot.SeatPose = 1.0;
 		Snapshot.TorsoPose = 1.0;
@@ -423,11 +431,46 @@ void FCoursePresentationSpec::Define()
 		Snapshot.OarPose = 1.0;
 		Course->ApplyPresentation(Snapshot);
 		TestFalse(TEXT("torso continues after seat"), Course->GetTorsoRelativeTransformForTesting().Rotator().Equals(MidTorso, 0.1));
+		TestTrue(TEXT("finish knee is within the authored range"), Course->GetLeftKneeAngleForTesting() >= 165.0 && Course->GetLeftKneeAngleForTesting() <= 172.0);
+		TestTrue(TEXT("finish torso layback is within range"), FMath::Abs(Course->GetTorsoRelativeTransformForTesting().Rotator().Pitch) >= 10.0 && FMath::Abs(Course->GetTorsoRelativeTransformForTesting().Rotator().Pitch) <= 20.0);
+		TestTrue(TEXT("foot remains fixed through the drive"), Course->GetLeftFootRowerPositionForTesting().Equals(FixedFoot, 0.01));
 		Snapshot = {};
 		Course->ApplyPresentation(Snapshot);
 		TestTrue(TEXT("return reaches catch"), Course->GetSeatRelativeTransformForTesting().Equals(CatchSeat, 0.1)); });
 
-	It("dips the visible blade only during a fresh drive and clears it for recovery or stale input", [this]()
+	It("keeps fixed pins and limb lengths while hands follow the rendered grips", [this]()
+	   {
+		FCoursePresentationSnapshot Snapshot;
+		Snapshot.AnimationQuality = ECourseAnimationQuality::Primary;
+		Snapshot.StrokePose = 0.5;
+		Snapshot.SeatPose = 0.8;
+		Snapshot.TorsoPose = 0.3;
+		Snapshot.ArmsPose = 0.0;
+		Snapshot.OarPose = 0.5;
+		FCourseTelemetryInput Telemetry;
+		Telemetry.bHasSession = true;
+		Telemetry.bHasValidSample = true;
+		Telemetry.bConnected = true;
+		Telemetry.SessionState = ERowingSessionState::Active;
+		Telemetry.WorkoutState = ERowingWorkoutState::Active;
+		Telemetry.RowingState = ERowingState::Active;
+		Telemetry.StrokeState = ERowingStrokeState::Drive;
+		Course->ApplyPresentation(Snapshot, Telemetry, 1'000'000'000ULL);
+		TestTrue(TEXT("rower faces stern"), FMath::IsNearlyEqual(FMath::Abs(Course->GetRowerRootRelativeTransformForTesting().Rotator().Yaw), 180.0, 0.01));
+		TestTrue(TEXT("torso mesh maps its hip-to-shoulder span to 58 cm"),
+			FMath::IsNearlyEqual(Course->GetTorsoRelativeTransformForTesting().GetScale3D().X, 58.0 / 72.0, 0.01));
+		TestTrue(TEXT("port pin remains fixed"), Course->GetLeftOarRelativeTransformForTesting().GetLocation().Equals(FVector(0.0, -95.0, 105.0), 0.01));
+		TestTrue(TEXT("starboard pin remains fixed"), Course->GetRightOarRelativeTransformForTesting().GetLocation().Equals(FVector(0.0, 95.0, 105.0), 0.01));
+		TestTrue(TEXT("left hand stays on its grip"), Course->GetLeftHandVisualPositionForTesting().Equals(Course->GetLeftGripVisualPositionForTesting(), 0.05));
+		TestTrue(TEXT("right hand stays on its grip"), Course->GetRightHandVisualPositionForTesting().Equals(Course->GetRightGripVisualPositionForTesting(), 0.05));
+		const double CrossoverCm = Course->GetLeftGripVisualPositionForTesting().Z - Course->GetRightGripVisualPositionForTesting().Z;
+		TestTrue(TEXT("left hand crosses above right by about four centimetres"), CrossoverCm >= 2.0 && CrossoverCm <= 6.0);
+		TestTrue(TEXT("upper arm remains 32 cm"), FMath::IsNearlyEqual(Course->GetLeftUpperArmLengthForTesting(), 32.0, 0.05));
+		TestTrue(TEXT("forearm remains 27 cm"), FMath::IsNearlyEqual(Course->GetLeftForearmLengthForTesting(), 27.0, 0.05));
+		TestTrue(TEXT("thigh remains 48 cm"), FMath::IsNearlyEqual(Course->GetLeftThighLengthForTesting(), 48.0, 0.05));
+		TestTrue(TEXT("shin remains 45 cm"), FMath::IsNearlyEqual(Course->GetLeftShinLengthForTesting(), 45.0, 0.05)); });
+
+	It("dips and extracts blades during drive without recovery ripples", [this]()
 	   {
 		TestNotNull(TEXT("cooked-in interaction material exists"), LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Water/M_WaterInteraction.M_WaterInteraction")));
 		FCoursePresentationSnapshot Snapshot;
@@ -440,6 +483,7 @@ void FCoursePresentationSpec::Define()
 		Telemetry.WorkoutState = ERowingWorkoutState::Active;
 		Telemetry.RowingState = ERowingState::Active;
 		Telemetry.StrokeState = ERowingStrokeState::Drive;
+		Snapshot.StrokePose = 0.0;
 		Snapshot.OarPose = 0.0;
 		Course->ApplyPresentation(Snapshot, Telemetry, 1'000'000'000ULL);
 		const auto BladeZ = [this]()
@@ -447,6 +491,7 @@ void FCoursePresentationSpec::Define()
 			return Course->GetLeftOarRelativeTransformForTesting().TransformPosition(FVector(220.0, 0.0, 0.0)).Z;
 		};
 		const double FeatheredZ = BladeZ();
+		Snapshot.StrokePose = 0.5;
 		Snapshot.OarPose = 0.5;
 		Course->ApplyPresentation(Snapshot, Telemetry, 1'300'000'000ULL);
 		TestTrue(TEXT("drive lowers the blade tip through the boat-relative waterline"), BladeZ() < -30.0);
@@ -454,11 +499,22 @@ void FCoursePresentationSpec::Define()
 		TestEqual(TEXT("one visible ripple per blade entry"), Course->GetActiveWaterEffectCountForTesting(), 2);
 		Course->ApplyPresentation(Snapshot, Telemetry, 1'350'000'000ULL);
 		TestEqual(TEXT("steady submerged blade does not duplicate entry"), Course->GetOarWaterContactCountForTesting(), 2);
-		Telemetry.StrokeState = ERowingStrokeState::Recovery;
+		Snapshot.StrokePose = 1.0;
+		Snapshot.OarPose = 1.0;
 		Course->ApplyPresentation(Snapshot, Telemetry, 2'000'000'000ULL);
-		TestTrue(TEXT("recovery lifts the blade clear"), FMath::IsNearlyEqual(BladeZ(), FeatheredZ, 0.1));
+		TestTrue(TEXT("drive extraction lifts the blade clear"), FMath::IsNearlyEqual(BladeZ(), FeatheredZ, 8.0));
 		TestEqual(TEXT("one exit per rendered blade"), Course->GetOarWaterContactCountForTesting(), 4);
+		Telemetry.StrokeState = ERowingStrokeState::Recovery;
+		Snapshot.StrokePose = 0.5;
+		Snapshot.OarPose = 0.5;
+		Course->ApplyPresentation(Snapshot, Telemetry, 2'100'000'000ULL);
+		TestEqual(TEXT("feathered recovery creates no drive ripple"), Course->GetOarWaterContactCountForTesting(), 4);
 		Telemetry.StrokeState = ERowingStrokeState::Drive;
+		Snapshot.StrokePose = 0.0;
+		Snapshot.OarPose = 0.0;
+		Course->ApplyPresentation(Snapshot, Telemetry, 2'900'000'000ULL);
+		Snapshot.StrokePose = 0.5;
+		Snapshot.OarPose = 0.5;
 		Course->ApplyPresentation(Snapshot, Telemetry, 3'000'000'000ULL);
 		TestEqual(TEXT("next drive creates one new entry per blade"), Course->GetOarWaterContactCountForTesting(), 6);
 		Telemetry.bStale = true;
@@ -471,11 +527,11 @@ void FCoursePresentationSpec::Define()
 		TestEqual(TEXT("reconnect does not backfill a blade entry"), Course->GetOarWaterContactCountForTesting(), 6);
 		Telemetry.StrokeState = ERowingStrokeState::Recovery;
 		Course->ApplyPresentation(Snapshot, Telemetry, 3'400'000'000ULL);
-		TestEqual(TEXT("a new visible exit is counted after reconnect"), Course->GetOarWaterContactCountForTesting(), 8);
+		TestEqual(TEXT("recovery after reconnect stays ripple-free"), Course->GetOarWaterContactCountForTesting(), 6);
 		AGrayBoxCourseActor::SetReduceMotionForTesting(true);
 		Telemetry.StrokeState = ERowingStrokeState::Drive;
 		Course->ApplyPresentation(Snapshot, Telemetry, 3'600'000'000ULL);
-		TestEqual(TEXT("reduced motion suppresses new water contacts"), Course->GetOarWaterContactCountForTesting(), 8);
+		TestEqual(TEXT("reduced motion suppresses new water contacts"), Course->GetOarWaterContactCountForTesting(), 6);
 		TestEqual(TEXT("reduced motion clears water effects"), Course->GetActiveWaterEffectCountForTesting(), 0);
 		AGrayBoxCourseActor::SetReduceMotionForTesting({}); });
 
@@ -537,14 +593,6 @@ void FCoursePresentationSpec::Define()
 
 	It("shows a persistent preliminary metric-accuracy disclosure", [this]()
 	   { TestEqual(TEXT("metric accuracy notice"), FString(UWorkoutHudWidget::MetricAccuracyNotice()), FString(TEXT("Metric-display accuracy is preliminary and may be limited."))); });
-
-	It("smooths oar transforms without allowing a stalled frame to snap", [this]()
-	   {
-		const float FirstStep = AGrayBoxCourseActor::InterpolateOarMotion(-34.0f, 42.0f, 1.0f / 60.0f);
-		TestTrue(TEXT("oar advances"), FirstStep > -34.0f);
-		TestTrue(TEXT("oar does not reach target in one normal frame"), FirstStep < 42.0f);
-		const float StalledStep = AGrayBoxCourseActor::InterpolateOarMotion(-34.0f, 42.0f, 1.0f);
-		TestTrue(TEXT("stalled frame remains bounded away from target"), StalledStep < 42.0f); });
 
 	It("cannot mutate authoritative workout facts", [this]()
 	   {

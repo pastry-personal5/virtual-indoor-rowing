@@ -20,8 +20,6 @@
 namespace
 {
 	constexpr int32 MarkerCount = 8;
-	constexpr float OarInterpolationSpeed = 16.0f;
-	constexpr float MaxOarInterpolationStepSeconds = 1.0f / 30.0f;
 	constexpr int32 HullWakePoolSize = 12;
 	constexpr int32 OarRipplePoolSize = 4;
 	constexpr uint64 HullWakeLifetimeNs = 1'400'000'000ULL;
@@ -29,13 +27,65 @@ namespace
 	constexpr double HanRiverWidthCm = 42'000.0;
 	constexpr double HanBankOffsetCm = 25'000.0;
 	constexpr double HanCheckpointBuoyOffsetCm = 900.0;
-	constexpr double HanControlPointBeaconOffsetCm = 650.0;
 	TOptional<bool> GReduceMotionOverrideForTesting;
 
-	float SmoothStep(float Value)
+	constexpr double ThighLengthCm = 48.0;
+	constexpr double ShinLengthCm = 45.0;
+	constexpr double UpperArmLengthCm = 32.0;
+	constexpr double ForearmLengthCm = 27.0;
+	constexpr double HandLengthCm = 10.0;
+	constexpr double TorsoLengthCm = 58.0;
+	// SM_RowerTorso includes the head. Its local -37 cm hip and +35 cm shoulder
+	// stations are 72 cm apart; do not use the full 109 cm asset height here.
+	constexpr double RowerTorsoHipToShoulderMeshCm = 72.0;
+	constexpr double FootStretcherXCm = 22.5;
+	constexpr double FootStretcherZCm = 65.0;
+	constexpr double CatchKneeDegrees = 62.0;
+	constexpr double FinishKneeDegrees = 168.0;
+	constexpr double CatchTorsoDegrees = 30.0;
+	constexpr double FinishTorsoDegrees = -15.0;
+
+	FString FormatDistanceFromStart(uint64 DistanceMm)
 	{
-		const float T = FMath::Clamp(Value, 0.0f, 1.0f);
-		return T * T * (3.0f - 2.0f * T);
+		const uint64 DistanceMeters = DistanceMm / 1'000ULL + (DistanceMm % 1'000ULL == 0 ? 0ULL : 1ULL);
+		return FString::Printf(TEXT("%s m"), *FString::FormatAsNumber(static_cast<int32>(DistanceMeters)));
+	}
+
+	float QuinticEase(float Value)
+	{
+		return static_cast<float>(FBiomechanicalStrokeTrajectory::MinimumJerk(
+									  0.0, 1.0, Value, 1.0)
+									  .Position);
+	}
+
+	double HipToFootDistance(double KneeDegrees)
+	{
+		const double KneeRadians = FMath::DegreesToRadians(KneeDegrees);
+		return FMath::Sqrt(FMath::Square(ThighLengthCm) + FMath::Square(ShinLengthCm) -
+						   2.0 * ThighLengthCm * ShinLengthCm * FMath::Cos(KneeRadians));
+	}
+
+	FVector SolveTwoBoneJoint(const FVector &Root,
+							  const FVector &End,
+							  double RootLength,
+							  double EndLength,
+							  const FVector &BendBias)
+	{
+		const FVector RootToEnd = End - Root;
+		const double Distance = RootToEnd.Size();
+		const FVector Direction = Distance > UE_DOUBLE_SMALL_NUMBER ? RootToEnd / Distance : FVector::ForwardVector;
+		const double BoundedDistance = FMath::Clamp(Distance,
+													FMath::Abs(RootLength - EndLength) + 0.001,
+													RootLength + EndLength - 0.001);
+		const double Along = (FMath::Square(RootLength) - FMath::Square(EndLength) +
+							  FMath::Square(BoundedDistance)) /
+							 (2.0 * BoundedDistance);
+		const double Height = FMath::Sqrt(FMath::Max(0.0,
+													 FMath::Square(RootLength) - FMath::Square(Along)));
+		FVector Perpendicular = BendBias - Direction * FVector::DotProduct(BendBias, Direction);
+		if (!Perpendicular.Normalize())
+			Perpendicular = FVector::CrossProduct(Direction, FVector::RightVector).GetSafeNormal();
+		return Root + Direction * Along + Perpendicular * Height;
 	}
 
 } // namespace
@@ -51,6 +101,9 @@ AGrayBoxCourseActor::AGrayBoxCourseActor()
 	BoatRoot->SetupAttachment(SceneRoot);
 	VisualRoot = CreateDefaultSubobject<USceneComponent>(TEXT("BoatVisualRoot"));
 	VisualRoot->SetupAttachment(BoatRoot);
+	RowerRoot = CreateDefaultSubobject<USceneComponent>(TEXT("RowerRoot"));
+	RowerRoot->SetupAttachment(VisualRoot);
+	RowerRoot->SetRelativeRotation(FRotator(0.0, 180.0, 0.0));
 	InspectionCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("InspectionCamera"));
 	InspectionCamera->SetupAttachment(SceneRoot);
 	InspectionCamera->SetFieldOfView(50.0f);
@@ -345,7 +398,7 @@ void AGrayBoxCourseActor::InitializeCourse()
 			FString CheckpointName = UTF8_TO_TCHAR(Route.Checkpoints[Index].CheckpointId.c_str());
 			CheckpointName.ReplaceInline(TEXT("-"), TEXT(" "));
 			CheckpointName = CheckpointName.ToUpper();
-			Label->SetText(FText::FromString(CheckpointName));
+			Label->SetText(FText::FromString(FString::Printf(TEXT("%s\n%s"), *CheckpointName, *FormatDistanceFromStart(DistanceMm))));
 		}
 		else
 			Label->SetText(FText::FromString(FString::Printf(TEXT("%d m"), (Index + 1) * 250)));
@@ -358,31 +411,17 @@ void AGrayBoxCourseActor::InitializeCourse()
 		MarkerLabels.Add(Label);
 	}
 	// The signed curve is a reviewable course contract, not merely an invisible
-	// interpolation aid. Paired cyan beacon gates make every control point
-	// legible in the world without putting an obstacle on the boat's waterline.
+	// interpolation aid. Labels identify each control point without suspended
+	// gate geometry above the route.
 	if (bIsHanRiverRoute && Route.PresentationPath)
 	{
 		for (int32 Index = 0; Index < static_cast<int32>(Route.PresentationPath->ControlPoints.size()); ++Index)
 		{
 			const ContentRuntime::FRouteHermiteControlPoint &ControlPoint = Route.PresentationPath->ControlPoints[Index];
 			const FTransform ControlTransform = GetCourseTransform(static_cast<double>(ControlPoint.RouteDistanceMm));
-			const FVector Right = ControlTransform.GetUnitAxis(EAxis::Y);
-			for (int32 Side : {-1, 1})
-			{
-				const FVector BeaconLocation = ControlTransform.GetLocation() + Right * (Side * HanControlPointBeaconOffsetCm) + FVector(0.0, 0.0, 175.0);
-				UStaticMeshComponent *Beacon = MakeMesh(*FString::Printf(TEXT("RouteControl_%02d_Beacon%d"), Index + 1, Side), Cylinder, SceneRoot, FVector(0.65, 0.65, 3.5), FLinearColor(0.05f, 0.92f, 1.0f));
-				Beacon->SetWorldLocation(BeaconLocation);
-				EnvironmentMeshes.Add(Beacon);
-				ControlPointMarkers.Add(Beacon);
-
-				UStaticMeshComponent *Cap = MakeMesh(*FString::Printf(TEXT("RouteControl_%02d_Beacon%d_Cap"), Index + 1, Side), Cylinder, SceneRoot, FVector(0.72, 0.72, 0.25), FLinearColor::White);
-				Cap->SetWorldLocation(BeaconLocation + FVector(0.0, 0.0, 105.0));
-				EnvironmentMeshes.Add(Cap);
-			}
-
 			UTextRenderComponent *ControlLabel = NewObject<UTextRenderComponent>(this, *FString::Printf(TEXT("RouteControlLabel%d"), Index + 1));
 			ControlLabel->SetupAttachment(SceneRoot);
-			ControlLabel->SetText(FText::FromString(FString::Printf(TEXT("CP %02d"), Index + 1)));
+			ControlLabel->SetText(FText::FromString(FString::Printf(TEXT("CP %02d\n%s"), Index + 1, *FormatDistanceFromStart(ControlPoint.RouteDistanceMm))));
 			ControlLabel->SetHorizontalAlignment(EHorizTextAligment::EHTA_Center);
 			ControlLabel->SetWorldSize(115.0f);
 			ControlLabel->SetTextRenderColor(FColor(82, 234, 255));
@@ -413,19 +452,23 @@ void AGrayBoxCourseActor::InitializeCourse()
 		CheckpointArrowHeadStarboard->SetRelativeRotation(FRotator(0.0, -45.0, 0.0));
 	}
 	bHasRowerCharacterMeshes = RowerTorsoMesh && RowerArmMesh && RowerLegMesh && RowerShoeMesh;
-	Seat = MakeMesh(TEXT("SlidingSeat"), Cube, VisualRoot, FVector(0.35, 0.42, 0.09), FLinearColor(0.08f, 0.08f, 0.09f));
-	Torso = MakeMesh(TEXT("Torso"), bHasRowerCharacterMeshes ? RowerTorsoMesh.Get() : Cube, VisualRoot, bHasRowerCharacterMeshes ? FVector::OneVector : FVector(0.22, 0.32, 0.65), FLinearColor(0.85f, 0.42f, 0.12f));
-	LeftArm = MakeMesh(TEXT("LeftArm"), bHasRowerCharacterMeshes ? RowerArmMesh.Get() : Cube, VisualRoot, bHasRowerCharacterMeshes ? FVector::OneVector : FVector(0.55, 0.07, 0.07), FLinearColor(0.84f, 0.64f, 0.45f));
-	RightArm = MakeMesh(TEXT("RightArm"), bHasRowerCharacterMeshes ? RowerArmMesh.Get() : Cube, VisualRoot, bHasRowerCharacterMeshes ? FVector::OneVector : FVector(0.55, 0.07, 0.07), FLinearColor(0.84f, 0.64f, 0.45f));
-	if (bHasRowerCharacterMeshes)
-	{
-		LeftThigh = MakeMesh(TEXT("LeftThigh"), RowerLegMesh, VisualRoot, FVector::OneVector, FLinearColor::White);
-		RightThigh = MakeMesh(TEXT("RightThigh"), RowerLegMesh, VisualRoot, FVector::OneVector, FLinearColor::White);
-		LeftShin = MakeMesh(TEXT("LeftShin"), RowerLegMesh, VisualRoot, FVector::OneVector, FLinearColor::White);
-		RightShin = MakeMesh(TEXT("RightShin"), RowerLegMesh, VisualRoot, FVector::OneVector, FLinearColor::White);
-		LeftShoe = MakeMesh(TEXT("LeftShoe"), RowerShoeMesh, VisualRoot, FVector::OneVector, FLinearColor::White);
-		RightShoe = MakeMesh(TEXT("RightShoe"), RowerShoeMesh, VisualRoot, FVector::OneVector, FLinearColor::White);
-	}
+	Seat = MakeMesh(TEXT("SlidingSeat"), Cube, RowerRoot, FVector(0.35, 0.42, 0.09), FLinearColor(0.08f, 0.08f, 0.09f));
+	Torso = MakeMesh(TEXT("Torso"), bHasRowerCharacterMeshes ? RowerTorsoMesh.Get() : Cube, RowerRoot, FVector::OneVector, FLinearColor(0.85f, 0.42f, 0.12f));
+	UStaticMesh *ArmGeometry = bHasRowerCharacterMeshes ? RowerArmMesh.Get() : Cube;
+	UStaticMesh *LegGeometry = bHasRowerCharacterMeshes ? RowerLegMesh.Get() : Cube;
+	UStaticMesh *ShoeGeometry = bHasRowerCharacterMeshes ? RowerShoeMesh.Get() : Cube;
+	LeftArm = MakeMesh(TEXT("LeftUpperArm"), ArmGeometry, RowerRoot, FVector::OneVector, FLinearColor(0.84f, 0.64f, 0.45f));
+	RightArm = MakeMesh(TEXT("RightUpperArm"), ArmGeometry, RowerRoot, FVector::OneVector, FLinearColor(0.84f, 0.64f, 0.45f));
+	LeftForearm = MakeMesh(TEXT("LeftForearm"), ArmGeometry, RowerRoot, FVector::OneVector, FLinearColor(0.84f, 0.64f, 0.45f));
+	RightForearm = MakeMesh(TEXT("RightForearm"), ArmGeometry, RowerRoot, FVector::OneVector, FLinearColor(0.84f, 0.64f, 0.45f));
+	LeftHand = MakeMesh(TEXT("LeftHand"), Cube, RowerRoot, FVector::OneVector, FLinearColor(0.49f, 0.31f, 0.23f));
+	RightHand = MakeMesh(TEXT("RightHand"), Cube, RowerRoot, FVector::OneVector, FLinearColor(0.49f, 0.31f, 0.23f));
+	LeftThigh = MakeMesh(TEXT("LeftThigh"), LegGeometry, RowerRoot, FVector::OneVector, FLinearColor::White);
+	RightThigh = MakeMesh(TEXT("RightThigh"), LegGeometry, RowerRoot, FVector::OneVector, FLinearColor::White);
+	LeftShin = MakeMesh(TEXT("LeftShin"), LegGeometry, RowerRoot, FVector::OneVector, FLinearColor::White);
+	RightShin = MakeMesh(TEXT("RightShin"), LegGeometry, RowerRoot, FVector::OneVector, FLinearColor::White);
+	LeftShoe = MakeMesh(TEXT("LeftShoe"), ShoeGeometry, RowerRoot, FVector::OneVector, FLinearColor::White);
+	RightShoe = MakeMesh(TEXT("RightShoe"), ShoeGeometry, RowerRoot, FVector::OneVector, FLinearColor::White);
 	UStaticMesh *OarGeometry = OarMesh ? OarMesh.Get() : Cube;
 	const FVector OarScale = OarMesh ? FVector::OneVector : FVector(1.8, 0.04, 0.04);
 	LeftOar = MakeMesh(TEXT("PortOar"), OarGeometry, VisualRoot, OarScale, FLinearColor(0.80f, 0.12f, 0.10f));
@@ -478,12 +521,6 @@ void AGrayBoxCourseActor::ApplyPresentation(const FCoursePresentationSnapshot &S
 	VisualRoot->SetRelativeLocation(FVector(0.0, 0.0, (Snapshot.AmbientBobMm + Snapshot.StrokeHeaveMm) / 10.0));
 	VisualRoot->SetRelativeRotation(FRotator(Snapshot.HullPitchDegrees, 0.0, Snapshot.HullRollDegrees));
 
-	const float SeatX = FMath::Lerp(-65.0f, 55.0f, static_cast<float>(Snapshot.SeatPose));
-	Seat->SetRelativeLocation(FVector(SeatX, 0.0, 72.0));
-	Torso->SetRelativeLocation(FVector(SeatX - 5.0f, 0.0, 135.0));
-	Torso->SetRelativeRotation(FRotator(FMath::Lerp(22.0f, -14.0f, static_cast<float>(Snapshot.TorsoPose)), 0.0, 0.0));
-	const float TargetHandsX = FMath::Lerp(SeatX + 72.0f, SeatX - 58.0f, static_cast<float>(Snapshot.ArmsPose));
-	const float TargetOarYaw = FMath::Lerp(-34.0f, 42.0f, static_cast<float>(Snapshot.OarPose));
 	const float OarPose = FMath::Clamp(static_cast<float>(Snapshot.OarPose), 0.0f, 1.0f);
 	const bool bFreshStroke = Telemetry.bHasSession && Telemetry.bHasValidSample && Telemetry.bConnected &&
 							  !Telemetry.bFrozen && !Telemetry.bStale && Telemetry.SessionState == ERowingSessionState::Active &&
@@ -505,73 +542,110 @@ void AGrayBoxCourseActor::ApplyPresentation(const FCoursePresentationSnapshot &S
 		bHasOarPoseHistory = true;
 		PreviousOarPose = OarPose;
 	}
-	const float WorldDeltaSeconds = GetWorld() ? GetWorld()->GetDeltaSeconds() : 0.0f;
-	if (!bHasOarPresentation)
+	const float StrokePose = FMath::Clamp(static_cast<float>(Snapshot.StrokePose), 0.0f, 1.0f);
+	const float PortYaw = FMath::Lerp(-35.0f, -125.0f, OarPose);
+	const float StarboardYaw = -PortYaw;
+	const float BaseBladePitch = OarBladePitch(StrokePose, bFreshStroke && bOarDrivePhase);
+	const FVector PortFlatGrip = FRotator(0.0, PortYaw, 0.0).RotateVector(FVector(-90.0, 0.0, 0.0)) + FVector(0.0, -95.0, 105.0);
+	const FVector StarboardFlatGrip = FRotator(0.0, StarboardYaw, 0.0).RotateVector(FVector(-90.0, 0.0, 0.0)) + FVector(0.0, 95.0, 105.0);
+	const float GripSeparation = FMath::Abs(PortFlatGrip.Y - StarboardFlatGrip.Y);
+	const float Crossover = QuinticEase((30.0f - GripSeparation) / 20.0f);
+	const float PortPitch = BaseBladePitch - 1.3f * Crossover;
+	const float StarboardPitch = BaseBladePitch + 1.3f * Crossover;
+	float Feather = 0.0f;
+	if (bFreshStroke && !bOarDrivePhase)
 	{
-		bHasOarPresentation = true;
-		SmoothedHandsX = TargetHandsX;
-		SmoothedOarYaw = TargetOarYaw;
-	}
-	else
-	{
-		SmoothedHandsX = InterpolateOarMotion(SmoothedHandsX, TargetHandsX, WorldDeltaSeconds);
-		SmoothedOarYaw = InterpolateOarMotion(SmoothedOarYaw, TargetOarYaw, WorldDeltaSeconds);
-	}
-	if (bHasRowerCharacterMeshes)
-	{
-		// The procedural segments use local +X as a 100 cm bone. All poses are
-		// cosmetic and consume the existing presentation snapshot only.
-		auto PoseSegment = [](UStaticMeshComponent *Component, const FVector &Start, const FVector &End)
-		{
-			const FVector Delta = End - Start;
-			Component->SetRelativeLocation(Start);
-			Component->SetRelativeRotation(Delta.Rotation());
-			Component->SetRelativeScale3D(FVector(Delta.Size() / 100.0, 1.0, 1.0));
-		};
-		for (int32 Side : {-1, 1})
-		{
-			UStaticMeshComponent *Arm = Side < 0 ? LeftArm.Get() : RightArm.Get();
-			UStaticMeshComponent *Thigh = Side < 0 ? LeftThigh.Get() : RightThigh.Get();
-			UStaticMeshComponent *Shin = Side < 0 ? LeftShin.Get() : RightShin.Get();
-			UStaticMeshComponent *Shoe = Side < 0 ? LeftShoe.Get() : RightShoe.Get();
-			const FVector Shoulder = Torso->GetRelativeLocation() +
-									 Torso->GetRelativeRotation().RotateVector(FVector(0.0, Side * 20.0, 18.0));
-			const FVector Hand(TargetHandsX, Side * 25.0, 148.0);
-			PoseSegment(Arm, Shoulder, Hand);
-			const FVector Hip(SeatX + 10.0f, Side * 13.0, 80.0);
-			const FVector Foot(140.0, Side * 13.0, 65.0);
-			const FVector Knee(FMath::Lerp(Hip.X, Foot.X, 0.52), Side * 13.0, 95.0 + (55.0 - SeatX) * 0.25);
-			PoseSegment(Thigh, Hip, Knee);
-			PoseSegment(Shin, Knee, Foot);
-			Shoe->SetRelativeLocation(Foot);
-		}
-	}
-	else
-	{
-		LeftArm->SetRelativeLocation(FVector(TargetHandsX, -25.0, 148.0));
-		RightArm->SetRelativeLocation(FVector(TargetHandsX, 25.0, 148.0));
+		const float RecoveryProgress = 1.0f - StrokePose;
+		const float FeatherIn = QuinticEase(RecoveryProgress / 0.10f);
+		const float Square = QuinticEase((RecoveryProgress - 0.72f) / 0.28f);
+		Feather = FeatherIn * (1.0f - Square);
 	}
 	if (OarMesh)
 	{
-		// The mesh origin is the oarlock and its +X points outboard. Mirror it
-		// across the hull while retaining the existing smoothed stroke sweep.
-		// During a fresh drive the blade tip dips below the flat waterline; it
-		// feathers clear for recovery and whenever presentation input is stale.
-		const float BladePitch = OarBladePitch(OarPose, bFreshStroke && bOarDrivePhase);
-		LeftOar->SetRelativeLocation(FVector(SmoothedHandsX, -95.0, 105.0));
-		RightOar->SetRelativeLocation(FVector(SmoothedHandsX, 95.0, 105.0));
-		LeftOar->SetRelativeRotation(FRotator(BladePitch, -90.0 - SmoothedOarYaw, 0.0));
-		RightOar->SetRelativeRotation(FRotator(BladePitch, 90.0 + SmoothedOarYaw, 0.0));
+		// Pins are fixed. The grips and blade contacts are derived from these final
+		// rendered shaft transforms, never from independently animated hands.
+		LeftOar->SetRelativeLocation(FVector(0.0, -95.0, 105.0));
+		RightOar->SetRelativeLocation(FVector(0.0, 95.0, 105.0));
+		LeftOar->SetRelativeRotation(FRotator(PortPitch, PortYaw, 90.0f * Feather));
+		RightOar->SetRelativeRotation(FRotator(StarboardPitch, StarboardYaw, -90.0f * Feather));
 	}
 	else
 	{
-		LeftOar->SetRelativeLocation(FVector(SmoothedHandsX, -155.0, 105.0));
-		RightOar->SetRelativeLocation(FVector(SmoothedHandsX, 155.0, 105.0));
-		LeftOar->SetRelativeRotation(FRotator(0.0, SmoothedOarYaw, 0.0));
-		RightOar->SetRelativeRotation(FRotator(0.0, -SmoothedOarYaw, 0.0));
+		LeftOar->SetRelativeLocation(FVector(0.0, -95.0, 105.0));
+		RightOar->SetRelativeLocation(FVector(0.0, 95.0, 105.0));
+		LeftOar->SetRelativeRotation(FRotator(PortPitch, PortYaw, 0.0));
+		RightOar->SetRelativeRotation(FRotator(StarboardPitch, StarboardYaw, 0.0));
+	}
+	auto PoseSegment = [this](UStaticMeshComponent *Component, const FVector &Start, const FVector &End, double ExpectedLength)
+	{
+		const FVector Delta = End - Start;
+		Component->SetRelativeLocation(Start);
+		Component->SetRelativeRotation(Delta.Rotation());
+		const double ScaleX = ExpectedLength / 100.0;
+		const bool bPrimitive = Component->GetStaticMesh() == CubeMesh.Get();
+		Component->SetRelativeScale3D(bPrimitive ? FVector(ScaleX, 0.06, 0.06) : FVector(ScaleX, 1.0, 1.0));
+	};
+
+	const double CatchHipZ = FootStretcherZCm + ShinLengthCm -
+							 ThighLengthCm * FMath::Cos(FMath::DegreesToRadians(CatchKneeDegrees));
+	const double CatchHipX = FootStretcherXCm -
+							 ThighLengthCm * FMath::Sin(FMath::DegreesToRadians(CatchKneeDegrees));
+	const double FinishDistance = HipToFootDistance(FinishKneeDegrees);
+	const double FinishHorizontal = FMath::Sqrt(FMath::Max(0.0,
+														   FMath::Square(FinishDistance) - FMath::Square(CatchHipZ - FootStretcherZCm)));
+	const double FinishHipX = FootStretcherXCm - FinishHorizontal;
+	const double HipX = FMath::Lerp(CatchHipX, FinishHipX, Snapshot.SeatPose);
+	const FVector HipCentre(HipX, 0.0, CatchHipZ);
+	Seat->SetRelativeLocation(FVector(HipX, 0.0, CatchHipZ - 15.0));
+
+	const double TorsoDegrees = FMath::Lerp(CatchTorsoDegrees, FinishTorsoDegrees, Snapshot.TorsoPose);
+	const double TorsoRadians = FMath::DegreesToRadians(TorsoDegrees);
+	const FVector TorsoDirection(FMath::Sin(TorsoRadians), 0.0, FMath::Cos(TorsoRadians));
+	const FVector ShoulderCentre = HipCentre + TorsoDirection * TorsoLengthCm;
+	const FQuat TorsoRotation = FQuat::FindBetweenNormals(FVector::UpVector, TorsoDirection);
+	const double TorsoMeshScale = bHasRowerCharacterMeshes ? TorsoLengthCm / RowerTorsoHipToShoulderMeshCm : TorsoLengthCm / 100.0;
+	Torso->SetRelativeLocation(bHasRowerCharacterMeshes
+								   ? HipCentre + TorsoDirection * (37.0 * TorsoMeshScale)
+								   : HipCentre + TorsoDirection * (TorsoLengthCm * 0.5));
+	Torso->SetRelativeRotation(TorsoRotation);
+	Torso->SetRelativeScale3D(bHasRowerCharacterMeshes
+								  ? FVector(TorsoMeshScale)
+								  : FVector(0.24, 0.34, TorsoLengthCm / 100.0));
+
+	const FTransform RowerToVisual = RowerRoot->GetRelativeTransform();
+	const FVector PortGrip = RowerToVisual.InverseTransformPosition(
+		LeftOar->GetRelativeTransform().TransformPosition(FVector(-90.0, 0.0, 0.0)));
+	const FVector StarboardGrip = RowerToVisual.InverseTransformPosition(
+		RightOar->GetRelativeTransform().TransformPosition(FVector(-90.0, 0.0, 0.0)));
+	for (int32 Side : {-1, 1})
+	{
+		const bool bLeft = Side > 0;
+		UStaticMeshComponent *UpperArm = bLeft ? LeftArm.Get() : RightArm.Get();
+		UStaticMeshComponent *Forearm = bLeft ? LeftForearm.Get() : RightForearm.Get();
+		UStaticMeshComponent *Hand = bLeft ? LeftHand.Get() : RightHand.Get();
+		UStaticMeshComponent *Thigh = bLeft ? LeftThigh.Get() : RightThigh.Get();
+		UStaticMeshComponent *Shin = bLeft ? LeftShin.Get() : RightShin.Get();
+		UStaticMeshComponent *Shoe = bLeft ? LeftShoe.Get() : RightShoe.Get();
+		const FVector Foot(FootStretcherXCm, Side * 13.0, FootStretcherZCm);
+		const FVector Hip(HipX, Side * 13.0, CatchHipZ);
+		const FVector Knee = SolveTwoBoneJoint(Hip, Foot, ThighLengthCm, ShinLengthCm, FVector(0.0, Side * 0.07, 1.0));
+		PoseSegment(Thigh, Hip, Knee, ThighLengthCm);
+		PoseSegment(Shin, Knee, Foot, ShinLengthCm);
+		Shoe->SetRelativeLocation(Foot);
+		Shoe->SetRelativeRotation(FRotator(12.0, 0.0, 0.0));
+		Shoe->SetRelativeScale3D(bHasRowerCharacterMeshes ? FVector::OneVector : FVector(0.30, 0.10, 0.07));
+
+		const FVector Shoulder = ShoulderCentre + FVector(0.0, Side * 15.0, 0.0);
+		const FVector Grip = bLeft ? PortGrip : StarboardGrip;
+		const FVector ShoulderToGrip = (Grip - Shoulder).GetSafeNormal();
+		const FVector Wrist = Grip - ShoulderToGrip * HandLengthCm;
+		const FVector Elbow = SolveTwoBoneJoint(Shoulder, Wrist, UpperArmLengthCm, ForearmLengthCm, FVector(0.0, Side, 0.25));
+		PoseSegment(UpperArm, Shoulder, Elbow, UpperArmLengthCm);
+		PoseSegment(Forearm, Elbow, Wrist, ForearmLengthCm);
+		PoseSegment(Hand, Wrist, Grip, HandLengthCm);
 	}
 	UpdateHullWake(bFreshStroke, NowMonotonicNs);
-	UpdateOarWaterContacts(bFreshStroke, NowMonotonicNs);
+	UpdateOarWaterContacts(bFreshStroke && bOarDrivePhase, NowMonotonicNs);
 	UpdateWaterEffects(NowMonotonicNs);
 
 	const FVector CameraLocation(Snapshot.CameraPose.PositionMm.X / 10.0, Snapshot.CameraPose.PositionMm.Y / 10.0, Snapshot.CameraPose.PositionMm.Z / 10.0);
@@ -649,6 +723,20 @@ void AGrayBoxCourseActor::ApplyPresentationOptionsToLevelWater(ULevel &Level, bo
 	}
 }
 
+int32 AGrayBoxCourseActor::HideAuthoredRouteGates(ULevel &Level)
+{
+	int32 HiddenCount = 0;
+	for (AActor *Actor : Level.Actors)
+	{
+		if (!Actor || !Actor->GetName().StartsWith(TEXT("HanRouteGate_CP"), ESearchCase::CaseSensitive))
+			continue;
+		Actor->SetActorHiddenInGame(true);
+		Actor->SetActorEnableCollision(false);
+		++HiddenCount;
+	}
+	return HiddenCount;
+}
+
 float AGrayBoxCourseActor::GetWaterMotionScaleForTesting() const
 {
 	float Scale = -1.0f;
@@ -684,19 +772,13 @@ void AGrayBoxCourseActor::SetReduceMotionForTesting(TOptional<bool> bRequested)
 	GReduceMotionOverrideForTesting = bRequested;
 }
 
-float AGrayBoxCourseActor::InterpolateOarMotion(float Current, float Target, float DeltaSeconds)
-{
-	const float BoundedDeltaSeconds = FMath::Clamp(DeltaSeconds, 0.0f, MaxOarInterpolationStepSeconds);
-	return FMath::FInterpTo(Current, Target, BoundedDeltaSeconds, OarInterpolationSpeed);
-}
-
-float AGrayBoxCourseActor::OarBladePitch(float OarPose, bool bDrivePhase)
+float AGrayBoxCourseActor::OarBladePitch(float StrokePose, bool bDrivePhase)
 {
 	if (!bDrivePhase)
-		return -30.0f;
-	const float Entry = SmoothStep((OarPose - 0.03f) / 0.15f);
-	const float Exit = 1.0f - SmoothStep((OarPose - 0.77f) / 0.18f);
-	return -30.0f - 14.0f * Entry * Exit;
+		return -18.0f;
+	const float Entry = QuinticEase(StrokePose / 0.04f);
+	const float Extraction = QuinticEase((StrokePose - 0.92f) / 0.08f);
+	return FMath::Lerp(-18.0f, -32.0f, Entry * (1.0f - Extraction));
 }
 
 void AGrayBoxCourseActor::InitializeWaterEffects()
@@ -822,8 +904,8 @@ void AGrayBoxCourseActor::UpdateOarWaterContacts(bool bFreshStroke, uint64 NowMo
 		return;
 	}
 	const double WaterlineZ = bAuthoredLevelActive ? -10.0 : -5.0;
-	const FVector LeftTip = LeftOar->GetComponentTransform().TransformPosition(FVector(205.0, 0.0, 0.0));
-	const FVector RightTip = RightOar->GetComponentTransform().TransformPosition(FVector(205.0, 0.0, 0.0));
+	const FVector LeftTip = LeftOar->GetComponentTransform().TransformPosition(FVector(224.0, 0.0, 0.0));
+	const FVector RightTip = RightOar->GetComponentTransform().TransformPosition(FVector(224.0, 0.0, 0.0));
 	const bool bLeftNowSubmerged = LeftTip.Z < WaterlineZ;
 	const bool bRightNowSubmerged = RightTip.Z < WaterlineZ;
 	if (bOarContactsArmed)
@@ -876,6 +958,91 @@ FTransform AGrayBoxCourseActor::GetTorsoRelativeTransformForTesting() const
 FTransform AGrayBoxCourseActor::GetLeftOarRelativeTransformForTesting() const
 {
 	return LeftOar ? LeftOar->GetRelativeTransform() : FTransform::Identity;
+}
+FTransform AGrayBoxCourseActor::GetRightOarRelativeTransformForTesting() const
+{
+	return RightOar ? RightOar->GetRelativeTransform() : FTransform::Identity;
+}
+FTransform AGrayBoxCourseActor::GetRowerRootRelativeTransformForTesting() const
+{
+	return RowerRoot ? RowerRoot->GetRelativeTransform() : FTransform::Identity;
+}
+FVector AGrayBoxCourseActor::GetLeftGripVisualPositionForTesting() const
+{
+	return LeftOar ? LeftOar->GetRelativeTransform().TransformPosition(FVector(-90.0, 0.0, 0.0)) : FVector::ZeroVector;
+}
+FVector AGrayBoxCourseActor::GetRightGripVisualPositionForTesting() const
+{
+	return RightOar ? RightOar->GetRelativeTransform().TransformPosition(FVector(-90.0, 0.0, 0.0)) : FVector::ZeroVector;
+}
+FVector AGrayBoxCourseActor::GetLeftHandVisualPositionForTesting() const
+{
+	if (!LeftHand || !VisualRoot)
+		return FVector::ZeroVector;
+	return VisualRoot->GetComponentTransform().InverseTransformPosition(
+		LeftHand->GetComponentTransform().TransformPosition(FVector(100.0, 0.0, 0.0)));
+}
+FVector AGrayBoxCourseActor::GetRightHandVisualPositionForTesting() const
+{
+	if (!RightHand || !VisualRoot)
+		return FVector::ZeroVector;
+	return VisualRoot->GetComponentTransform().InverseTransformPosition(
+		RightHand->GetComponentTransform().TransformPosition(FVector(100.0, 0.0, 0.0)));
+}
+double AGrayBoxCourseActor::GetLeftUpperArmLengthForTesting() const
+{
+	return LeftArm ? LeftArm->GetComponentScale().X * 100.0 : 0.0;
+}
+double AGrayBoxCourseActor::GetLeftForearmLengthForTesting() const
+{
+	return LeftForearm ? LeftForearm->GetComponentScale().X * 100.0 : 0.0;
+}
+double AGrayBoxCourseActor::GetLeftThighLengthForTesting() const
+{
+	return LeftThigh ? LeftThigh->GetComponentScale().X * 100.0 : 0.0;
+}
+double AGrayBoxCourseActor::GetLeftShinLengthForTesting() const
+{
+	return LeftShin ? LeftShin->GetComponentScale().X * 100.0 : 0.0;
+}
+double AGrayBoxCourseActor::GetLeftElbowAngleForTesting() const
+{
+	if (!LeftArm || !LeftForearm)
+		return 0.0;
+	const FVector Shoulder = LeftArm->GetRelativeLocation();
+	const FVector Elbow = LeftArm->GetRelativeTransform().TransformPosition(FVector(100.0, 0.0, 0.0));
+	const FVector Wrist = LeftForearm->GetRelativeTransform().TransformPosition(FVector(100.0, 0.0, 0.0));
+	const double Cosine = FMath::Clamp(FVector::DotProduct(
+										   (Shoulder - Elbow).GetSafeNormal(), (Wrist - Elbow).GetSafeNormal()),
+									   -1.0,
+									   1.0);
+	return FMath::RadiansToDegrees(FMath::Acos(Cosine));
+}
+double AGrayBoxCourseActor::GetLeftKneeAngleForTesting() const
+{
+	if (!LeftThigh || !LeftShin)
+		return 0.0;
+	const FVector Hip = LeftThigh->GetRelativeLocation();
+	const FVector Knee = LeftThigh->GetRelativeTransform().TransformPosition(FVector(100.0, 0.0, 0.0));
+	const FVector Foot = LeftShin->GetRelativeTransform().TransformPosition(FVector(100.0, 0.0, 0.0));
+	const double Cosine = FMath::Clamp(FVector::DotProduct(
+										   (Hip - Knee).GetSafeNormal(), (Foot - Knee).GetSafeNormal()),
+									   -1.0,
+									   1.0);
+	return FMath::RadiansToDegrees(FMath::Acos(Cosine));
+}
+double AGrayBoxCourseActor::GetLeftShinVerticalDeviationForTesting() const
+{
+	if (!LeftShin)
+		return 0.0;
+	const FVector Knee = LeftShin->GetRelativeLocation();
+	const FVector Foot = LeftShin->GetRelativeTransform().TransformPosition(FVector(100.0, 0.0, 0.0));
+	return FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(
+		FVector::DotProduct((Knee - Foot).GetSafeNormal(), FVector::UpVector), -1.0, 1.0)));
+}
+FVector AGrayBoxCourseActor::GetLeftFootRowerPositionForTesting() const
+{
+	return LeftShoe ? LeftShoe->GetRelativeLocation() : FVector::ZeroVector;
 }
 FTransform AGrayBoxCourseActor::GetCameraTransformForTesting() const
 {
@@ -930,6 +1097,18 @@ bool AGrayBoxCourseActor::AreControlPointMarkersVisibleForTesting() const
 FVector AGrayBoxCourseActor::GetControlPointMarkerLocationForTesting(int32 Index) const
 {
 	return ControlPointMarkers.IsValidIndex(Index) && ControlPointMarkers[Index] ? ControlPointMarkers[Index]->GetComponentLocation() : FVector::ZeroVector;
+}
+FString AGrayBoxCourseActor::GetMarkerLabelTextForTesting(int32 Index) const
+{
+	return MarkerLabels.IsValidIndex(Index) && MarkerLabels[Index] ? MarkerLabels[Index]->Text.ToString() : FString();
+}
+int32 AGrayBoxCourseActor::GetControlPointLabelCountForTesting() const
+{
+	return ControlPointLabels.Num();
+}
+FString AGrayBoxCourseActor::GetControlPointLabelTextForTesting(int32 Index) const
+{
+	return ControlPointLabels.IsValidIndex(Index) && ControlPointLabels[Index] ? ControlPointLabels[Index]->Text.ToString() : FString();
 }
 FVector AGrayBoxCourseActor::GetCheckpointArrowForwardForTesting() const
 {

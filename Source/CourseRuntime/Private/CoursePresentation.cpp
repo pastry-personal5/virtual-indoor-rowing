@@ -25,15 +25,9 @@ namespace
 		return std::clamp(Value, 0.0, 1.0);
 	}
 
-	double SmoothStep(double Value)
+	double QuinticEase(double Value)
 	{
-		const double T = Clamp01(Value);
-		return T * T * (3.0 - 2.0 * T);
-	}
-
-	double SegmentedPose(double Pose, double Start, double End)
-	{
-		return SmoothStep((Pose - Start) / (End - Start));
+		return FBiomechanicalStrokeTrajectory::MinimumJerk(0.0, 1.0, Value, 1.0).Position;
 	}
 
 	std::uint64_t ElapsedNs(std::uint64_t Now, std::uint64_t Then)
@@ -108,7 +102,7 @@ namespace
 								 const FCourseCameraParameters &B,
 								 double Alpha)
 	{
-		const double T = SmoothStep(Alpha);
+		const double T = QuinticEase(Alpha);
 		auto Blend = [T](double From, double To)
 		{ return From + (To - From) * T; };
 		return {Blend(A.AftMm, B.AftMm), Blend(A.StarboardMm, B.StarboardMm), Blend(A.HeightMm, B.HeightMm), Blend(A.LookAheadMm, B.LookAheadMm), Blend(A.FieldOfViewDegrees, B.FieldOfViewDegrees)};
@@ -256,9 +250,14 @@ void FCoursePresentationRuntime::ResetSessionState() noexcept
 	PreviousStrokeState = ERowingStrokeState::Unknown;
 	StrokeStateStartedNs = 0;
 	RateCycleStartedNs = 0;
+	LatchedDriveMs = DefaultDriveMs;
+	LatchedRecoveryMs = DefaultRecoveryMs;
 	bReturningToCatch = false;
+	bReconnectingToMeasuredPose = false;
+	bHadLiveAnimation = false;
 	CatchReturnStartedNs = 0;
-	CatchReturnStartPose = 0.0;
+	BridgeStartState = {};
+	CurrentStrokeState = {};
 }
 
 void FCoursePresentationRuntime::Reset() noexcept
@@ -626,17 +625,24 @@ void FCoursePresentationRuntime::UpdateStroke(const FCourseTelemetryInput &Input
 		if (!bReturningToCatch)
 		{
 			bReturningToCatch = true;
+			bReconnectingToMeasuredPose = false;
 			CatchReturnStartedNs = NowMonotonicNs;
-			CatchReturnStartPose = Snapshot.StrokePose;
+			BridgeStartState = CurrentStrokeState;
 		}
+		const double DurationSeconds = static_cast<double>(CatchReturnDurationNs) / 1'000'000'000.0;
 		const double ReturnAlpha = static_cast<double>(ElapsedNs(NowMonotonicNs, CatchReturnStartedNs)) /
 								   static_cast<double>(CatchReturnDurationNs);
-		SetStrokePose(CatchReturnStartPose * (1.0 - SmoothStep(ReturnAlpha)), ECourseAnimationQuality::Unavailable);
+		FBiomechanicalStrokeState ReturnState;
+		ReturnState.Stroke = FBiomechanicalStrokeTrajectory::QuinticHermite(BridgeStartState.Stroke, {}, ReturnAlpha, DurationSeconds);
+		ReturnState.Seat = FBiomechanicalStrokeTrajectory::QuinticHermite(BridgeStartState.Seat, {}, ReturnAlpha, DurationSeconds);
+		ReturnState.Torso = FBiomechanicalStrokeTrajectory::QuinticHermite(BridgeStartState.Torso, {}, ReturnAlpha, DurationSeconds);
+		ReturnState.Arms = FBiomechanicalStrokeTrajectory::QuinticHermite(BridgeStartState.Arms, {}, ReturnAlpha, DurationSeconds);
+		ReturnState.Oar = FBiomechanicalStrokeTrajectory::QuinticHermite(BridgeStartState.Oar, {}, ReturnAlpha, DurationSeconds);
+		ApplyStrokeState(ReturnState, ECourseAnimationQuality::Unavailable);
 		PreviousStrokeState = ERowingStrokeState::Unknown;
 		RateCycleStartedNs = 0;
 		return;
 	}
-	bReturningToCatch = false;
 
 	std::uint32_t DriveMs = Input.DriveTimeMs.value_or(DefaultDriveMs);
 	std::uint32_t RecoveryMs = Input.RecoveryTimeMs.value_or(DefaultRecoveryMs);
@@ -648,26 +654,93 @@ void FCoursePresentationRuntime::UpdateStroke(const FCourseTelemetryInput &Input
 		if (!Input.RecoveryTimeMs)
 			RecoveryMs = static_cast<std::uint32_t>(CycleMs * 0.65);
 	}
+	DriveMs = std::max(DriveMs, 1U);
+	RecoveryMs = std::max(RecoveryMs, 1U);
+
+	if (bReturningToCatch && bHadLiveAnimation)
+	{
+		bReturningToCatch = false;
+		bReconnectingToMeasuredPose = true;
+		CatchReturnStartedNs = NowMonotonicNs;
+		BridgeStartState = CurrentStrokeState;
+		LatchedDriveMs = DriveMs;
+		LatchedRecoveryMs = RecoveryMs;
+	}
+	else
+		bReturningToCatch = false;
+
+	if (bReconnectingToMeasuredPose)
+	{
+		const bool bFinishEndpoint = Input.StrokeState == ERowingStrokeState::Dwell ||
+									 Input.StrokeState == ERowingStrokeState::Recovery;
+		const EBiomechanicalStrokePhase TargetPhase = bFinishEndpoint
+														  ? EBiomechanicalStrokePhase::Recovery
+														  : EBiomechanicalStrokePhase::Drive;
+		FBiomechanicalStrokeState Target = FBiomechanicalStrokeTrajectory::Evaluate(
+			bFinishEndpoint ? 1.0 : 0.0,
+			TargetPhase,
+			static_cast<double>(bFinishEndpoint ? LatchedRecoveryMs : LatchedDriveMs) / 1000.0);
+		auto Stop = [](FQuinticKinematicState State)
+		{
+			State.Velocity = 0.0;
+			State.Acceleration = 0.0;
+			return State;
+		};
+		Target.Stroke = Stop(Target.Stroke);
+		Target.Seat = Stop(Target.Seat);
+		Target.Torso = Stop(Target.Torso);
+		Target.Arms = Stop(Target.Arms);
+		Target.Oar = Stop(Target.Oar);
+		const double DurationSeconds = static_cast<double>(CatchReturnDurationNs) / 1'000'000'000.0;
+		const double Alpha = static_cast<double>(ElapsedNs(NowMonotonicNs, CatchReturnStartedNs)) /
+							 static_cast<double>(CatchReturnDurationNs);
+		FBiomechanicalStrokeState Bridged;
+		Bridged.Stroke = FBiomechanicalStrokeTrajectory::QuinticHermite(BridgeStartState.Stroke, Target.Stroke, Alpha, DurationSeconds);
+		Bridged.Seat = FBiomechanicalStrokeTrajectory::QuinticHermite(BridgeStartState.Seat, Target.Seat, Alpha, DurationSeconds);
+		Bridged.Torso = FBiomechanicalStrokeTrajectory::QuinticHermite(BridgeStartState.Torso, Target.Torso, Alpha, DurationSeconds);
+		Bridged.Arms = FBiomechanicalStrokeTrajectory::QuinticHermite(BridgeStartState.Arms, Target.Arms, Alpha, DurationSeconds);
+		Bridged.Oar = FBiomechanicalStrokeTrajectory::QuinticHermite(BridgeStartState.Oar, Target.Oar, Alpha, DurationSeconds);
+		ApplyStrokeState(Bridged, Input.StrokeState == ERowingStrokeState::Unknown ? ECourseAnimationQuality::Estimated : ECourseAnimationQuality::Primary);
+		if (Alpha < 1.0)
+			return;
+		bReconnectingToMeasuredPose = false;
+		PreviousStrokeState = Input.StrokeState;
+		StrokeStateStartedNs = NowMonotonicNs;
+		RateCycleStartedNs = Input.StrokeState == ERowingStrokeState::Unknown ? NowMonotonicNs : 0;
+	}
+	bHadLiveAnimation = true;
 
 	if (Input.StrokeState != ERowingStrokeState::Unknown)
 	{
 		if (Input.StrokeState != PreviousStrokeState)
+		{
 			StrokeStateStartedNs = NowMonotonicNs;
+			if (Input.StrokeState == ERowingStrokeState::Drive)
+				LatchedDriveMs = DriveMs;
+			else if (Input.StrokeState == ERowingStrokeState::Recovery)
+				LatchedRecoveryMs = RecoveryMs;
+		}
 		PreviousStrokeState = Input.StrokeState;
 		const double StateElapsedMs = static_cast<double>(ElapsedNs(NowMonotonicNs, StrokeStateStartedNs)) / 1'000'000.0;
 		switch (Input.StrokeState)
 		{
 		case ERowingStrokeState::Waiting:
-			SetStrokePose(0.0, ECourseAnimationQuality::Primary);
+			SetStrokePose(0.0, EBiomechanicalStrokePhase::Drive, static_cast<double>(LatchedDriveMs) / 1000.0, ECourseAnimationQuality::Primary);
 			break;
 		case ERowingStrokeState::Drive:
-			SetStrokePose(StateElapsedMs / static_cast<double>(std::max(DriveMs, 1U)), ECourseAnimationQuality::Primary);
+			SetStrokePose(StateElapsedMs / static_cast<double>(LatchedDriveMs),
+						  EBiomechanicalStrokePhase::Drive,
+						  static_cast<double>(LatchedDriveMs) / 1000.0,
+						  ECourseAnimationQuality::Primary);
 			break;
 		case ERowingStrokeState::Dwell:
-			SetStrokePose(1.0, ECourseAnimationQuality::Primary);
+			SetStrokePose(1.0, EBiomechanicalStrokePhase::Drive, static_cast<double>(LatchedDriveMs) / 1000.0, ECourseAnimationQuality::Primary);
 			break;
 		case ERowingStrokeState::Recovery:
-			SetStrokePose(1.0 - StateElapsedMs / static_cast<double>(std::max(RecoveryMs, 1U)), ECourseAnimationQuality::Primary);
+			SetStrokePose(1.0 - StateElapsedMs / static_cast<double>(LatchedRecoveryMs),
+						  EBiomechanicalStrokePhase::Recovery,
+						  static_cast<double>(LatchedRecoveryMs) / 1000.0,
+						  ECourseAnimationQuality::Primary);
 			break;
 		case ERowingStrokeState::Unknown:
 			break;
@@ -679,27 +752,60 @@ void FCoursePresentationRuntime::UpdateStroke(const FCourseTelemetryInput &Input
 	PreviousStrokeState = ERowingStrokeState::Unknown;
 	if (!Input.StrokeRateDeciSpm || *Input.StrokeRateDeciSpm == 0)
 	{
-		SetStrokePose(0.0, ECourseAnimationQuality::Unavailable);
+		SetStrokePose(0.0, EBiomechanicalStrokePhase::Drive, static_cast<double>(LatchedDriveMs) / 1000.0, ECourseAnimationQuality::Unavailable);
 		RateCycleStartedNs = 0;
 		return;
 	}
 	if (RateCycleStartedNs == 0)
+	{
 		RateCycleStartedNs = NowMonotonicNs;
-	const double CycleMs = 600'000.0 / static_cast<double>(*Input.StrokeRateDeciSpm);
+		LatchedDriveMs = DriveMs;
+		LatchedRecoveryMs = RecoveryMs;
+	}
+	double CycleMs = static_cast<double>(LatchedDriveMs + LatchedRecoveryMs);
+	std::uint64_t ElapsedCycleNs = ElapsedNs(NowMonotonicNs, RateCycleStartedNs);
+	if (ElapsedCycleNs >= static_cast<std::uint64_t>(CycleMs * 1'000'000.0))
+	{
+		const std::uint64_t CompletedCycles = ElapsedCycleNs /
+											  static_cast<std::uint64_t>(CycleMs * 1'000'000.0);
+		RateCycleStartedNs += CompletedCycles * static_cast<std::uint64_t>(CycleMs * 1'000'000.0);
+		LatchedDriveMs = DriveMs;
+		LatchedRecoveryMs = RecoveryMs;
+		CycleMs = static_cast<double>(LatchedDriveMs + LatchedRecoveryMs);
+	}
 	const double ElapsedMs = static_cast<double>(ElapsedNs(NowMonotonicNs, RateCycleStartedNs)) / 1'000'000.0;
 	const double PhaseMs = std::fmod(ElapsedMs, CycleMs);
-	const double DrivePartMs = CycleMs * 0.35;
-	const double Pose = PhaseMs < DrivePartMs ? PhaseMs / DrivePartMs : 1.0 - (PhaseMs - DrivePartMs) / (CycleMs - DrivePartMs);
-	SetStrokePose(Pose, ECourseAnimationQuality::Estimated);
+	if (PhaseMs < static_cast<double>(LatchedDriveMs))
+		SetStrokePose(PhaseMs / static_cast<double>(LatchedDriveMs),
+					  EBiomechanicalStrokePhase::Drive,
+					  static_cast<double>(LatchedDriveMs) / 1000.0,
+					  ECourseAnimationQuality::Estimated);
+	else
+		SetStrokePose(1.0 - (PhaseMs - static_cast<double>(LatchedDriveMs)) /
+								static_cast<double>(LatchedRecoveryMs),
+					  EBiomechanicalStrokePhase::Recovery,
+					  static_cast<double>(LatchedRecoveryMs) / 1000.0,
+					  ECourseAnimationQuality::Estimated);
 }
 
 void FCoursePresentationRuntime::SetStrokePose(double Pose,
-											   ECourseAnimationQuality Quality)
+											   EBiomechanicalStrokePhase Phase,
+											   double PhaseDurationSeconds,
+											   ECourseAnimationQuality Quality) noexcept
 {
-	Snapshot.StrokePose = Clamp01(Pose);
-	Snapshot.SeatPose = SegmentedPose(Snapshot.StrokePose, 0.0, 0.50);
-	Snapshot.TorsoPose = SegmentedPose(Snapshot.StrokePose, 0.25, 0.78);
-	Snapshot.ArmsPose = SegmentedPose(Snapshot.StrokePose, 0.58, 1.0);
-	Snapshot.OarPose = SmoothStep(Snapshot.StrokePose);
+	ApplyStrokeState(FBiomechanicalStrokeTrajectory::Evaluate(
+						 Clamp01(Pose), Phase, PhaseDurationSeconds),
+					 Quality);
+}
+
+void FCoursePresentationRuntime::ApplyStrokeState(const FBiomechanicalStrokeState &State,
+												  ECourseAnimationQuality Quality) noexcept
+{
+	CurrentStrokeState = State;
+	Snapshot.StrokePose = Clamp01(State.Stroke.Position);
+	Snapshot.SeatPose = Clamp01(State.Seat.Position);
+	Snapshot.TorsoPose = Clamp01(State.Torso.Position);
+	Snapshot.ArmsPose = Clamp01(State.Arms.Position);
+	Snapshot.OarPose = Clamp01(State.Oar.Position);
 	Snapshot.AnimationQuality = Quality;
 }

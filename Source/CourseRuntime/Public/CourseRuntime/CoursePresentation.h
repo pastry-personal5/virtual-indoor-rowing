@@ -3,6 +3,7 @@
 #include "RowingCore/RowingSession.h"
 #include "RowingCore/RowingTelemetry.h"
 #include "ContentRuntime/ContentManifest.h"
+#include "CourseRuntime/BiomechanicalStrokeTrajectory.h"
 
 #include <cstdint>
 #include <optional>
@@ -192,9 +193,14 @@ class FCoursePresentationRuntime final
 	ERowingStrokeState PreviousStrokeState = ERowingStrokeState::Unknown;
 	std::uint64_t StrokeStateStartedNs = 0;
 	std::uint64_t RateCycleStartedNs = 0;
+	std::uint32_t LatchedDriveMs = 700;
+	std::uint32_t LatchedRecoveryMs = 1300;
 	bool bReturningToCatch = false;
+	bool bReconnectingToMeasuredPose = false;
+	bool bHadLiveAnimation = false;
 	std::uint64_t CatchReturnStartedNs = 0;
-	double CatchReturnStartPose = 0.0;
+	FBiomechanicalStrokeState BridgeStartState;
+	FBiomechanicalStrokeState CurrentStrokeState;
 
 	void ResetSessionState() noexcept;
 	void UpdateStroke(const FCourseTelemetryInput &Input,
@@ -202,5 +208,10 @@ class FCoursePresentationRuntime final
 	void UpdatePathAndMotion(const FCourseTelemetryInput &Input, bool bFreshSample, double DeltaSeconds, std::uint64_t NowMonotonicNs);
 	void UpdateCamera(const FCourseTelemetryInput &Input, bool bFreshSample, std::uint64_t NowMonotonicNs);
 	void EnterRevealPhase(ECourseRevealPhase Phase, std::uint64_t NowMonotonicNs) noexcept;
-	void SetStrokePose(double Pose, ECourseAnimationQuality Quality);
+	void ApplyStrokeState(const FBiomechanicalStrokeState &State,
+						  ECourseAnimationQuality Quality) noexcept;
+	void SetStrokePose(double Pose,
+					   EBiomechanicalStrokePhase Phase,
+					   double PhaseDurationSeconds,
+					   ECourseAnimationQuality Quality) noexcept;
 };
